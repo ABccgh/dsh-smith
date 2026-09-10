@@ -107,11 +107,21 @@ dsh --agent-preset dsh-smith
 | `dsh-expert-team` | 团队名册、交接契约、如何组合一个新角色 |
 | `dsh-memory-chronicle` | 四层记忆布局、条目格式、维护规则 |
 
-## 一个值得知道的挂载约束
+## 已知限制：`tool-cordis` 那一行
 
-`tool-cordis` 把自己的 Host inspect 提供者注册进 `cordisInspect`，而该注册表**按 provider id 去重且不幂等**——所以同一个进程里不能有两个含 `tool-cordis` 的组合同时存活。出厂的 `cordis` 预设正是这样一个组合。
+**这一节记录的是一个未修好的缺陷，不是设计亮点。** 如果你只需要专家团队、思考协议和记忆层，可以忽略它；如果你要用本预设开发 Cordis 插件，请先读完。
 
-因此本预设把该行写成自条件加载：
+### 冲突本身
+
+`tool-cordis` 在 apply 时把四个 Host inspect provider（`Service`、`Event`、`Builtin`、`Tool`）注册进 `cordisInspect`，而该注册表的 provider map **按 id 去重且直接 throw**。行按花名册顺序加载，所以**一个进程里第一个**声称这些 id 的组合获胜，之后每一个含该行的组合都会**整体挂载失败**：
+
+```
+failed to apply loader entry tool-cordis: Host Cordis inspect provider "Service" is already registered
+```
+
+这是实测的，不是推断的：把下面那道门去掉，本预设在任何已有其它会话注册过这些 provider 的进程里**根本挂不上去**。
+
+### 那道门是两害相权，而且它不像我先前写的那样工作
 
 ```yaml
 - id: tool-cordis
@@ -119,21 +129,41 @@ dsh --agent-preset dsh-smith
   disabled: !!js ctx.get('cordisInspect') !== void 0
 ```
 
-- 注册表不存在 → 本行加载并注册，会话拿到完整 Cordis 工具集；
-- 注册表已存在 → 提供者（以及工具）已在进程内，本行自禁用，而不是让挂载失败。
+`ctx.get('cordisInspect')` 回答的是「**注册表是否存在**」，不是「**有没有东西注册进去了**」。而该注册表由 `@deepseek-ai/dsh-cordis-host-runner` 在其构造函数里**急切创建**（web profile 把它挂在 host plane），所以在类似本部署的环境里这道门**恒为真**。后果：
 
-用 `ctx.get()` 而不是 `ctx.cordisInspect`：`!!js` 门在 Loader 上下文求值，Cordis guard 会拒绝未经声明的属性访问。这是实测结论，不是推断。
+- **dsh-smith 会话不会自己拿到 `cordis_*` 工具。** 只有当同一进程里另有存活的组合已经注册过它们时才拿得到——而这取决于挂载顺序和其它会话的存活期；
+- 门带来的好处只是：预设能挂上，专家团队、思考协议、记忆层都正常工作；
+- 门带来的代价是：插件创作工具可能缺席，且行为不可预测。
+
+用 `ctx.get()` 而不是 `ctx.cordisInspect`：`!!js` 门在 Loader 上下文求值，Cordis guard 会拒绝未经声明的属性访问。
+
+### 怎么判断你处在哪种情况
+
+在会话里调用一次 `cordis_inspect_list`：
+
+- **它回答了** → 工具是活的，可以正常开发插件；
+- **提示工具不存在** → 本次会话没有这套工具，请改用出厂 **「创造模式」** 预设的会话来做 Cordis 插件工作。
+
+### 真正的修法不在这个仓库里
+
+应当把 `CordisInspectRegistryService.register()` 改成**幂等**——对已注册的 provider id 返回既有 disposer，而不是 throw。一个 preset 用 YAML 表达不了这件事，所以本仓库只能记录限制并保持可用。
 
 ## 验证状态
 
-本组合经过真实挂载验证，而非仅阅读确认：
+**已用真实挂载验证的部分**（`agentPresets.standingKeyFor('dsh-smith')`，非仅阅读确认）：
 
-- `agentPresets.standingKeyFor('dsh-smith')` **挂载通过** —— 无未激活行，无泄漏到根 realm 的服务；
+- 挂载通过——无未激活行，无泄漏到根 realm 的服务；
 - `compositionInventory()` 报告 **33 行全部组合，32 行 `ACTIVE`**；
-- 恰好 4 行按设计关闭：`tool-bash`（Windows 平台门）、`tool-cordis`（条件门）、`tool-subagent-codex` 与 `tool-subagent-claude-code`（未安装的可选产品提供者）；
+- 恰好 4 行按设计关闭：`tool-bash`（Windows 平台门）、`tool-cordis`（上述条件门）、`tool-subagent-codex` 与 `tool-subagent-claude-code`（未安装的可选产品提供者）；
 - 四条专家行 `tool-expert-architect / verifier / protocol / chronicler` 全部 `ACTIVE`。
 
-**未经端到端验证的部分**：专家工具在模型侧的最终工具名，以及子代理创建路径。这两点由以下事实推导成立——行配置已通过 schema 校验、spawn 提供者的能力标志已从包内类型声明核实、且「多行 `tool-subagent` 各自 `toolName`」这一模式在出厂 `standard` 预设中已用于 `subagent` + `subagent_fork`。首次使用时请确认工具列表里出现上述四个名字。
+**我必须明确标注的验证缺口。** 上面这些只证明「行组合成功且处于 ACTIVE」，**不证明任何工具真的到了模型手上**——行激活与工具可用是两件事。以下三项在本仓库交付时尚无端到端观测：
+
+1. 四条专家行是否真的注册出 `expert_architect` / `expert_verifier` / `expert_protocol` / `expert_chronicler` 四个模型可见工具，以及子代理创建路径是否可用；
+2. `tool-cordis` 在目标部署上究竟落在上述哪一种情况；
+3. `tool-subagent` 行上的 `modelSelectionSettings: true` 是否有效——该设置依赖宿主挂载 `@deepseek-ai/dsh-tool-subagent/model-selection-settings` 行，本部署的基础组合里没有它，因此**很可能是一个静默无效的配置**，同时 `list_subagent_models` 工具也不会出现。
+
+首次在真实会话里使用时，请用 `cordis_inspect_query` 的 `Tool.listTools` 取一次真实工具表来确认第 1、3 项。
 
 ## 兼容性
 

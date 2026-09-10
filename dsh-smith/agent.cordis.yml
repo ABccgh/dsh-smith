@@ -588,30 +588,48 @@
     fetch: true
     searchTimeoutMs: 60000
 
-# ── self-modification ───────────────────────────────────────────────────────
+# ── self-modification (with a known limitation) ─────────────────────────────
 #
 # Read the live runtime, mount a temporary plugin, unmount it. The toolset is a
 # trust boundary, not a sandbox — see this file's header.
 #
-# The `disabled` gate is load-bearing, not decoration. `tool-cordis` registers
-# its Host inspect providers into `cordisInspect`, whose registry is keyed by
-# provider id and throws on a duplicate — so the row is not idempotent, and two
-# live compositions that both contain it cannot coexist in one process. The
-# shipped `cordis` preset is exactly such a composition, and a deployment that
-# offers both presets will mount both.
+# WHY THIS ROW IS GATED, AND WHAT THE GATE COSTS.
 #
-# `ctx.get` is read here rather than `ctx.cordisInspect` because a `!!js` gate is
-# evaluated against the Loader context, where the Cordis guard rejects property
-# access to a service the context never declared. `ctx.get('cordisInspect')` is
-# the ungated form, and it answers the same question:
+# `tool-cordis` is not idempotent. On apply it registers four Host inspect
+# providers (Service, Event, Builtin, Tool) into `cordisInspect`, whose provider
+# map is keyed by id and THROWS on a duplicate. Rows load in roster order, so the
+# first composition in a process to claim those ids wins: every later composition
+# containing this row fails its ENTIRE mount with
+#   failed to apply loader entry tool-cordis: Host Cordis inspect provider
+#   "Service" is already registered
+# and leaves no partial state. That was measured, not inferred: removing this
+# gate makes the preset unmountable in any process where another session already
+# registered those providers.
 #
-#   * registry absent -> this row loads and registers the providers, giving this
-#     session the full Cordis toolset;
-#   * registry present -> the providers (and therefore the tools) already exist
-#     in the process, so this row disables itself instead of failing the mount.
+# The gate is the lesser of two bad options — but it is NOT a correct fix, and it
+# does not do what an earlier version of this comment claimed:
 #
-# Either way the agent ends up with `cordis_inspect_*`, `cordis_define`,
-# `cordis_run`, `cordis_stop`, and `cordis_undefine` visible.
+#   * `ctx.get('cordisInspect') !== void 0` answers "does the REGISTRY exist",
+#     not "has anything REGISTERED into it". The registry is created eagerly by
+#     `@deepseek-ai/dsh-cordis-host-runner` (the web profile mounts it host-side),
+#     so on this deployment the gate is simply always true.
+#   * Therefore a dsh-smith session does NOT get `cordis_*` tools of its own. It
+#     gets them only if some other live composition in the same process already
+#     registered them AND that composition is still alive.
+#   * `ctx.get` is used instead of `ctx.cordisInspect` because a `!!js` gate is
+#     evaluated against the Loader context, where the Cordis guard rejects
+#     property access to a service the context never declared.
+#
+# What this gate buys: the preset mounts, and its expert team, thinking protocol,
+# and memory layers all work. What it costs: plugin authoring tools may be
+# absent, and the outcome depends on mount order and on other sessions' lifetime.
+# Check which case you are in with `cordis_inspect_list`: if it answers, the
+# tools are live; if the tool is unknown, work on Cordis plugins from a session
+# on the shipped `cordis` preset instead.
+#
+# The real fix belongs upstream: make `CordisInspectRegistryService.register()`
+# idempotent — return the existing disposer for an already-registered provider id
+# instead of throwing. A preset cannot express that from YAML.
 - id: tool-cordis
   name: '@deepseek-ai/dsh-tool-cordis'
   disabled: !!js ctx.get('cordisInspect') !== void 0
