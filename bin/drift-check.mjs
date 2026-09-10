@@ -2,9 +2,10 @@
 /**
  * Report how far this preset has drifted from the shipped preset it was copied from.
  *
- * `dsh-smith` began as a copy of the deployment's `cordis` preset, so every row it
- * shares with that preset is a row an upstream upgrade can move underneath it. A
- * row whose config surface changed upstream does not fail here — it keeps loading
+ * This repository ships two presets, each copied from a different shipped one
+ * (`bin/presets.mjs` records which). Every row a local preset shares with its
+ * upstream is a row an upstream upgrade can move underneath it — a row whose
+ * config surface changed upstream does not fail here, it keeps loading
  * with a stale config, or stops matching the package it names, and nothing says so.
  *
  * This script does not fix drift. It reports it, because the decision to follow an
@@ -19,31 +20,47 @@
  *     compared literally and long block scalars reduced to a length + first line.
  *
  * Usage:
- *   node bin/drift-check.mjs                    compare against the installed preset
+ *   node bin/drift-check.mjs                    compare dsh-smith against its upstream
+ *   node bin/drift-check.mjs --preset <id>      compare a specific preset
  *   node bin/drift-check.mjs --upstream <path>  compare against a specific file
  *   node bin/drift-check.mjs --quiet            only rows that differ
  *
  * Locating the upstream file: the roster reports each preset's real path, and the
  * shipped install sits beside the deployment's own config. The default below
  * covers a standard `dsh` install; pass --upstream when yours differs.
+ *
+ * The upstream preset is per-preset, not fixed: `dsh-smith` began as a copy of the
+ * shipped `cordis` preset, while `dsh-forge` is the shipped `standard` plus
+ * software-development rows. Comparing either against the wrong one reports drift
+ * for every row that is legitimately different, which reads as noise and hides
+ * the real drift inside it.
  */
 import { access, readFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join, resolve } from 'node:path'
+import { dshHome, presetEntry, presetFromArgv, repoComposition, UnknownPresetError } from './presets.mjs'
 
-const LOCAL = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'dsh-smith', 'agent.cordis.yml')
+let PRESET_ID
+let UPSTREAM_PRESET
+try {
+  PRESET_ID = presetFromArgv(process.argv.slice(2))
+  UPSTREAM_PRESET = presetEntry(PRESET_ID).upstreamPreset
+} catch (error) {
+  console.error(`drift-check: ${error instanceof UnknownPresetError ? error.message : String(error)}`)
+  process.exit(1)
+}
+
+const LOCAL = repoComposition(PRESET_ID)
 const quiet = process.argv.includes('--quiet')
 
-/** Candidate locations for the shipped `cordis` preset, most specific first. */
+/** Candidate locations for the shipped preset this one was copied from, most specific first. */
 async function findUpstream() {
   const index = process.argv.indexOf('--upstream')
   if (index !== -1 && process.argv[index + 1] !== undefined) return resolve(process.argv[index + 1])
 
-  const home = process.env.DSH_HOME ?? join(homedir(), '.dsh')
+  const home = dshHome()
   const candidates = [
-    join(home, 'profiles', 'node_modules', '@deepseek-ai', 'dsh-agent-presets', 'presets', 'cordis', 'agent.cordis.yml'),
-    join(home, 'profiles', 'web', 'node_modules', '@deepseek-ai', 'dsh-agent-presets', 'presets', 'cordis', 'agent.cordis.yml'),
+    join(home, 'profiles', 'node_modules', '@deepseek-ai', 'dsh-agent-presets', 'presets', UPSTREAM_PRESET, 'agent.cordis.yml'),
+    join(home, 'profiles', 'web', 'node_modules', '@deepseek-ai', 'dsh-agent-presets', 'presets', UPSTREAM_PRESET, 'agent.cordis.yml'),
   ]
   for (const candidate of candidates) {
     try {
@@ -141,9 +158,9 @@ function configDiff(local, upstream) {
 async function main() {
   const upstreamPath = await findUpstream()
   if (upstreamPath === undefined) {
-    console.error('drift-check: could not find the shipped `cordis` preset to compare against.')
+    console.error(`drift-check: could not find the shipped \`${UPSTREAM_PRESET}\` preset to compare against.`)
     console.error('drift-check: the roster reports each preset\'s real path; pass it explicitly:')
-    console.error('drift-check:   node bin/drift-check.mjs --upstream <path to cordis/agent.cordis.yml>')
+    console.error(`drift-check:   node bin/drift-check.mjs --preset ${PRESET_ID} --upstream <path to ${UPSTREAM_PRESET}/agent.cordis.yml>`)
     process.exitCode = 1
     return
   }
@@ -169,7 +186,7 @@ async function main() {
     console.error(`drift-check: cannot read the upstream composition at ${upstreamPath}`)
     console.error(`drift-check:   ${error && error.message ? error.message : String(error)}`)
     console.error('drift-check: check the path, or omit --upstream to let this script locate')
-    console.error('drift-check: the shipped `cordis` preset under $DSH_HOME/profiles.')
+    console.error(`drift-check: the shipped \`${UPSTREAM_PRESET}\` preset under $DSH_HOME/profiles.`)
     process.exitCode = 1
     return
   }

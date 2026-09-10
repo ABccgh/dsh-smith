@@ -27,39 +27,66 @@
  *     withholds framework internals by design
  *     ("sandbox ctx does not expose \"fiber\"").
  *
- * So the tool-surface assertion is left to the only place that can run it: a
- * real session. This script prints the exact calls instead of pretending.
+ * AND THERE IS A SECOND, HARDER LIMIT -- that is not in this script's favour.
+ *
+ * The probe below boots its OWN runtime: `root = new cordis.Context()` at line
+ * ~204, then `root.plugin(probe)`. A bare Cordis context carries none of the
+ * harness registries, so `agentPresets` is absent by CONSTRUCTION, and this
+ * script therefore reports INCONCLUSIVE from every session -- including a
+ * session on the shipped `cordis` preset where the probe route works fine.
+ * Measured twice, verbatim identical output: once in an ordinary shell, once
+ * inside a shipped-`cordis` session that had `tool-cordis` active, and both
+ * printed `this runtime publishes no \`agentPresets\` service` with exit 1.
+ *
+ * So this script is a DIAGNOSTIC, not the mount check: it tells you whether
+ * THIS machine's CLI can reach a harness runtime, and it can say MOUNT REJECTED
+ * only when it is handed one. The mount verdict comes from the roster's own
+ * method, called inside a live harness process -- the dynamic-plugin route
+ * (`cordis_define` + `cordis_run` registering a probe tool that calls
+ * `ctx.agentPresets.standingKeyFor(id)`), which needs a session whose preset
+ * composes `tool-cordis`: the shipped `cordis` preset, and NOT `dsh-smith` or
+ * `dsh-forge`, whose gates remove exactly those tools. See AGENTS.md rule 5.
  *
  * Outcomes are reported distinctly, because "verified" and "could not check"
  * must never look alike:
  *
  *   MOUNTED OK      the preset composed: no unusable row, no leaked service
  *   MOUNT REJECTED  the preset cannot be composed; the reason is printed
- *   INCONCLUSIVE    this machine has no harness runtime to ask, so nothing was
- *                   verified (exit 1 -- an unrun check is not a pass)
+ *   INCONCLUSIVE    nothing was verified (exit 1 -- an unrun check is not a pass)
  *
  * Usage:
- *   node bin/verify.mjs            verify the installed preset
- *   node bin/verify.mjs --path X   check the composition file at X instead
- *   node bin/verify.mjs --quiet    print only the verdict and the next steps
+ *   node bin/verify.mjs                 verify the installed dsh-smith preset
+ *   node bin/verify.mjs --preset <id>   verify a specific preset
+ *   node bin/verify.mjs --path X        check the composition file at X instead
+ *   node bin/verify.mjs --quiet         print only the verdict and the next steps
  */
 import { access, readFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import {
+  dshHome,
+  installedComposition,
+  presetEntry,
+  presetFromArgv,
+  repoComposition,
+  UnknownPresetError,
+} from './presets.mjs'
 
-const PRESET_ID = 'dsh-smith'
-const DSH_HOME = process.env.DSH_HOME ?? join(homedir(), '.dsh')
-const INSTALLED = join(DSH_HOME, '.agent-presets', PRESET_ID, 'agent.cordis.yml')
-const REPO_COPY = resolve(dirname(fileURLToPath(import.meta.url)), '..', PRESET_ID, 'agent.cordis.yml')
+let PRESET_ID
+let EXPECTED_TOOLS
+try {
+  PRESET_ID = presetFromArgv(process.argv.slice(2))
+  EXPECTED_TOOLS = presetEntry(PRESET_ID).expectedTools
+} catch (error) {
+  console.error(`verify: ${error instanceof UnknownPresetError ? error.message : String(error)}`)
+  process.exit(1)
+}
+
+const DSH_HOME = dshHome()
+const INSTALLED = installedComposition(PRESET_ID, DSH_HOME)
+const REPO_COPY = repoComposition(PRESET_ID)
 /** How long to give the mount before concluding the runtime never answered. */
 const ANSWER_WINDOW_MS = 30_000
-/**
- * Tools this preset claims, and the reason this script can only PRINT the check
- * for them rather than run it. Absence of any one is a real defect, so the reader
- * needs to know exactly what to look for.
- */
-const EXPECTED_TOOLS = ['expert_architect', 'expert_verifier', 'expert_protocol', 'expert_chronicler']
 
 const quiet = process.argv.includes('--quiet')
 const say = (line) => {
@@ -120,9 +147,22 @@ async function namedRows(path) {
 function printSurfaceSteps(stream) {
   stream('')
   stream('NEXT — confirm the tools actually reach a model, which this script cannot check.')
-  stream('Open a NEW session on the preset, then run these two calls in it:')
+  stream(`Open a NEW session on the preset 「${presetEntry(PRESET_ID).displayName}」, then:`)
   stream(`  cordis_inspect_query  platform=host provider=Tool method=listTools`)
   stream(`  and confirm these names appear: ${EXPECTED_TOOLS.join(', ')}`)
+  const promptSurface = presetEntry(PRESET_ID).promptSurface
+  if (promptSurface !== undefined) {
+    // A reserved presentation transport is NOT a registered tool, so it cannot
+    // appear in the tool table this script just told the reader to inspect.
+    // `run_code` is reserved against registration (dsh-tools/lib/index.js:2780)
+    // and materialized only at schema assembly, so it is visible in the model's
+    // wire schema and in the generated `tools:sdk` prompt section instead.
+    stream('')
+    stream(`  ${promptSurface} is NOT in that list, and its absence there is not a defect:`)
+    stream(`  ${promptSurface} is the PTC presentation transport, reserved against registration and`)
+    stream('  materialized only at schema assembly. Look for it in the model-facing schema /')
+    stream('  the generated `tools:sdk` prompt section instead.')
+  }
   stream('If cordis_inspect_list is itself unknown in that session, see the README section')
   stream('"已知限制" — the tool-cordis row may have self-disabled.')
 }
@@ -149,7 +189,8 @@ async function main() {
     console.error('verify: INCONCLUSIVE — could not import @deepseek-ai/cordis from this machine.')
     console.error('verify: nothing was verified. Point DSH_HOME at an installed harness, or run')
     console.error(`verify:   standingKeyFor('${PRESET_ID}')`)
-    console.error('verify: from inside a session on any preset.')
+    console.error('verify: from inside a session on the SHIPPED `cordis` preset — see the next')
+    console.error('verify: stanza for why no locally authored preset can run this check.')
     process.exitCode = 1
     return
   }
@@ -159,7 +200,7 @@ async function main() {
   // A probe that declares the one service this check needs. When the runtime
   // publishes it, `apply` runs and asks the roster the question that matters.
   const probe = {
-    name: 'dsh-smith-verify',
+    name: `preset-verify-${PRESET_ID}`,
     inject: ['agentPresets'],
     apply(ctx) {
       const presets = ctx.agentPresets
@@ -202,9 +243,20 @@ async function main() {
 
   if (verdict.inconclusive !== '') {
     console.error(`verify: INCONCLUSIVE — ${verdict.inconclusive}, so the preset was never asked.`)
-    console.error('verify: nothing was verified. A bare Cordis runtime carries none of the')
-    console.error('verify: harness registries; run this from a session on a real profile, or')
-    console.error(`verify:   standingKeyFor('${PRESET_ID}')`)
+    console.error('verify: nothing was verified. This script boots its OWN bare Cordis context')
+    console.error('verify: (new cordis.Context(), near line 204), which carries none of the')
+    console.error('verify: harness registries — so it CANNOT reach `agentPresets` from ANY')
+    console.error('verify: session, including one on the shipped `cordis` preset where the')
+    console.error('verify: check does work.')
+    console.error('verify:')
+    console.error('verify: The mount verdict comes from the roster method itself, called inside a')
+    console.error('verify: live harness process. Use the dynamic-plugin route from a session on the')
+    console.error('verify: shipped `cordis` preset: define a Host plugin that injects')
+    console.error("verify: ['agentPresets'], register a tool that awaits")
+    console.error(`verify:   ctx.agentPresets.standingKeyFor('${PRESET_ID}')`)
+    console.error('verify: and read the result through that tool. A locally authored preset cannot')
+    console.error('verify: do this: the route needs `cordis_*`, and the gate that keeps this preset')
+    console.error('verify: mountable is exactly what removes those tools. AGENTS.md rule 5.')
     process.exitCode = 1
     return
   }

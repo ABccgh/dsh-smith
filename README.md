@@ -23,6 +23,21 @@ DeepSeek Harness（DSH）里没有独立的配置语言：**每一项能力都�
 
 ## 快速开始
 
+> ### 本仓库现在装两个预设
+>
+> **`dsh-smith`**（本文件描述的对象）造 DSH 智能体、写 Cordis 插件；**`dsh-forge`** 做软件开发。
+> 两者互不覆盖，各自的源目录就是各自的 preset 目录：
+>
+> ```sh
+> node bin/install.mjs                      # dsh-smith（默认，行为与以前逐字相同）
+> node bin/install.mjs --preset dsh-forge   # dsh-forge，见 docs/dsh-forge.md
+> ```
+>
+> 本文件下面所有的用例、行数、验证结论与漂移数字**都只属于 `dsh-smith`**；`dsh-forge` 的写在
+> **[docs/dsh-forge.md](docs/dsh-forge.md)**，包括它自己那套「已验证 / 只做了静态检查 / 未验证」的
+> 分档。两个预设的血统不同（`dsh-smith` ← 出厂 `cordis`；`dsh-forge` ← 出厂 `standard`），
+> 所以 `drift-check` 对它们比对的上游也不同，这一点记录在 `bin/presets.mjs`。
+
 **前置条件**：已安装 DeepSeek Harness（`dsh`），Node.js ≥ 20。
 
 ```sh
@@ -123,7 +138,7 @@ dsh --agent-preset dsh-smith
 
 关于 `expert_verifier` 的 `write`/`edit` 过滤，**两件事必须分开说**：
 
-- **强制的部分**：这两个工具从子代理的工具表里消失，强制执行也会被拒。
+- **强制的部分**：这两个工具从子代理的工具表里消失，SDK 段里也不生成它们的绑定，所以强制执行连**绑定都找不到**（`TypeError: tools.write is not a function`），根本到不了调度器。这里原本写的是「强制执行也会被拒」，2026-02 在 `mode: both` 下实测后改成现在的说法：真实机制是**该绑定不存在**，而不是有一道守卫在拒绝它。若模型改走原生 schema 直调同一个名字，才会得到另一条路径的 `unknown tool`（`resolveExecution` → `UNKNOWN_TOOL`）。
 - **没强制的部分**：它**仍然有 `pwsh`**，而 shell 能写文件。所以这**不是**沙箱边界，我也不会把它写成沙箱。它的作用是设计信号——审查**靠论证纠正**（把补丁作为文本交回来），而不是悄悄变成一次没人看见的重写。persona 已如实写明这一点。
 - **故意不 deny `pwsh`**：复现缺陷是验证者最有力的证据，一个什么都不能跑的验证者只是校对员。代价是这条约束终究是**行为约束**，不是能力约束。
 
@@ -241,6 +256,8 @@ failed to apply loader entry tool-cordis: Host Cordis inspect provider "Service"
 
 ## 验证状态
 
+> **本节的每一个数字、每一条结论都只属于 `dsh-smith`。** 它写在第二个预设出现之前，而且仍然是准确的——我没有把它按两个预设重写，因为重写会让这些经过实测的数字带上未经证实的含义。`dsh-forge` 的验证状态（含它自己那套「已验证 / 只做了静态检查 / 未验证」的分档，以及**它从未被挂载验证过**这一事实）写在 **[docs/dsh-forge.md](docs/dsh-forge.md)**。
+
 ### 已在真实会话里观测到的部分
 
 一个运行在本预设上的会话（`agentPreset` 与安装副本均逐一确认）直接回答了多项此前的缺口：
@@ -303,9 +320,11 @@ subagent-model-selection:
 - **四个人格的输出契约** —— 四次调用，全部合规（见上）。
 - **`tool-cordis` 的落点** —— 不再是"取决于挂载顺序"。`disabled` 是**跳过**而非**等待**（`cordis-plugin-loader/lib/index.js:391` 在 `init()` 之前返回），该行没有声明任何 `inject:`，而注册表在**构造函数**里建立且永不释放。**生命周期事实，不是顺序事实**：重启不会改变它。
 - **会话头的 `agentPreset` 不能证明会话由哪个预设在服务** —— 它是**创建时提示**。本仓库根会话的头写着 `standard`，而它派生的两个子会话写着 `dsh-smith`，三者工具表相同；出厂 `standard` 组合里根本没有 `expert_*` 行。**挂载后的工具表才是权威。**
-4. **`expert_verifier` 的 `write`/`edit` 过滤从未被强制过一次。** 该行确实挂载了、它的工具确实在表里，但"被过滤的工具调用会被拒"这句只有源码支持，没有一次实际尝试。
+- **`expert_verifier` 的 `write`/`edit` 过滤已被强制** —— 见上文「两条最后的缺口」，含同深度、同 provider、不带 `toolFilter` 的对照探针。
 
-脚本能做的部分仍受限于动态插件无法把 preset 挂到 agent 上（`ctx.fiber` 被 guard 屏蔽），`bin/verify.mjs` 因此**打印**该做的两步而不是假装检查过。
+> 这里原先还有一条 **「`write`/`edit` 过滤从未被强制过一次」**，它在本节上半部分闭合同一条时就已经过时，却留在了这份"已关闭"清单里——**同一份文件里的一处结论被另一处推翻**。删掉它，并把这条教训记在 `docs/agent-notes/DECISIONS.md` 的 D-18：本仓库的机器可验证部分比它的文字记录强，而陌生人先读到的是文字。
+
+脚本能做的部分仍受限于动态插件无法把 preset 挂到 agent 上（`ctx.fiber` 被 guard 屏蔽），`bin/verify.mjs` 因此**打印**该做的两步而不是假装检查过。`bin/preflight.mjs` 是新增的**静态**那一半：它解析每一行的包并对每一行配置跑插件自己的 schema，同时**打印它自己看不见的三类失败**——静态预检通过**不等于**能挂载。
 
 ## 兼容性
 

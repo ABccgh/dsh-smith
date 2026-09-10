@@ -1,7 +1,11 @@
 # AGENTS.md — D:\DeepSeek Harness
 
-This tree is the **`dsh-smith` npm package** and the preset it ships. Source of truth for the
-composition is `dsh-smith/agent.cordis.yml`.
+This tree is the **`dsh-smith` npm package** and the presets it ships. Source of truth for each
+composition is that preset's own directory: `dsh-smith/agent.cordis.yml` (builds harness agents
+and Cordis plugins) and `dsh-forge/agent.cordis.yml` (software delivery). `bin/presets.mjs` is
+the single registry of which presets exist, which directory each lives in, and which shipped
+preset each one was copied from — the four tool scripts read their paths from it, so a preset
+id is defined in exactly one place.
 
 ## Evidence rules
 
@@ -40,21 +44,67 @@ composition is `dsh-smith/agent.cordis.yml`.
 4. **Prefer the runtime probe to the file grep whenever both can answer.** A service read live
    (`ctx.get('<name>')`, then its own method) settles a question that grepping composition files
    can only suggest, and it cannot be fooled by a bundle you forgot to look in.
+4b. **Then check that the probe measures the thing you named.** Four traps this repository has
+   actually hit, each producing a confident wrong reading rather than an error:
+   - **A delegated child's report is a transcription, not a reading.** One dropped `ralph` from a
+     prose list while the runtime array it was summarising contained it, and misquoted a type alias.
+     Have the runtime `console.log` the structure and compare against that (D-27).
+   - **A grep hit is not a membership test.** Searching a whole prompt for `edit` matches
+     `update_goal`'s `action: "edit"` enum value and the persona's own prose; only member syntax
+     inside the generated `tools:sdk` block (`edit:`) is evidence about the SDK surface (D-26).
+   - **Two "independent" checks can be one fact seen twice.** "Absent from the native table" and
+     "absent from the SDK section" both read the same `view(scope).visible` map, so their agreement
+     confirms nothing twice over (D-26; D-22's fabricated decomposition is the same shape).
+   - **A predicted claim may be coarser than the measured one.** "It holds" passed, and the platform
+     does something strictly stronger: the binding does not exist. Record the sharper statement,
+     because a later session inherits whichever one was written down (D-27).
+5. **The mount check needs a session on the shipped `cordis` preset — this is a preset-lifetime
+   fact, not a preference, and it is NOT what `bin/verify.mjs` does.** `standingKeyFor(id)` is the
+   only check that counts. Reaching it needs a live harness process, and the practical route into
+   one is the dynamic plugin (`cordis_define` + `cordis_run`), which needs `cordis_*`. Those tools
+   exist only where a composition registers them: `dsh-tool-cordis` registers four
+   **process-global** inspect providers whose registry throws on a duplicate id, and the host takes
+   those ids at boot (`dsh-web-app/cordis.patch.yml:122` → `dsh-cordis-host-runner`). Measured live
+   loader state: the shipped `cordis` preset has that row `enabled=true`, `dsh-smith` has it
+   `enabled=false`, and `dsh-forge` does not contain it at all. So a `dsh-smith` or `dsh-forge`
+   session can never run the probe route, and neither can a CLI shell.
+   **Two corrections worth keeping, because both were got wrong here first:**
+   - **`node bin/verify.mjs` is a diagnostic, not the mount check, and no session fixes it.** It
+     builds its own bare Cordis context (`new cordis.Context()`), so `agentPresets` is absent by
+     construction and it prints INCONCLUSIVE from every session — measured twice, identically, once
+     in an ordinary shell and once inside a shipped-`cordis` session with `tool-cordis` active. Do
+     not tell a reader to "run that session's own verify" as if location were the problem.
+   - **Do not infer which preset served a session from the repository it is rooted in.** This file
+     previously asserted "this repo's root session is served by `dsh-smith` and has no `cordis_*`".
+     That held once and is not a rule: a session rooted at `D:\DeepSeek Harness` running the shipped
+     `cordis` preset had the full `cordis_*` set. The mounted tool table is the authority (rule 2);
+     the working directory is not evidence.
 
 ## Editing rules
 
-5. **Edit the preset here, never the installed copy by hand.** The live file is
-   `${DSH_HOME}/.agent-presets/dsh-smith/agent.cordis.yml`. A hand edit there creates silent
-   drift from this repo. Change `dsh-smith/**` and then re-install — `node bin/install.mjs`
-   is the *sanctioned* writer for that path, and `--force` is a real replace (delete then
-   copy), which is what removes skills a newer version dropped. `dsh-smith/` is a *user*
-   preset, so it is authoring-free territory; the shipped presets under the deployment's own
-   `agent-presets` directory (`standard`, `ptc`, `minimal`, `cordis`) are the ones that must
-   never be written at all.
+6. **Edit the preset here, never the installed copy by hand.** The live files are
+   `${DSH_HOME}/.agent-presets/<id>/agent.cordis.yml`. A hand edit there creates silent
+   drift from this repo. Change `dsh-smith/**` or `dsh-forge/**` and then re-install —
+   `node bin/install.mjs --preset <id>` is the *sanctioned* writer for that path, and
+   `--force` is a real replace (delete then copy), which is what removes skills a newer
+   version dropped. Both local preset directories are *user* preset territory and are
+   authoring-free; the shipped presets under the deployment's own `agent-presets`
+   directory (`standard`, `ptc`, `minimal`, `cordis`) are the ones that must never be
+   written at all.
 
 ## Boundaries
 
-- Do not modify, migrate, or delete anything under `~/.dsh/**` — profiles, sessions, or the
-  installed preset — from a session rooted here.
-- `bin/verify.mjs` mounts the preset; a row that mounts and contributes nothing is the
-  failure mode to check for, not a mount error.
+- Do not modify, migrate, or delete anything under `~/.dsh/**` — profiles, sessions, or other
+  presets' installs — from a session rooted here, **except** the two preset directories this
+  repo owns (`~/.dsh/.agent-presets/dsh-smith` and `.../dsh-forge`), and only through
+  `bin/install.mjs`, which is the sanctioned writer for exactly those two paths. A hand edit
+  under `~/.dsh` is still a violation even for an owned preset.
+- `bin/verify.mjs` **boots its own bare runtime and cannot reach the roster** — treat its output as
+  a diagnostic, never as a mount verdict (rule 5). `bin/preflight.mjs` is the static half: it
+  resolves every row's package and validates each config against the plugin's own schema, and it
+  prints which failure classes it cannot see. A row that mounts and contributes nothing is the
+  failure mode both of them miss, so only `standingKeyFor` answers it. Never present a preflight
+  pass, or a verify exit code, as "the preset works".
+- `.gitignore` and `files` both matter when adding a preset directory: a new preset that is not
+  listed in `package.json`'s `files` is silently absent from the published tarball while every
+  local script still works, which is the one failure this repo cannot detect by running itself.
