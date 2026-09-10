@@ -108,3 +108,16 @@ id is defined in exactly one place.
 - `.gitignore` and `files` both matter when adding a preset directory: a new preset that is not
   listed in `package.json`'s `files` is silently absent from the published tarball while every
   local script still works, which is the one failure this repo cannot detect by running itself.
+- **The git remote is load-bearing and is not in the repo** — `origin` is a local clone's config,
+  not tracked content. A fresh clone has none, so `git push` fails with "no configured push
+  destination" until someone runs `git remote add origin <url>`. `package.json`'s `repository.url`
+  names the intended target, which is why that field is the authority rather than a comment. Do not
+  store a token in the remote URL: this machine has Git Credential Manager
+  (`git config --get credential.helper`), so a plain `https://github.com/<owner>/<repo>.git` remote
+  authenticates from the OS credential store.
+- **`git push` may fail in a sandboxed session even when HTTPS itself works**, and the failure is
+  TLS-layer rather than credential-layer: measured here, schannel reports
+  `CRYPT_E_NO_REVOCATION_CHECK` (revocation endpoints unreachable) and the OpenSSL backend reports
+  `unable to get local issuer certificate`. When that happens, commit locally and hand the push to a
+  normal terminal rather than reaching for a token — switching to token auth does not fix a TLS
+  verification failure, and it puts a credential into the command history.
