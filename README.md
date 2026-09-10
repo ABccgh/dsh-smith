@@ -263,12 +263,19 @@ failed to apply loader entry tool-cordis: Host Cordis inspect provider "Service"
 - 恰好 4 行按设计关闭：`tool-bash`（Windows 平台门）、`tool-cordis`（上述条件门）、`tool-subagent-codex` 与 `tool-subagent-claude-code`（未安装的可选产品提供者）；
 - **去掉 `tool-cordis` 那道门会整体挂载失败**——做过的对照实验，不是推断。
 
-### 仍然存在的缺口
+### 两条最后的缺口：已闭合
 
-1. **`expert_verifier` 的 `write`/`edit` 过滤从未被真正强制过一次。** 该行确实挂载、它的工具确实在表里、人格契约确实合规——但"被过滤的工具调用会被拒"这句只有源码支持，没有一次实际尝试。
-2. **加强后的验证者证据标准尚未被检验。** 它在 persona 里已写明（逐字引用、重跑命令、声明版本），但**下一次真正调用之前，无法知道它是否真的改变了发现的可靠性**。这是唯一一条"改进本身也待验证"的条目。
+这两条曾长期列为未验证。一次在 `dsh-smith` 会话里发出的 `expert_verifier` 委托同时给出了答案，三条判据全部可观测：
 
-> 这两条**结构上无法在本仓库的 `cordis` 会话里关闭**：专家工具由预设自己的行按会话作用域注册，所以 `expert_verifier` 根本不在 `cordis` 会话的工具表里。可执行的委托 brief 与三条判据写在 `docs/agent-notes/BOARD.md` 的开放问题 4。
+1. **`write`/`edit` 过滤确实被强制。** 子代理的 `TOOLS` 列表里没有这两个名字；强制调用返回 `Error: unknown tool "write"` / `"edit"`，探针路径 `Test-Path` 为 false——没有创建任何文件。
+   **而且排除了替代解释**：一个**同深度、同 provider、同 `applyChildComposition` 路径**但不带 `toolFilter` 的探针子代理**保留了** `write`/`edit`，而 `pwsh`（该行注释明写故意不 deny）在两者中都存活。唯一声明差异就是 `deny: [write, edit]`。
+2. **加强后的证据标准确实改变了行为——证据是它拒绝了，而不是它同意了。** 报告要求全部满足（带行号的逐字引文、在眼前 revision 上重读、粘贴前重跑、写明 revision）。
+
+**最值得记住的一点：它判 `VERDICT unsound`，驳回了 brief 自己的断言。** brief 说"team 组六行全部 `maxDepth: 2`、无其它值"，而组内另有 `tool-subagent-codex` 与 `tool-subagent-claude-code` 取值为 `provider-managed`。那个限定条件上一轮刚被写下，发出 brief 时按本文件逐字照抄又被剥掉了——**verifier 是对的，brief 是错的**。一个只会确认过度断言的验证者只是橡皮图章。
+
+> 作为对照：同一角色、同一任务类型，此前一次报告的头条发现是**假的**（从提交信息推理、grep 自相矛盾）。同角色、同任务、结果相反，唯一变化就是这个标准。
+
+**这条仍未隔离，我们也不声称**：`restrict()` 本身（而非其它有同样可观测效果的机制）造成了拒绝；以及 `toolFilter` 遇到未知名字是否 fail-loud、与 `allow` 如何组合。这两点写在 `docs/agent-notes/DECISIONS.md` 的 D-17。
 
 ### 关于 `list_subagent_models`：不是缺陷，是你没开的 opt-in
 
