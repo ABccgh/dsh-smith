@@ -69,6 +69,36 @@ query the `Service` inspect provider.
 | `agentTeams` | host (when composed) | named teammates over a live session log — not composed in this deployment's base profile |
 | `userQuestions`, `approval`, `credentials`, `settings` | host | the respective host facilities |
 
+## How delegated children inherit `agentOptions`
+
+Read from `resolveChildAgentOptions` in `@deepseek-ai/dsh-subagent`, because the answer is not
+"children inherit the parent" and not "children get defaults":
+
+1. The parent's **provider, model, reasoning effort, and maxTokens** are the starting values.
+2. The row's `agentOptions` is spread **over** them, so a field named there wins.
+3. If the resolved route differs from the parent's **and** the row did not name
+   `reasoningEffort`, the inherited effort is **deleted** — the new route resolves its own
+   default instead of being forced onto an effort that belonged to another model.
+
+Two consequences this preset depends on. A child sharing the parent's route but inheriting its
+effort is why `agentOptions.reasoningEffort: max` is meaningful at all — most rows omit
+`agentOptions`, so they think at whatever the parent's route was using. And a row that pins an
+effort while the lead switches models keeps its pinned effort, because naming it suppresses the
+deletion rule. `modelSelectionSettings: true` on the generic row is the separate path by which a
+child gets an independently sampled model instead.
+
+## A package directory that exists may still be absent
+
+`node_modules` under a profile is full of **junctions into the install cache**, and a junction
+whose target is missing resolves to a path that does not exist. So `Test-Path <pkg>` answers
+"is there an entry" while `Test-Path <pkg>/lib` answers "is the package actually here", and the
+two can disagree.
+
+This is not hypothetical: `@deepseek-ai/dsh-tool-subagent-report` is a junction to a
+non-existent target in this deployment. It looks installed, is mentioned by the toolset's own
+prompt-section table, and cannot be imported. Check the contents before planning against a
+package, and prefer "can it be imported / does `lib/` exist" over "is the name listed".
+
 ## Prompt-section names
 
 Sections are registered by name into a scope; a scoped section **shadows** a global one
