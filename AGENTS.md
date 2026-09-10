@@ -31,11 +31,19 @@ composition is `dsh-smith/agent.cordis.yml`.
    not in this repo's `node_modules`, which has no `@deepseek-ai` directory at all. When a
    claim is "the config says X", re-grep the file you are about to cite: an expert report
    this session asserted `maxDepth` sat on all six delegation rows and cited a commit body as
-   its proof; the file has it on two, and the commit it named was two revisions behind.
+   its proof; the file has it on two, and the commit it named was two revisions behind. **And
+   when the claim is "the composition does not mount it", check *every* bundle the deployment
+   composes before writing it down** — "dsh-base has no such row" is a statement about
+   `dsh-base`, not about the deployment. That exact shortcut produced a false claim in four
+   documents: the row was in the web-app bundle, and the setting was a product opt-in that was
+   simply off. Ask the running runtime for the service; it answers in one call.
+4. **Prefer the runtime probe to the file grep whenever both can answer.** A service read live
+   (`ctx.get('<name>')`, then its own method) settles a question that grepping composition files
+   can only suggest, and it cannot be fooled by a bundle you forgot to look in.
 
 ## Editing rules
 
-4. **Edit the preset here, never the installed copy by hand.** The live file is
+5. **Edit the preset here, never the installed copy by hand.** The live file is
    `${DSH_HOME}/.agent-presets/dsh-smith/agent.cordis.yml`. A hand edit there creates silent
    drift from this repo. Change `dsh-smith/**` and then re-install — `node bin/install.mjs`
    is the *sanctioned* writer for that path, and `--force` is a real replace (delete then

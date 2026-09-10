@@ -162,10 +162,19 @@ the installed preset is still byte-identical to the repo copy
   warning — the round trip to the registry is the one place the internal notes should not go
   unless that is deliberate.
 - **The `cordis_*` tools are absent by design** (D-1), and the absence was confirmed against
-  the live table rather than inferred. The preset's own advice at `agent.cordis.yml:670-671` —
-  "Check which case you are in with `cordis_inspect_list`" — cannot be followed from a
-  `dsh-smith` session, because the tool it names is exactly the one the gate removes. That
-  line should name the shipped `cordis` preset as the instrument instead.
+  the live table rather than inferred. **CORRECTED — the advice this entry quotes has since
+  been fixed, and the entry was describing a state that no longer exists.** The composition's
+  tool-cordis comment used to say "Check which case you are in with `cordis_inspect_list`",
+  which cannot be followed from a `dsh-smith` session because the tool it names is exactly the
+  one the gate removes. That block was rewritten: it now says explicitly *not* to check with
+  `cordis_inspect_list`, and directs the reader to a `cordis`-preset session instead. The
+  citation to `agent.cordis.yml:670-671` was also wrong by the time it was read — the lines
+  there are the section header, and the corrected text is further down.
+
+  > **Line numbers in this file rot, and one of them rotted inside a single session.** Prefer a
+  > stable anchor — a row id, a quoted phrase, a section title — over `file:line`, which is
+  > invalidated by every edit above it. Quote enough text to locate the thing; cite the line
+  > only when the line number is itself the fact under discussion.
 - **`list_subagent_models` is absent because the opt-in is off, not because a row is missing
   — CORRECTED, and the earlier entry was wrong twice.** The mechanism half was right: the tool
   registers only when a model-selection policy resolves
