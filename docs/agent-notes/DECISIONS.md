@@ -241,3 +241,29 @@
   been checked**, and a deployment composes several. Grep one bundle and the answer is about
   that bundle only.
 
+## D-13: Refcount or frozen first registration for the four inspect providers?
+- **Decided:** **Frozen first registration, with no disposal of the four providers.** D-2's
+  deliberate open is closed. The upstream fix this repository recommends is therefore two-part
+  and precise: make `CordisInspectRegistryService.register()` idempotent for an
+  already-registered provider id (return the existing disposer rather than throwing), and let
+  the first registration own the provider for the life of the process. **No refcount.**
+- **Because:** three reasons, in order of weight. (1) A refcount's dispose-at-zero branch
+  removes the provider when the last consumer unloads, while `cordis_inspect_list` and
+  `cordis_inspect_query` read the registry at **call** time — so a still-live tool in another
+  session would find the provider gone. That is a new failure mode introduced to solve a
+  problem the throw already solves. (2) The registry itself already has process lifetime: it is
+  constructed by `DynamicCordisRunnerService` and never disposed
+  (`dsh-cordis-host-runner/lib/index.js:1598`), so four manifests plus their query closures
+  living as long as the registry costs nothing that is not already being paid. (3) A refcount
+  is a **new mechanism** — grep for `refcount|refCount` in `dsh-cordis-host-runner/lib/index.js`
+  returns no match — and it needs accounting to be correct on both increment and decrement,
+  which is more ways to be wrong than a single first-writer-wins rule.
+- **Rejected:** the `expert_architect`'s refcount recommendation, which was the half of its
+  report that never reproduced. Also rejected: leaving D-2 open. It was recorded as "a design
+  choice, not a measurement", and a design choice is exactly what a record can settle; carrying
+  it as an open question made the board look unfinished for no gain.
+- **Reversed by:** an upstream design in which provider lifetime is deliberately tied to
+  consumer lifetime, or a measurement showing the four manifests are expensive enough to be
+  worth reclaiming. Neither exists today, and the second would be surprising for a map of four
+  entries.
+

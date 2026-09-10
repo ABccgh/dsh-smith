@@ -2,9 +2,23 @@
 
 ## Objective
 
-The README's 验证状态 section is now fully backed: five of five gaps measured, and the two that
-were previously "unreproduced / unmeasured" are closed by **mechanism** as well as observation.
-What remains open is one question for the human (the tarball's contents, D-6).
+Close the last two verifications on this preset. Everything else in the README's 验证状态
+section is now measured, and the items previously marked "unreproduced / unmeasured" were closed
+by **mechanism** as well as by observation.
+
+What is actually open, and nothing else:
+
+1. **Two verifications that need a `dsh-smith` session** — the `expert_verifier` write/edit
+   filter, and whether the strengthened evidence standard improves findings. Ready-to-run brief
+   in open question 4 below. **Cannot be closed from a `cordis` session**: the expert tools are
+   registered per session by the preset's own rows, so `expert_verifier` is not in a `cordis`
+   session's tool table at all.
+2. **The local commit is unpushed** whenever no remote is configured. This is a workspace fact,
+   not a preset defect.
+
+> An earlier version of this header said one question remained — the tarball's contents — while
+> its own open-questions list carried two. A board whose summary counts differently from its
+> list is worse than no summary: the reader trusts the count and stops reading.
 
 ## In progress
 
@@ -30,11 +44,12 @@ What remains open is one question for the human (the tarball's contents, D-6).
    `"files": ["bin", "dsh-smith", "README.md", "LICENSE"]`. Measured: 14 files / 58.1 kB, with
    `AGENTS.md`, all three `docs/agent-notes/*.md`, `.gitattributes` and `.gitignore` excluded
    and nothing the preset needs dropped. See D-6 → D-7.
-2. **Refcount or frozen first registration as the upstream fix?** See D-2. The architect
-   recommended a refcount; no `refcount` / `refCount` token exists in
-   `dsh-cordis-host-runner/lib/index.js`, and its dispose-at-zero branch could remove a
-   provider a live tool still needs. **Resolved by:** a stated provider-lifetime rule, which is
-   a design choice, not a measurement.
+2. **CLOSED — refcount vs frozen first registration.** Decided in D-13: **frozen first
+   registration, no disposal of the four providers.** A refcount would let the last consumer's
+   `dispose` delete a provider that a still-live `cordis_*` tool reads at call time, and it
+   would need accounting to be right in both directions. The registry already has
+   process lifetime, so the providers can share it. The architect's refcount half is rejected;
+   its idempotency half stands, and D-8 adds that idempotency alone is not enough.
 3. **CLOSED — the `cordis_inspect_list` instruction.** `agent.cordis.yml`'s tool-cordis comment
    was rewritten: it now says explicitly *not* to check with `cordis_inspect_list`, because that
    is the tool the gate removes. The depth labels at the old `:374-376` were corrected to 0/1/2

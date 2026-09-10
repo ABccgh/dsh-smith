@@ -230,16 +230,14 @@ failed to apply loader entry tool-cordis: Host Cordis inspect provider "Service"
 
 #### 真正的修法不在这个仓库里
 
-应当把 `CordisInspectRegistryService.register()` 改成**幂等**——对已注册的 provider id 返回既有 disposer
-而不是 throw。但那**不足以**让本预设恢复这套工具：真正需要的是让 `tool-cordis` 的注册变成可重入，或者让一个
-**新**组合只消费既有的四个 provider、只注册七个工具而不重复注册 provider。
+修复需要**上游的两件事**，缺一不可：
 
-后者才是本预设该做的事，而它**需要一个新的小插件**——YAML 表达不了「注册工具但跳过 provider 注册」。
-这是本仓库已知的天花板，不是配置错误。
+1. 让 `CordisInspectRegistryService.register()` 对**已注册的 provider id 幂等**——返回既有 disposer 而不是 throw；
+2. 让一个**只想要工具**的组合能够消费既有的四个 provider，而不重新注册它们。
 
-> 关于「改成幂等」还有一个陷阱值得记下：一个朴素实现是**引用计数，归零即 dispose**。那样会删掉一个
-> 仍然活着的 `cordis_*` 工具正在依赖的 provider——工具在，provider 没了。这条记在仓库的
-> `DECISIONS.md` 里作为**未决问题**，不作为结论。
+第 2 件才是本预设真正缺的那一半：现在的 `apply` **同时**注册 provider 与七个工具，所以"跳过 apply 以避免冲突"会连工具一起跳过——正是我们不想要的。这**需要一个新的小插件**，YAML 表达不了「注册工具但跳过 provider 注册」。这是本仓库已知的天花板，不是配置错误。
+
+> **provider 的生命周期应当是"首个注册者拥有，进程内不释放"，不要用引用计数。** 朴素的 refcount 会在最后一个消费者卸载时删除 provider，而 `cordis_inspect_list` / `cordis_inspect_query` 是**调用时**读取注册表的——另一个会话里仍然活着的工具会发现 provider 没了。注册表本身就具有进程生命周期（由构造函数创建、永不释放），四个 manifest 跟着它活到底没有任何额外代价。这条已**决定**并记录在 `DECISIONS.md` 的 D-13，不再是未决项。
 
 ## 验证状态
 
