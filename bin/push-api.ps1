@@ -20,10 +20,18 @@ param(
   [string]$RemoteRepo  = 'dsh-smith',
   [string]$Branch      = 'main',
   [Parameter(Mandatory = $true)][string]$Base,
+  [string]$RemoteBase,
   [string]$RepoRoot    = (Get-Location).Path,
   [switch]$DryRun,
   [switch]$Force
 )
+
+# $Base is the LOCAL commit to start the range from. $RemoteBase is the REMOTE SHA the first
+# new commit must name as its parent. They differ whenever an earlier push went through this
+# API: commit objects are re-encoded, so the remote's SHA does not exist locally. Defaulting
+# one to the other works exactly once — the failure is a 422
+# `Parent SHA does not exist or is not a commit object`, which names neither flag nor reason.
+if (-not $RemoteBase) { $RemoteBase = $Base }
 
 $ErrorActionPreference = 'Stop'
 $token = $env:GH_TOKEN
@@ -176,7 +184,7 @@ foreach ($line in $logLines) {
 "messages read and validated: $($plan.Count)"
 ""
 
-$parent = $Base
+$parent = $RemoteBase
 $pushed = @()
 foreach ($item in $plan) {
   $sha = $item.Sha
