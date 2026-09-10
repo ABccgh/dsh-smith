@@ -102,6 +102,12 @@
 - **Reversed by:** a schema change that makes `maxDepth` inherit from a group, or a preset edit
   that states the cap on all six rows — either would make the two cheap rows and the four
   expensive ones agree by construction instead of by arithmetic.
+  <!-- SUPERSEDED BY D-10: the second reversal condition HAPPENED. All six rows now state
+       `maxDepth: 2`, so the fact this entry rests on ("the four expert rows omit the key") is no
+       longer true of HEAD. Read D-10 for the current state. Note also that this entry's own
+       parenthetical — "only L405 and L425 carry `maxDepth: 2`" — contradicts the sentence it sits
+       inside, which says the four expert rows omit the key. Both statements were true of the same
+       revision; the parenthetical counted the file, the sentence generalised from it. -->
 
 ## D-6: Should this repo's npm tarball include the memory layers?
 - **Decided:** Keep them in the **git** repository — that is what makes the memory travel with

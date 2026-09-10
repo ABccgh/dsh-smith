@@ -13,10 +13,17 @@ store; that is a path encoding, not a second project.)
 
 Every line names how it was established. Session date of record: 2026-09-10.
 
-- **The installed preset is byte-identical to this repo's copy.** SHA-256
-  `A6D2A9C1F647E2EDCA9DA328CC780649CF80054A6293851B9F6A4C9FEE5DE051`, 40032 bytes, both
-  at `dsh-smith/agent.cordis.yml` and at the installed path above. A session on `dsh-smith`
-  is therefore running exactly this file, not a stale install.
+- **The installed preset is byte-identical to this repo's copy — re-measured, and the earlier
+  figures in this file are historical.** Current: SHA-256
+  `77E34CB76EF2B41D06FE8278FCD0875EC9C19EE3059884D89DA44B4AE25C13DB`, **43,211 bytes / 730
+  lines**, both at `dsh-smith/agent.cordis.yml` and at the installed path above. A session on
+  `dsh-smith` is therefore running exactly this file, not a stale install.
+
+  > Superseded figures that still appear below, kept because they are the measurements the
+  > surrounding paragraphs were written from: `A6D2A9C1…DE051` at **40,032 bytes**, and a
+  > **19-file / 65.5 kB** tarball. Both were true when written and neither is true of HEAD. Any
+  > sentence resting on them describes a past revision — check the number before repeating the
+  > claim, and prefer the current pair above.
 - **Deployment version 0.1.5-rc.1**, from
   `${DSH_HOME}/profiles/node_modules/@deepseek-ai/dsh-base/package.json`.
 - **Host composition** = profile `web`: bundles `@deepseek-ai/dsh-base` +
@@ -102,22 +109,28 @@ Every line names how it was established. Session date of record: 2026-09-10.
   Because the registry exists from host-composition boot (above), the predicate is true, the
   row is skipped, and `dsh-smith` therefore **can never** be the composition that registers the
   `cordis_*` tools. The absence is a property of this preset, not of mount order.
-- **Omitting `maxDepth` on a `tool-subagent` row resolves to 3, not 2.** The row schema is
+- **Omitting `maxDepth` on a `tool-subagent` row resolves to 3, not 2 — and all six delegation
+  rows therefore state it explicitly. CORRECTED: this paragraph used to describe the pre-fix
+  state and was left standing after the fix.** The mechanism is unchanged and still the reason
+  the omission mattered: the row schema is
   `maxDepth: z.union([z.natural().max(Number.MAX_SAFE_INTEGER), z.const("provider-managed")]).default(3)`
   (`dsh-tool-subagent/lib/index.js:269`), and Cordis applies schema defaults before `apply`
   runs (`cordis/lib/index.js:955-957`, `resolveConfig` → `Config["~standard"].validate(config)`
   at plugin instantiation; proof of application is `dsh-tool-subagent/lib/index.js:508`, which
   branches on `typeof config.maxDepth === "number"` and so can only ever see the defaulted
-  value). **In this composition the expert rows omit it**: `maxDepth: 2` sits on `subagent`
-  (L405) and `subagent_fork` (L425) only, while `expert_architect` (L429), `expert_verifier`
-  (L467), `expert_protocol` (L519) and `expert_chronicler` (L550) declare `provider`,
-  `toolName`, `reasoningEffort` and `persona` and nothing else — so those four resolve to 3.
+  value). **What changed:** the four expert rows used to omit the key and resolve to 3, which at
+  depth 1 gave an expert subtree one level MORE than the lead's own tools. All six delegation
+  rows — `subagent`, `subagent_fork`, and the four experts — now state `maxDepth: 2`.
   The recursion that results: the lead is depth 0 (`delegationDepthOf` treats absence as
   top-level zero, `dsh-subagent/lib/index.js:135-147`), a delegated expert is depth 1, and
   `resolveChildDepth` throws only when `childDepth > maxDepth` (`dsh-subagent/lib/types/child-agent.js:32-41`),
-  so with a cap of 2 a depth-1 agent **may** spawn a depth-2 grandchild and a depth-3 attempt
-  is rejected. Deepest chain = 3 levels; the recursion-bound comment in `agent.cordis.yml` states that
-  count correctly but labels the levels 1/2/3 instead of 0/1/2.
+  so with a cap of 2 a depth-1 agent may spawn a depth-2 grandchild and a depth-3 attempt is
+  rejected. Deepest chain = 3 levels, labelled 0/1/2.
+
+  > The superseded paragraph also carried stale measurements — `maxDepth` at L405/L425 where it
+  > is now L417/L437, expert rows at L429/L467/L519/L550 where they are now L441/L480/L550/L582,
+  > and a 40,032-byte file size where it is now 43,211. Same lesson as D-14: quote, do not cite
+  > a line number, and re-measure before restating a size.
 
 
 ## Component map
@@ -148,19 +161,23 @@ settled questions.
 | shields.io badge renders | **Resolves** — HTTP 200, an SVG labelled `topics` / `DeepSeek Harness Plugins` |
 
 Also verified this session: `node bin/lint-skills.mjs` reports **all five skills lint clean**;
-the installed preset is still byte-identical to the repo copy
-(`A6D2A9C1…DE051`, 40032 B, both paths).
+the installed preset was byte-identical to the repo copy at the revision this line was written
+from (`A6D2A9C1…DE051`, 40,032 B — see the supersession note at the top of this section for the
+current figures).
 
 ## Known gaps
 
-- **The published tarball now ships the memory layers.** `npm pack --dry-run` (this session,
-  exit 0) lists 19 files including `AGENTS.md` (2.2 kB), `.gitattributes` (463 B) and
-  `docs/agent-notes/BOARD.md` + `DECISIONS.md` + `PROJECT.md` (20.5 kB combined). They travel
-  with the **git repository** by design, but nothing keeps them out of the **npm package**:
-  `package.json` has no `files` allowlist, so npm falls back to `.gitignore` (the
-  `gitignore-fallback` warning). A `files` list would pin the publishable set and silence the
-  warning — the round trip to the registry is the one place the internal notes should not go
-  unless that is deliberate.
+- **CLOSED — the tarball no longer ships the memory layers.** D-7 added
+  `"files": ["bin", "dsh-smith", "README.md", "LICENSE"]` to `package.json`, and it was
+  measured: **14 files / 58.1 kB**, with `AGENTS.md`, all three `docs/agent-notes/*.md`,
+  `.gitattributes` and `.gitignore` excluded, and nothing the preset needs dropped. Kept here
+  rather than deleted because the paragraph below records what the exposure was and why a
+  `files` list — not an `.npmignore` — is what closes it.
+
+  > The superseded text, for the record: "The published tarball now ships the memory layers.
+  > `npm pack --dry-run` lists 19 files including `AGENTS.md`, `.gitattributes` and the three
+  > `docs/agent-notes/*.md`; `package.json` has no `files` allowlist, so npm falls back to
+  > `.gitignore` (`gitignore-fallback`)." All of that was true before D-7.
 - **The `cordis_*` tools are absent by design** (D-1), and the absence was confirmed against
   the live table rather than inferred. **CORRECTED — the advice this entry quotes has since
   been fixed, and the entry was describing a state that no longer exists.** The composition's
@@ -213,11 +230,13 @@ the installed preset is still byte-identical to the repo copy
   tools — matches the source and the live table.
 - **An expert report is a source, not a finding.** The `expert_verifier` call this session
   returned `FINDINGS` whose headline defect was false: it asserted `maxDepth: 2` sits on "all
-  four delegation/expert rows" and cited commit `8cf70e9` as proof. A re-grep of the same
-  40032-byte file returns six `maxDepth` hits (L374, L405, L412, L425, L592, L601) and the
-  expert rows carry none; `8cf70e9` is two revisions behind `HEAD`. Its depth arithmetic was
-  also wrong in the other direction (it proposed "lead + one child", i.e. two levels, where
-  three are reachable). Both the false claim and the arithmetic were caught only by re-running
+  four delegation/expert rows" and cited commit `8cf70e9` as proof. A re-grep of the same file
+  **as it stood then (40,032 bytes; it is 43,211 now)** returns six `maxDepth` hits — L374 was
+  the comment, L405/L425 the two correct rows, L412 an unrelated key, L592/L601 the two
+  product-provider rows — and the four expert rows carry none; `8cf70e9` is two revisions behind
+  the `HEAD` of that time. Its depth arithmetic was also wrong in the other direction (it
+  proposed "lead + one child", i.e. two levels, where three are reachable). Both the false claim
+  and the arithmetic were caught only by re-running
   the check — which is why this file records the re-grep, not the report.
 - The `register()` doc comment in `dsh-cordis-host-runner/lib/types/inspect-registry.d.ts`
   line 38 says "returns idempotent disposer", which reads as "duplicate registration is safe".
