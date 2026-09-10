@@ -15,13 +15,21 @@ discipline: an expert answers only what its brief states.
 | Tool | Role | Reasoning budget | Writes? | Call it for |
 | --- | --- | --- | --- | --- |
 | `expert_architect` | Architecture and design | `max` | yes | A design, a decomposition, a boundary decision, a second opinion on an approach |
-| `expert_verifier` | Adversarial verification | `max` | **no** (`write`/`edit` filtered) | Reviewing a claim, a diff, a composition, or a plan before it is trusted |
+| `expert_verifier` | Adversarial verification | `max` | **not by design** — `write`/`edit` are filtered out, and the persona directs it to hand back a patch instead | Reviewing a claim, a diff, a composition, or a plan before it is trusted |
 | `expert_protocol` | Protocol and ecosystem | default | no | Package contracts, version behavior, external specifications, product facts |
-| `expert_chronicler` | Memory keeper | default | yes (memory layers) | Folding a decided question or finished milestone into the memory record |
+| `expert_chronicler` | Memory keeper | default | yes (memory layers only, by instruction) | Folding a decided question or finished milestone into the memory record |
 
 `subagent` is the generic worker for delegated work that matches no role, and
 `subagent_fork` is for a task that depends on this conversation's history rather than on a
 self-contained brief.
+
+**What the `write`/`edit` filter does and does not do.** `toolFilter` removes those two
+tools from the child's visibility *and* makes a forced call fail — that part is enforced.
+It is **not** a confinement boundary: the child still has `pwsh`, and a shell can write
+files. The filter is a design signal, and the verifier's persona is what makes it stick.
+Do not describe this role as sandboxed; describe it as *directed* to stay read-only.
+It also does not deny `pwsh` on purpose — a shell is how a claim gets reproduced, and a
+verifier that cannot reproduce anything is a proofreader.
 
 ## Choosing between delegation and doing it
 
@@ -74,6 +82,7 @@ preset composition:
         provider: spawn
         toolName: expert_<role>
         backgroundMode: continuable
+        maxDepth: 2                 # state it; the schema default is 3, not "inherit"
         agentOptions:
           reasoningEffort: max        # off | low | high | max, adapter-owned
         toolFilter:
@@ -87,3 +96,15 @@ require the spawn provider's `persona` and `toolFilter` capabilities, which
 `@deepseek-ai/dsh-subagent-spawn-in-process` advertises for every start; a provider that
 lacks one rejects the start rather than ignoring it. Keep the role's output blocks in its
 persona, because that is the only place a fresh child learns the shape of its report.
+
+**State `maxDepth` on every row.** Omitting it does not inherit a sibling row's cap — the
+tool's own schema applies `.default(3)`, so an omitted cap is 3 for that row alone. A team
+whose rows disagree about depth has no single recursion bound, and `subagent_fork` is the
+row most likely to drift because the fork provider advertises `depthLimit` itself.
+
+**A role that must verify end to end is not one of these four.** The roster covers design,
+adversarial review, outside facts, and memory. Nobody in it owns "did the whole flow
+actually work" — that gap is how a composition ends up verified row-by-row while the
+feature is broken. When a change spans several parts, run the end-to-end check yourself or
+give `subagent` an explicit instruction to do exactly that and report the observed result,
+not the conclusion.

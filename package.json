@@ -20,11 +20,14 @@
   },
   "bin": {
     "dsh-smith-install": "bin/install.mjs",
-    "dsh-smith-verify": "bin/verify.mjs"
+    "dsh-smith-verify": "bin/verify.mjs",
+    "dsh-smith-lint-skills": "bin/lint-skills.mjs"
   },
   "scripts": {
     "install-preset": "node bin/install.mjs",
-    "verify": "node bin/verify.mjs"
+    "verify": "node bin/verify.mjs",
+    "lint": "node bin/lint-skills.mjs",
+    "check": "node bin/lint-skills.mjs && node bin/verify.mjs"
   },
   "files": [
     "dsh-smith",

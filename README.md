@@ -31,25 +31,36 @@ cd dsh-smith
 node bin/install.mjs
 ```
 
-安装脚本把 `dsh-smith/` 整个目录复制到 `${DSH_HOME:-$HOME/.dsh}/.agent-presets/dsh-smith/`。它不会覆盖已存在的同名预设。
+安装脚本把 `dsh-smith/` 整个目录复制到 `${DSH_HOME:-$HOME/.dsh}/.agent-presets/dsh-smith/`。它不会覆盖已存在的同名预设（要替换请加 `--force`）。
+
+> ### ⚠️ 必须开一个**新会话**
+>
+> preset 是在**会话启动时**挂载的。**已经开着的会话不会获得新预设**——它继续跑它自己启动时的那套组合。装完就在旧会话里问"怎么没生效"，是这个预设最常见的困惑来源。
+>
+> 更隐蔽的一种情况：如果在会话中途切换预设，**会话持久化头里的 `agentPreset` 字段不会跟着改写**。日志第一帧仍记录旧值，而实际生效的是新组合，于是"记录"和"所见"不一致，很容易把排查引向错误方向。判断依据以**运行时工具表**为准，不要以文件头为准。
+>
+> 装完请**新开一个会话**，在模式选择器里选 **「DSH 智能体工坊」**。
 
 **验证安装**：
 
 ```sh
-node bin/verify.mjs
+node bin/verify.mjs        # 挂载 + 工具面
+node bin/lint-skills.mjs   # 五个技能的 frontmatter
 ```
 
-该脚本调用花名册的 `standingKeyFor(id)` 做真实挂载检查——组合每个插件行，但不启动 agent、不启动会话、不启动回合。它刻意区分三种结局，**绝不把「没检查」说成「检查通过」**：
+`bin/verify.mjs` 调用花名册的 `standingKeyFor(id)` 做真实挂载检查——组合每个插件行，但不启动 agent、不启动会话、不启动回合——并在同一个运行时里再断言一次**工具面**：那四个 `expert_*` 名字是否真的注册到了模型可见的表里。它刻意区分结局，**绝不把「没检查」说成「检查通过」**：
 
 | 输出 | 含义 | 退出码 |
 | --- | --- | --- |
-| `MOUNTED OK` | 组合成功：无未激活行，无泄漏到根 realm 的服务 | 0 |
+| `MOUNTED OK` | 组合成功，且四个专家工具都在运行时工具表里 | 0 |
 | `MOUNT REJECTED` | 无法组合，并打印确切原因 | 1 |
 | `INCONCLUSIVE` | 本机没有可询问的 harness 运行时，**什么都没验证** | 1 |
 
-裸 Cordis 运行时不含 harness 的注册表，所以在普通 shell 里它通常返回 `INCONCLUSIVE`；要在真实部署里验证，请在任意模式的会话中调用 `standingKeyFor('dsh-smith')`。
+裸 Cordis 运行时不含 harness 的注册表，所以在普通 shell 里 `verify` 通常返回 `INCONCLUSIVE`。同样的检查也可以在任意会话里手工做：`standingKeyFor('dsh-smith')`，再按下面「验证状态」一节读取真实工具表。
 
-然后在需要该能力的会话里选择模式 **「DSH 智能体工坊」**。
+> **`npm run check` 在 harness 之外会以退出码 1 结束，这是设计如此，不是失败。** 它把 `lint` 与 `verify` 串起来跑；`verify` 把「没检查」当作不通过，而裸 shell 里它就是没检查。这正是我想要的语义——**一个没跑成的检查不该长得像通过**。因此本仓库**不适合**直接把 `npm run check` 放进 CI：在 CI 里请只跑 `npm run lint`（纯静态、退出码可靠），把 `verify` 留给真正的部署环境。
+
+## 组成
 
 ```sh
 # 也可以手动指定
@@ -80,7 +91,11 @@ dsh --agent-preset dsh-smith
 | 决策 | `docs/agent-notes/DECISIONS.md` | **只追加**，含「什么会推翻它」 |
 | 工作板 | `docs/agent-notes/BOARD.md` | 易变，自由重写 |
 
-`AGENTS.md` 的加载预算在本预设中从默认 65536 提升到 **196608 字节**；工具结果修剪阈值同步放宽（12288/6144/2048），因为专家报告与挂载验证输出是本预设的长结果。
+`AGENTS.md` 的加载预算在本预设中从默认 65536 提升到 **196608 字节**，工具结果修剪阈值也从 8192/4096/1024 放宽到 12288/6144/2048。**这两个数字是推断，不是测量出来的**：理由是专家报告与挂载验证输出是本预设的长结果。它们没有被任何真实会话的字节数或 token 读数验证过，而且两者反向耦合——指令预算放大，留给工具结果的上下文就更少。如果你的模型上下文窗口不大，请把它们调回默认值。
+
+单个指令文件超过 **49152 字节会被完全忽略**（不是截断），这是 `agent-instructions` 的语义。一份很长的 `AGENTS.md` 会静默失效，使用者只会觉得"规则没生效"。所以宁可拆分，不要养大。
+
+记忆层的路径都**相对项目根**，而项目根不一定是当前工作目录；`dsh-memory-chronicle` 给出了判定顺序，以及"连标记文件都没有"时该怎么处理。
 
 ### 3. 专家团队
 
@@ -89,23 +104,33 @@ dsh --agent-preset dsh-smith
 | 工具 | 职责 | 推理预算 | 写权限 | 输出契约 |
 | --- | --- | --- | --- | --- |
 | `expert_architect` | 架构与设计 | `max` | 有 | 决策 / 边界 / 取舍 / 风险 / 验收 |
-| `expert_verifier` | 对抗式验证 | `max` | **无** | 结论 / 发现 / 未被攻破 / 空白 |
+| `expert_verifier` | 对抗式验证 | `max` | **按设计不该写**——摘掉 `write`/`edit`，并要求它以文本交回补丁 | 结论 / 发现 / 未被攻破 / 空白 |
 | `expert_protocol` | 协议、生态、版本 | 默认 | 无 | 答案 / 证据 / 冲突 / 未知 |
-| `expert_chronicler` | 记忆维护 | 默认 | 仅记忆层 | 已记录 / 已确立 / 未决 |
+| `expert_chronicler` | 记忆维护 | 默认 | 仅记忆层（靠指示，不靠强制） | 已记录 / 已确立 / 未决 |
 
-`expert_verifier` 通过工具过滤被摘掉 `write` 与 `edit`：**看不见，且强制执行也会被拒**。审查无法悄悄变成重写，这是该行存在的全部意义。
+关于 `expert_verifier` 的 `write`/`edit` 过滤，**两件事必须分开说**：
 
-四者默认后台运行（`backgroundMode: continuable`），因此一条消息可以并行启动全部专家；`subagent` 行的 `maxDepth: 2` 把递归界定为「主智能体 → 专家 → 专家的助手」。
+- **强制的部分**：这两个工具从子代理的工具表里消失，强制执行也会被拒。
+- **没强制的部分**：它**仍然有 `pwsh`**，而 shell 能写文件。所以这**不是**沙箱边界，我也不会把它写成沙箱。它的作用是设计信号——审查**靠论证纠正**（把补丁作为文本交回来），而不是悄悄变成一次没人看见的重写。persona 已如实写明这一点。
+- **故意不 deny `pwsh`**：复现缺陷是验证者最有力的证据，一个什么都不能跑的验证者只是校对员。代价是这条约束终究是**行为约束**，不是能力约束。
+
+四者默认后台运行（`backgroundMode: continuable`），因此一条消息可以并行启动全部专家。递归上限由**每一行显式写明的 `maxDepth: 2`** 界定为「主智能体 → 专家 → 专家的助手」——包括 `subagent_fork`：该行原先省略了 `maxDepth`，而省略并不会继承兄弟行的值，工具 schema 会补 `.default(3)`，于是 fork 链能比其它行多下一层。现已统一。
+
+**这个团队没有"端到端验证者"。** 名册覆盖设计、对抗审查、外部事实、记忆四件事，但**没有人负责"整条流程真的跑通了吗"**。这正是我构建本预设时犯的错：逐行验证到了 ACTIVE，就以为功能可用。改动跨多个部件时，请你自己跑端到端检查，或明确要求 `subagent` 只做这件事并报告**观测到的结果**而非结论。
 
 ### 4. 随行技能
 
-| 技能 | 作用 |
-| --- | --- |
-| `editing-cordis-compositions` | 组合创作与两个平面的判据（随出厂 `cordis` 预设分发） |
-| `cordis-plugin-development` | 动态 Cordis 插件开发（随出厂 `cordis` 预设分发） |
-| `dsh-runtime-reference` | **本部署的**路径、按平面分组的行清单、实时服务与提示段落名、挂载诊断 |
-| `dsh-expert-team` | 团队名册、交接契约、如何组合一个新角色 |
-| `dsh-memory-chronicle` | 四层记忆布局、条目格式、维护规则 |
+| 技能 | 作用 | 来源 |
+| --- | --- | --- |
+| `editing-cordis-compositions` | 组合创作与两个平面的判据 | 复制自出厂 `cordis` 预设（MIT） |
+| `cordis-plugin-development` | 动态 Cordis 插件开发 | 复制自出厂 `cordis` 预设（MIT） |
+| `dsh-runtime-reference` | **本部署的**路径、按平面分组的行清单、实时服务与提示段落名、挂载诊断 | 本仓库原创 |
+| `dsh-expert-team` | 团队名册、交接契约、如何组合一个新角色 | 本仓库原创 |
+| `dsh-memory-chronicle` | 四层记忆布局、条目格式、维护规则、空仓库如何起步 | 本仓库原创 |
+
+前两个技能**同时**由安装副本和出厂预设目录提供，两者都会被技能发现机制扫描到。技能按名字取胜者，所以不会冲突——但知道这个重复存在有用：读到"技能基目录"落在出厂路径时，那不代表本预设没装好。
+
+另外两个技能里**有已知过时的 API 名**（它们提到 `cordis_mount` / `cordis_unmount`，而本部署的工具集是 `cordis_define` / `cordis_run` / `cordis_stop` / `cordis_undefine`，没有任何 `cordis_mount`）。它们是照抄未改的上游文件。**以 `cordis_inspect_list` 返回的清单为准**，不要以这两个文件里的工具名为准。
 
 ## 已知限制：`tool-cordis` 那一行
 
@@ -150,24 +175,37 @@ failed to apply loader entry tool-cordis: Host Cordis inspect provider "Service"
 
 ## 验证状态
 
-**已用真实挂载验证的部分**（`agentPresets.standingKeyFor('dsh-smith')`，非仅阅读确认）：
+**已用真实挂载验证的部分**（`agentPresets.standingKeyFor('dsh-smith')`，在同一进程内多次复验）：
 
 - 挂载通过——无未激活行，无泄漏到根 realm 的服务；
 - `compositionInventory()` 报告 **33 行全部组合，32 行 `ACTIVE`**；
 - 恰好 4 行按设计关闭：`tool-bash`（Windows 平台门）、`tool-cordis`（上述条件门）、`tool-subagent-codex` 与 `tool-subagent-claude-code`（未安装的可选产品提供者）；
-- 四条专家行 `tool-expert-architect / verifier / protocol / chronicler` 全部 `ACTIVE`。
+- 四条专家行 `tool-expert-architect / verifier / protocol / chronicler` 全部 `ACTIVE`；
+- **去掉 `tool-cordis` 那道门会整体挂载失败**——这是做过的对照实验，不是推断。
 
-**我必须明确标注的验证缺口。** 上面这些只证明「行组合成功且处于 ACTIVE」，**不证明任何工具真的到了模型手上**——行激活与工具可用是两件事。以下三项在本仓库交付时尚无端到端观测：
+**仍然存在的验证缺口，逐条列出。** 上面每一条都只证明「行组合成功且处于 ACTIVE」，**不证明任何工具真的到了模型手上**——行激活与工具可用是两件事，把它们混为一谈是构建本预设时最主要的错误。
 
-1. 四条专家行是否真的注册出 `expert_architect` / `expert_verifier` / `expert_protocol` / `expert_chronicler` 四个模型可见工具，以及子代理创建路径是否可用；
-2. `tool-cordis` 在目标部署上究竟落在上述哪一种情况；
-3. `tool-subagent` 行上的 `modelSelectionSettings: true` 是否有效——该设置依赖宿主挂载 `@deepseek-ai/dsh-tool-subagent/model-selection-settings` 行，本部署的基础组合里没有它，因此**很可能是一个静默无效的配置**，同时 `list_subagent_models` 工具也不会出现。
+1. **四条专家行是否注册出模型可见的 `expert_*` 工具、子代理创建路径是否可用** —— 本仓库交付时**无端到端观测**，而且**脚本做不到这件事**。我试过三条路，全部走不通，记录在此以免有人重走：
+   - `tools.schemas(standingKey)` 返回空数组——这是**预期行为**，工具按 agent scope 解析，标准挂载的 scope 不是 agent scope；
+   - 低层 `ctx.agents.create({ sessionId })` 能造出 agent，但它**完全没有挂载任何 preset**（实测：工具表里连 `write` 都没有），所以它的工具面对本预设毫无说明力；
+   - 真正会把 preset 挂上去的工厂 `ctx.agentLoop.createAgent()` **动态插件用不了**：它读 `ctx.fiber`，而 Host guard 按设计屏蔽框架内部（`sandbox ctx does not expose "fiber"`）。
 
-首次在真实会话里使用时，请用 `cordis_inspect_query` 的 `Tool.listTools` 取一次真实工具表来确认第 1、3 项。
+   所以这项断言只能由**真实会话**完成。`bin/verify.mjs` 现在会**打印出那两条确切调用**而不是假装检查过：在新会话里跑 `cordis_inspect_query`（host / provider `Tool` / method `listTools`），确认那四个名字在表里。
+2. **`tool-cordis` 在目标部署落在哪种情况** —— 取决于挂载顺序与其它会话的存活期，见上一节。
+3. **`modelSelectionSettings: true` 很可能静默无效** —— 该设置依赖宿主挂载 `@deepseek-ai/dsh-tool-subagent/model-selection-settings` 行，本部署的基础组合里没有它，因此 `list_subagent_models` 很可能永远不会出现，而这个配置键不会报错。第 1 项的那次工具表读取会同时暴露它。
 
 ## 兼容性
 
-针对 DeepSeek Harness **0.1.5-rc.1** 的行名与配置面编写。行名、服务键与配置字段属于部署内部接口，升级后可能移动；升级后请重新运行 `node bin/verify.mjs`。
+针对 DeepSeek Harness **0.1.5-rc.1** 的行名与配置面编写。行名、服务键与配置字段属于部署内部接口，升级后可能移动。
+
+**本 preset 派生自出厂 `cordis` 预设，因此会随上游升级而漂移。** 仓库里没有自动化漂移检测——升级后请自行重跑：
+
+```sh
+node bin/verify.mjs        # 组合还能不能挂、工具面还在不在
+node bin/lint-skills.mjs   # 五个技能的 frontmatter 还完不完整
+```
+
+差分本仓库副本与已安装的出厂预设，也是升级后值得做的一次人工检查：两者共有的行如果被上游改过配置面，本副本不会自动跟随。
 
 ## 许可与来源
 
