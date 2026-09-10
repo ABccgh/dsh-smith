@@ -198,3 +198,46 @@
   state a number on every row anyway, because the omission is what broke the invariant, not the
   value.
 
+## D-11: Is `modelSelectionSettings: true` inert on this deployment?
+- **Decided:** **No — it is wired and waiting.** The tool `list_subagent_models` is absent
+  because the product's opt-in is off (`enabled` defaults to `false`), not because a required
+  row is missing. Nothing in this repository needs to change; enabling it is one settings
+  section, and any session started afterward gains the tool.
+- **Because:** measured end to end, four links. (1) The Host-scope provider **is** mounted —
+  `subagent-model-selection-settings` is a row of the **web-app** bundle
+  (`dsh-web-app/cordis.patch.yml`), and `ctx.get('subagentModelSelection')` resolves live.
+  (2) `subagentModelSelection.current()` returned `{enabled: false, allowedModels: []}`.
+  (3) After writing `subagent-model-selection: {enabled: true, allowedModels:
+  [{provider: deepseek-official, model: deepseek-flash}]}` into `$DSH_HOME/settings.yaml`, the
+  same call returned `enabled: true` with that route and no restart — the settings document is
+  hot-reloaded. (4) The file was restored, and the call returned `false` again. The registration
+  gate agrees: `if (modelSelectionPolicy !== void 0) registerListSubagentModels(…)`
+  (`dsh-tool-subagent/lib/index.js:389`), and the policy is empty while `enabled` is false. The
+  schema default is explicit: `enabled: z.boolean().default(false)`
+  (`lib/model-selection-settings.js:44`).
+- **Rejected:** the two claims this repository had recorded. "The base composition does not
+  mount it" was concluded from checking `dsh-base` alone — the row lives in the web-app bundle,
+  and this deployment composes both. "It is silently inert" inverted the real behaviour: a
+  missing provider **throws** (`lib/index.js:588`), and `lib/invariant.js:36-44` fails the step
+  when a selectable tool exists without its projection.
+- **Reversed by:** a settings document in which the section is absent (off) — which is exactly
+  this deployment's state, and the reason the tool does not appear. This entry fixes the
+  *mechanism*; whether the opt-in should be on is a user preference, not a finding.
+
+## D-12: How did a two-part error survive into three documents?
+- **Decided:** Because a claim was built from **one incomplete check** and then copied forward.
+  The check was "grep `dsh-base` for the row"; the correct check was "ask the running runtime
+  for the service", which was available the whole time and answers in one call.
+- **Because:** the same false statement appears in `README.md`, `PROJECT.md` and `BOARD.md`,
+  each time more confident than the last — and the second half ("silently inert") was never
+  checked at all. It was inferred from "the tool is absent", which is a different question from
+  "the setting is inert". The probe that settled it was one plugin and one call:
+  `inject: ['subagentModelSelection']`, then `.current()`.
+- **Rejected:** correcting only `README.md`. The memory layers are what the next session reads
+  first, so a correction that stops at the README leaves the wrong claim exactly where it is
+  most likely to be trusted.
+- **Reversed by:** nothing — the rule this yields extends one already in `AGENTS.md` rule 3:
+  **"the base composition does not mount it" is not a finding until every composed bundle has
+  been checked**, and a deployment composes several. Grep one bundle and the answer is about
+  that bundle only.
+

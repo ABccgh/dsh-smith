@@ -166,17 +166,24 @@ the installed preset is still byte-identical to the repo copy
   "Check which case you are in with `cordis_inspect_list`" — cannot be followed from a
   `dsh-smith` session, because the tool it names is exactly the one the gate removes. That
   line should name the shipped `cordis` preset as the instrument instead.
-- **`list_subagent_models` never appears on this deployment** — now mechanism-level, and the
-  reason is stronger than "a row is missing". The tool is registered only when a model
-  selection policy resolves (`dsh-tool-subagent/lib/index.js:389`,
-  `if (modelSelectionPolicy !== void 0) registerListSubagentModels(...)`), and that policy
-  requires the **Host**-scope provider
-  `@deepseek-ai/dsh-tool-subagent/model-selection-settings` (`:582-614`) plus a scoped preset
-  Context. The base composition does not mount it, so no session of this profile can select a
-  child model, and `modelSelectionSettings: true` at `agent.cordis.yml:403` is inert here.
-  A related guard makes the failure loud rather than silent:
-  `dsh-tool-subagent/lib/invariant.js:36-44` fails the step if a selectable tool exists without
-  its projection.
+- **`list_subagent_models` is absent because the opt-in is off, not because a row is missing
+  — CORRECTED, and the earlier entry was wrong twice.** The mechanism half was right: the tool
+  registers only when a model-selection policy resolves
+  (`dsh-tool-subagent/lib/index.js:389`,
+  `if (modelSelectionPolicy !== void 0) registerListSubagentModels(...)`), and that needs the
+  Host-scope provider `@deepseek-ai/dsh-tool-subagent/model-selection-settings`. Two
+  corrections: (a) that provider **is** mounted, by the **web-app** bundle
+  (`dsh-web-app/cordis.patch.yml`) — the earlier check looked only at `dsh-base` and concluded
+  from its absence there; (b) the failure mode is **loud**, not silent: a missing provider
+  throws `tool-subagent: \`modelSelectionSettings\` requires … in the Host scope`
+  (`lib/index.js:588`), and `lib/invariant.js:36-44` fails the step when a selectable tool
+  exists without its projection. Measured on this deployment:
+  `subagentModelSelection.current()` returned `enabled=false, allowedModels=[]`; after writing
+  `subagent-model-selection: {enabled: true, allowedModels: [{provider: deepseek-official,
+  model: deepseek-flash}]}` into `$DSH_HOME/settings.yaml` the same call returned `true` with
+  one route (hot-reloaded); the file was then restored and it returned `false`. So
+  `modelSelectionSettings: true` at `agent.cordis.yml:415` is **wired and waiting**, and
+  `enabled`'s schema default is `false` (`lib/model-selection-settings.js:44`).
 - **The optional rows stay absent by design**: `tool-bash` (non-Windows gate), `tool-cordis`
   (gate, see D-1), `tool-subagent-codex`, `tool-subagent-claude-code` (product providers that
   production `dsh` does not install). `subagent_codex` / `subagent_claude_code` are verified

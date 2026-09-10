@@ -267,9 +267,29 @@ failed to apply loader entry tool-cordis: Host Cordis inspect provider "Service"
 
 ### 仍然存在的缺口
 
-1. **`modelSelectionSettings: true` 很可能静默无效。** 该设置依赖宿主挂载 `@deepseek-ai/dsh-tool-subagent/model-selection-settings` 行，本部署的基础组合里没有它。会话工具表里也没有 `list_subagent_models`，**与该推断一致**——但这个配置键不报错，所以要么它是惰性的，要么它静默回退。
-2. **`expert_verifier` 的 `write`/`edit` 过滤从未被真正强制过一次。** 该行确实挂载、它的工具确实在表里、人格契约确实合规——但"被过滤的工具调用会被拒"这句只有源码支持，没有一次实际尝试。
-3. **加强后的验证者证据标准尚未被检验。** 它在 persona 里已写明（逐字引用、重跑命令、声明版本），但**下一次真正调用之前，无法知道它是否真的改变了发现的可靠性**。这是唯一一条"改进本身也待验证"的条目。
+1. **`expert_verifier` 的 `write`/`edit` 过滤从未被真正强制过一次。** 该行确实挂载、它的工具确实在表里、人格契约确实合规——但"被过滤的工具调用会被拒"这句只有源码支持，没有一次实际尝试。
+2. **加强后的验证者证据标准尚未被检验。** 它在 persona 里已写明（逐字引用、重跑命令、声明版本），但**下一次真正调用之前，无法知道它是否真的改变了发现的可靠性**。这是唯一一条"改进本身也待验证"的条目。
+
+### 关于 `list_subagent_models`：不是缺陷，是你没开的 opt-in
+
+这一条我先前记错了**两次**——先断言"该设置很可能静默无效"，理由是"本部署的基础组合里没有 `model-selection-settings` 行"。**两点都错**：
+
+- 该行**有**，在 **web-app** bundle 里（`dsh-web-app/cordis.patch.yml`，包 `@deepseek-ai/dsh-tool-subagent/model-selection-settings`）。`dsh-base` 里确实没有——我只查了 base 就下了结论。
+- 它也**不是静默失败**的：缺该行会**大声抛错**（`tool-subagent: \`modelSelectionSettings\` requires … in the Host scope`）。真正的行为与"静默无效"相反。
+
+实测的完整链路：服务 `subagentModelSelection` 在本会话可用，返回 `enabled=false, allowedModels=[]`；在 `settings.yaml` 里加上下面的段后，同一服务的读取**热重载为 `true`**，随后已还原。
+
+```yaml
+subagent-model-selection:
+  enabled: true
+  allowedModels:
+    - provider: deepseek-official
+      model: deepseek-flash
+```
+
+所以 `modelSelectionSettings: true` 是**接通且待命**的。`list_subagent_models` 只在策略解析出**非空**路由时才注册（`registerListSubagentModels` 的调用点是 `if (modelSelectionPolicy !== void 0)`），而 `enabled` 的 schema 默认值是 `false`——**这是产品设计上的 opt-in，不是本预设的缺陷**。
+
+**要打开**：Settings 的 Plugins 页，或直接写上面的段。至少给一条路由——`enabled: true` 配空的 `allowedModels` 会被拒绝（"enabled subagent model selection requires at least one allowed model"）。**新会话**生效。
 
 ### 已关闭
 
