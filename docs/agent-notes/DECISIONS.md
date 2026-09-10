@@ -380,3 +380,281 @@
   that happens, the honest summary is that this project's verification discipline is stronger
   than its bookkeeping, and the bookkeeping is what a stranger reads first.
 
+## D-19: Does `dsh-forge` present tools as `ptc` or as `both`?
+- **Decided:** **`both`.** The PTC code-mode surface is composed as an addition — `run_code` plus
+  the generated TypeScript SDK — rather than as a replacement for the native tool catalog.
+- **Because:** a read of the collapse rule, not a preference. `dsh-tools/lib/index.js:2993-2995`
+  is `collapses(name, scope, nested) { return !nested && this.modeFor(scope) === "ptc" && name
+  !== "run_code" }`, and `wireSchemas` reduces the request to `run_code` alone at `:2735-2738`.
+  Under `ptc`, therefore, **a model-direct call may name only `run_code`**, so `exit_plan_mode`,
+  `ask_user_question` and `present` become reachable only as SDK sub-calls. Those sub-calls do
+  work — the SDK binding at `:1207-1220` propagates `agent`, `parent` and `signal`, and
+  `exit_plan_mode` needs exactly `exec.agent` (`dsh-plan-mode/lib/index.js:252-255`) — so the
+  choice is about **reliability, not correctness**: a plan approval and a question to the user
+  are tools whose whole value is an unambiguous direct invocation, and `both` keeps that while
+  still shipping `run_code` for the multi-step chains that motivated PTC in the first place.
+- **Rejected:** shipping `ptc` on the reasoning that a preset offering one tool "thinks harder".
+  It is the same composition surface either way; `ptc` only removes the direct alternative, and
+  it also discards the native schema as the fallback for any generated-SDK gap.
+- **Reversed by:** a measurement showing the `tools:sdk` section and `run_code` do not reach the
+  model under `mode: both`, or that the longer catalog measurably degrades tool selection in a
+  real session. Either would move this to `ptc`, and the first would be a defect to report
+  upstream rather than a configuration error here.
+
+## D-20: Is a `standingKeyFor` mount check runnable for a second preset in this deployment?
+- **Decided:** **No — not from this repo's own sessions, and this will not change by trying
+  harder.** `dsh-forge` ships as *statically preflighted, never mounted*. The mount check is
+  runnable only from a session on the **shipped `cordis` preset**, and every statement of
+  `dsh-forge`'s verification status must say so.
+- **Because:** measured, in this session, in this order. `dsh-tool-cordis` registers four
+  **process-global** inspect providers (`Service`, `Event`, `Builtin`, `Tool`) whose registry
+  throws on a duplicate id (`dsh-cordis-host-runner/lib/index.js:732`). The host takes those ids
+  at boot (`dsh-web-app/cordis.patch.yml:122` → `cordis-host-runner`), so any other composition
+  containing that row must gate it off or fail its whole mount — both presets here do. The
+  consequence is not merely that the *row* is off: **this session's own tool table contains no
+  `cordis_*` tool at all**, so `cordis_define` / `cordis_run` and the dynamic-plugin probe built
+  on them are unavailable. The file grep that confirms the gate and the live table that confirms
+  its absence agree.
+- **Rejected:** (a) reading the composition carefully and calling it verified — a mount is the
+  only evidence for "activates but contributes nothing", and no amount of care substitutes;
+  (b) removing the gate locally "just to run the check" — the registration would collide with the
+  host's already-claimed ids and fail the mount of the very preset being checked, which is a
+  worse experiment than not running it; (c) composing a third preset that re-registers the
+  providers — the same collision as (b), and it would corrupt a shared host registry to satisfy a
+  local check.
+- **Reversed by:** running `standingKeyFor('dsh-forge')` from a shipped-`cordis` session — the
+  cheapest available experiment, and it fully answers the question. An upstream change making
+  `CordisInspectRegistryService.register()` idempotent (D-8, D-13) would also reopen it, since
+  the collision is what forces the gate.
+
+## D-21: Should the four tool scripts keep a hardcoded preset id, or grow a registry?
+- **Decided:** **A shared registry, `bin/presets.mjs`.** Each preset's id, repository directory,
+  display name, upstream preset and expected tool list live there once; `install.mjs`,
+  `verify.mjs`, `lint-skills.mjs` and `drift-check.mjs` read their paths from it. Every script
+  takes `--preset <id>` and **defaults to `dsh-smith`**, so every pre-existing invocation keeps
+  its exact meaning.
+- **Because:** the alternative was four independent edits with four chances to leave one script
+  pointing at the wrong preset — and all four of these scripts report a wrong path as a
+  *successful* run against the wrong file, which is the silent-failure shape this repository
+  keeps having to design against. Measured after generalising: with no `--preset`, lint reports
+  the same five skills clean, drift reports the same 36/32 rows and the same six drifted rows,
+  and install refuses to overwrite with the same message — the regression baseline held.
+  `drift-check` needed one non-obvious field: **`upstreamPreset` is per-preset**, because
+  `dsh-smith` descends from shipped `cordis` while `dsh-forge` descends from shipped `standard`,
+  and comparing either against the other's ancestor reports every legitimate difference as
+  drift.
+- **Rejected:** deriving `repoDir` from `id` by convention. The directory name and the preset id
+  are both load-bearing and independently renameable; an explicit field makes a mismatch a
+  visible edit instead of two things that agree until one of them moves.
+- **Reversed by:** a second consumer of the preset list appearing outside `bin/` (a CI config, a
+  test harness) — that would argue for `package.json`'s `dsh.presets[]` becoming the single
+  source, rather than a written-but-inert parallel copy of the same data.
+
+## D-22: Does an adversarial review of a change I authored pay for itself?
+- **Decided:** **Yes, and its value was in the documentation rather than the design.** One
+  `expert_verifier` call on the `dsh-forge` change returned *"sound on the composition; unsound
+  on the documentation"*: it confirmed all six load-bearing technical claims by re-reading source,
+  and then found that **the numbers and evidence I printed around them were wrong in seven
+  places.** No finding required touching `dsh-forge/agent.cordis.yml`'s rows; every defect was in
+  what I said about them.
+- **Because:** the most instructive of the seven, and the reason this entry exists rather than a
+  quiet fix. I published the decomposition of the composition's 38 named rows four times as "4
+  top-level rows + 3 group containers + 31 inside the groups". The **total** was right — I had
+  measured it — and the **split was fabricated**: there are 20 rows at indent 0 (17 plain rows
+  plus the 3 containers) and 18 at indent 4. Worse, PROJECT.md named exactly four top-level rows
+  while listing three of them, and `docs/dsh-forge.md`'s own table two lines below was labelled
+  「顶层」 while showing four of seventeen. Each sentence contradicted itself, and nothing caught it
+  because a plausible split of a correct total reads exactly like a measured one. This is D-10's
+  shape in a new costume: **the over-claim was not in a claim about the runtime, where my guard was
+  up, but in a number about my own artefact, where I trusted the total to vouch for the parts.**
+  The other six: an install row whose quoted evidence came from the *refused* path (`target:` and
+  `found:` print on both paths, so they never proved success); a command line
+  (`dsh --agent-preset <id>`) that does not exist — no package contains the string
+  `--agent-preset` — repeated into a new file from the README; "seven delegating rows" stated
+  without the qualifier that two more rows name `maxDepth` at `provider-managed`; a skip
+  explanation whose sub-counts summed to 9 against a total of 10; `verify.mjs`'s INCONCLUSIVE
+  advice pointing at a session where the check cannot run; and two of the four new skills never
+  cued by the persona — while the persona *did* cue `dsh-expert-team`, a skill belonging to the
+  other preset.
+- **Rejected:** applying the fixes silently. A review whose findings vanish into a clean final
+  state teaches the next session nothing about **where this author's errors concentrate**, and
+  the concentration is the finding: the composition was right and the prose about it was not, in
+  a session explicitly chartered to distrust prose. Also rejected: the reviewer's own arithmetic
+  accepted unexamined — it said the 10 skips were "3 + 2 + 4" when the file shows 3 groups + **1**
+  subpath + **1** unevaluated expression + **5** no-schema rows. Its correction of my error was
+  itself slightly off, which is exactly why an expert report is a source, not a verdict (and the
+  corrected breakdown is now in `docs/dsh-forge.md`).
+- **Reversed by:** a session in which an independent review of a change finds nothing in the
+  documentation — or one in which the author's own check catches a fabricated decomposition before
+  a reviewer does. Until then, when this repository's docs state a breakdown, the parts get
+  counted, not inferred from the total.
+
+## D-23: Is D-20 still right — was the `dsh-forge` mount check really unrunnable?
+- **Decided:** **Half of D-20 was right and half was wrong, and the wrong half mattered.**
+  - **Right:** the dynamic-plugin probe route is closed in `dsh-smith` and `dsh-forge` sessions,
+    so the check needs a session on the **shipped `cordis` preset**. Confirmed by measurement, not
+    reasoning: live loader state shows `tool-cordis enabled=true fiberPhase=active` under the
+    shipped `cordis` preset, `enabled=false fiberPhase=null` under `dsh-smith`, and no such entry
+    under `dsh-forge` at all.
+  - **Wrong, and D-20 asserted it:** that `bin/verify.mjs` was a way to run the check provided you
+    stood in the right session. **It is not a way to run it from any session.** The script builds
+    its own bare Cordis context — `root = new cordis.Context()`, `bin/verify.mjs:204` — which
+    carries none of the harness registries, so `agentPresets` is absent *by construction* and it
+    prints `INCONCLUSIVE — this runtime publishes no agentPresets service` with exit 1 from a plain
+    shell **and from inside the shipped-`cordis` session where the probe route worked**, measured
+    twice with byte-identical output. D-20's `Reversed by` clause named `standingKeyFor` as the
+    remedy and bundled the script in as if location were the only obstacle; the obstacle was the
+    script's construction.
+- **Because:** the user, reading D-20 and `docs/dsh-forge.md`, ran the probe from the shipped
+  `cordis` preset and got **`MOUNTED OK`** — `standingKeyFor('dsh-forge')` resolved a standing
+  scope key, `compositionInventory()` reporting 35 rows active, 4 disabled by design
+  (`tool-bash` and `tool-pwsh` platform gates, the two product-provider rows), `broken=none`. That
+  also answers what the static pass structurally could not: **no row is mounted-but-contributing-
+  nothing**, so the `compaction`/`toolResultPruner` realm pairing and `tool-presentation`'s wait on
+  the host `codeRuntime` both came up active. So `dsh-forge` is now **mounted and verified**, not
+  "statically preflighted, never mounted" — a status this record carried in four places.
+- **Rejected:** (a) editing D-20 in place. The append-only rule exists for exactly this: D-20's
+  reasoning about the probe route was sound and someone will need it again, while its conflation of
+  "the script" with "the route" was the error, and only a new entry can say both. (b) Silently
+  accepting the inventory's 35-active figure. The file has 38 named rows with 4 disabled, implying
+  **34** enabled; 35 + 4 = 39. One counting method is off by one, the per-row output is what would
+  settle it, and neither document now claims a number it cannot show.
+- **Reversed by:** ~~running `standingKeyFor('dsh-forge')` from a shipped-`cordis` session~~ — done,
+  and it passed. What would reverse the *surviving* half: an upstream change making
+  `CordisInspectRegistryService.register()` idempotent (D-8, D-13), which would let a locally
+  authored preset register the four providers and reopen the probe route inside its own sessions.
+  What would reverse the `verify.mjs` half: making that script connect to a live harness runtime
+  instead of constructing a bare one — at which point it becomes what its name promises.
+
+## D-24: Should the `verify.mjs` defect be recorded as a defect, or quietly corrected?
+- **Decided:** **Recorded, and the script corrected.** Its header comment and its INCONCLUSIVE
+  advice were rewritten to say what it actually is — a diagnostic that boots its own runtime and
+  cannot reach the roster — and to point at the dynamic-plugin probe route for the mount verdict.
+- **Because:** the script has been printing advice that sends a reader to a session where the check
+  still fails, and it had been doing so since before this session: I generalised it to `--preset`
+  without questioning the one thing that decides whether it works. That is the same error class as
+  D-22's — a plausible artefact that no one re-derived — and it is worse here, because a diagnostic
+  whose advice is wrong is indistinguishable from a diagnostic whose deployment is wrong. The
+  measured evidence is two byte-identical runs in two different session types, which is what makes
+  it a defect rather than a hunch.
+- **Rejected:** deleting the script or renaming it. It still does something real — it tells you
+  whether *this machine's CLI* can reach a harness runtime at all, and it validates and counts the
+  composition file it finds — and a reader who knows its limit is not misled by it. Deleting it
+  would also remove the only place the "MOUNTED OK / MOUNT REJECTED / INCONCLUSIVE" distinction is
+  written down.
+- **Reversed by:** a version of the script that attaches to the live runtime (a `dsh`-hosted entry,
+  or an injected `agentPresets` from a session), which would let it report a real verdict and make
+  this entry a historical note about a limitation that was fixed rather than worked around.
+
+## D-25: Did the composition file and the mount inventory really disagree by one row?
+> **This entry settles the discrepancy D-23 recorded and could not resolve.** D-23's text still
+> repeats the two wrong figures (`34` enabled, `35 + 4 = 39`) in its rejected-alternatives clause;
+> they stand there only as the claim that was rejected, and **31 active** is the correct figure.
+> D-23 is not edited, per the append-only rule — read it together with this entry.
+- **Decided:** **No — the two counts agree, and both published numbers were wrong.** The
+  composition has **38 named rows = 3 group containers + 35 leaf rows**, of which **31 are active**,
+  **2 are `"conditional"`** (`tool-bash`, `tool-pwsh` — the `!!js` platform gates, exactly one of
+  which runs on Windows) and **2 are `false`** (`tool-subagent-codex`, `tool-subagent-claude-code`).
+  The one correct equation is **35 leaves − 4 disabled = 31 active**.
+- **Because:** read from both counting paths rather than inferred, and then reproduced.
+  `flattenRows` (`dsh-agent-presets/lib/index.js:991`) and `mountedCompositionRows` (`:1038`) both
+  `continue` past `group: true` entries, so a row list is **leaves only** — the inventory's 35 is
+  the leaf count, and it never included the 3 containers. An independent YAML parse of the file,
+  applying that same rule and the same three-way enablement (`true` / `"conditional"` / `false`),
+  returns exactly 35 rows with 31 true, 2 conditional, 2 false. The two errors were mine and both
+  were arithmetic dressed as counting: (a) I labelled the total 35 as "`fiberPhase=active`" when 4
+  of those rows are off, and (b) I derived "34 enabled" from `38 − 4` — subtracting from a total
+  that includes the 3 containers no row list ever contains.
+- **Rejected:** holding the reconciliation open for a per-row paste from the live inventory. My own
+  first instinct was that only the runtime could settle it, and that was wrong: the rule that
+  decides the question is **source code**, and it is four lines long. Waiting on a paste would have
+  left a wrong number standing in two documents in order to preserve a claim about who could
+  settle it. **The tool is authoritative only where the tool's semantics are unknown; once read,
+  they are reproducible anywhere.**
+- **Reversed by:** `compositionInventory()` returning a row count other than 35, or an `enabled`
+  triple other than 31/2/2, for this revision — which would mean the two paths do not share the
+  semantics read above. Also reversed by `flattenRows` or `mountedCompositionRows` changing to
+  report containers, which would make the `38 = 3 + 35` split obsolete rather than wrong.
+
+## D-26: Under `mode: both`, is the `write`/`edit` deny list enforced — and *how*?
+- **Decided:** **Enforced, and the mechanism is stronger than the word "rejected" in D-17
+  implied.** The two denied names are **absent from the child's SDK object**, so a forced call dies
+  at property lookup — `TypeError: tools.write is not a function`, `instanceof ToolCallError ===
+  false` — and the tool layer is never entered. D-17's observed `Error: unknown tool "write"` is
+  not contradicted: that is the **dispatch-stage** refusal a native-schema call gets from
+  `resolveExecution` → `UNKNOWN_TOOL` (`dsh-tools/lib/index.js:2906-2911`). Both are true, and the
+  distinction matters because only the second is a guard; the PTC path has no binding to guard.
+- **Because:** three readings from one delegated `expert_debugger` under a real `dsh-forge` session,
+  plus a control. (1) **Table:** `propcount = 30`, with `Object.keys`, `getOwnPropertyNames` and
+  `getOwnPropertySymbols` in agreement (`0` symbols, prototype `null`), `has_write=false`,
+  `has_edit=false`, `has_ralph=true`. (2) **Prompt:** neither `write` nor `edit` appears as a member
+  of the `tools:sdk` section, while `pwsh`/`read`/`grep` do — the grep that establishes this must
+  target member syntax (`edit:`), because `edit` occurs in that section as a *value*
+  (`update_goal`'s `action: "edit" | …`) and in the persona prose upstream of it. (3) **Call:**
+  the two `TypeError`s above, with `tools.glob` succeeding in the same run, and `Test-Path` false
+  afterwards. Mechanism read from the installed packages rather than inferred:
+  `childCtx.tools.restrict(composition.toolFilter)` (`dsh-subagent/lib/index.js:554`) →
+  `ToolLayer.admits` (`dsh-tools/lib/index.js:2546`) → `view(scope)` (`:2868`, the
+  `layers.every(...)` gate) → `visible`; both `schemas()` and `sdkSchemas()` (`:2918`, `:2922-2923`)
+  read that one `visible` map, so "absent from the native table" and "absent from the SDK section"
+  are **one fact seen twice**, not two independent confirmations.
+- **Control, which is what excludes the alternatives:** a plain `subagent` delegation — same depth,
+  same spawn provider, same `applyChildComposition` path, and **no `toolFilter` on that row**
+  (`dsh-forge/agent.cordis.yml:477-484`) — enumerated 32 names with both tools present and
+  typeof `"function"`, and its `tools.edit(...)` was **really dispatched** to the code-runtime
+  worker, returning a typed `ToolCallError` carrying `toolName: "edit"` (it failed on the
+  read-before-write observation policy, a file-level reason that presupposes a live binding).
+  `ralph` and `workflow` are composed rows (`:798`, `:792`), so the unfiltered count is an exact
+  match for the composition rather than a superset.
+- **Rejected:** (a) reporting the absence alone — three children at the same depth establish that
+  the *environment* shows 32, which is what makes the filtered child's 30 attributable to the
+  filter; (b) resting on the earlier `dsh-smith` result — it was taken under `native` presentation,
+  and this question is specifically about PTC; (c) treating the child's self-report as the
+  measurement. It was not: the first filtered report **omitted `ralph` from its prose list** while
+  the runtime array contained it, and misquoted the type alias as `ToolNames` where the renderer
+  emits `ToolName` (`dsh-tools/lib/index.js:1645`). The count was right; the transcription was not.
+  A follow-up re-measurement on the same child reproduced 30 with `ralph` present and corrected
+  both slips. **Have the runtime `console.log` the array, and compare against it — not against a
+  model's retyping of it.**
+- **Reversed by:** a filtered child retaining either binding in its SDK object, or a forced
+  `tools.write` reaching the tool layer and failing with a `ToolCallError` rather than a
+  `TypeError` — either would mean the removal happens at dispatch rather than at presentation.
+  **Not claimed:** that `expert_verifier` was measured separately (it was not — its row
+  `dsh-forge/agent.cordis.yml:548-558` is byte-equal in `toolFilter`, `provider`, `maxDepth` and
+  `backgroundMode`, so testing one covers both *by that equality*, not by observation); and that
+  the filter is a sandbox boundary, which it explicitly is not — `pwsh` is deliberately retained
+  and a shell can write files.
+
+## D-27: Was "the deny list holds under PTC" the right claim to have made?
+- **Decided:** **It was true, and it was the wrong formulation — the observation is strictly stronger
+  than the claim it was tested against.** The verified statement is not *"a filtered call is
+  rejected"* but ***"the binding does not exist"***: under `ptc`/`both` the denied names are absent
+  from the child's SDK object, so a forced call dies at property lookup with
+  `TypeError: tools.write is not a function` and the tool layer is never entered. D-26 carries the
+  mechanism and the control; **this entry records that the correction was to my own expectation, not
+  only to the old wording in D-17**, and that both documents written before the measurement
+  (`README.md`'s 已关闭 section and `docs/dsh-forge.md`) needed the same amendment.
+- **Because:** every framing I wrote beforehand implied a **guard** — a call arriving and being
+  turned away. On this platform there is nothing to turn away. And a second consequence, which is
+  the part most likely to mislead a later reader: I had listed "absent from the mounted table" and
+  "absent from the SDK section" as two checks, and they are **one fact seen twice**, because
+  `schemas()` and `sdkSchemas()` both read the same `view(scope).visible` map. A checklist whose two
+  items are one item invites a reader to treat agreement as independent confirmation, which is the
+  error D-22 recorded in a different costume — *a fabricated decomposition under a correct total*.
+  Here it was *two witnesses who are the same witness*.
+- **Rejected:** silently updating the wording and moving on. The prediction is the artifact worth
+  keeping: **"holds" was testable and passed, "is absent" is what the platform actually does**, and a
+  next session inherits the second only if someone writes down that the first was a coarser guess.
+  Also rejected: recording the nine-tool list as the inventory. It is a **floor**: the session's table
+  carried 32 names including `ralph` and `workflow` (composed at `agent.cordis.yml:798`, `:792`), so
+  the checklist's job was to be checkable, not exhaustive — and `docs/dsh-forge.md` now says so.
+- **Reversed by:** a filtered child whose SDK object *has* the member and whose forced call returns a
+  `ToolCallError` instead of a `TypeError`, which would mean removal at dispatch and put the guard
+  framing back. **Instrumentation caveat, recorded because it bit this measurement:** a child's
+  self-reported list is a transcription, not a reading — the first filtered report dropped `ralph`
+  from its prose list while the runtime array held it, and misquoted `type ToolName` as
+  `type ToolNames`. Have the runtime print the array and compare against that.
+
+
+
+
