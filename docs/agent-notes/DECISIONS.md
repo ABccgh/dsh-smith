@@ -52,7 +52,8 @@
 - **Because:** two facts put together. (1) The host row constructs the registry at
   **constructor** time and never disposes it, so `cordisInspect` exists from boot
   (`dsh-cordis-host-runner/lib/index.js:1598`). (2) The preset's row is
-  `disabled: !!js ctx.get('cordisInspect') !== void 0` (`dsh-smith/agent.cordis.yml:677-679`),
+  `disabled: !!js ctx.get('cordisInspect') !== void 0` (the `tool-cordis` row of
+  `dsh-smith/agent.cordis.yml`),
   and `disabled` is a **skip**, not a wait — it is evaluated by the loader and the row returns
   before `init()` (`cordis-plugin-loader/lib/index.js:289,359-378,391`). The row declares no
   `inject:` anywhere, so the "the row would sit waiting on its declared injection" branch this

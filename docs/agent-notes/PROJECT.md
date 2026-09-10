@@ -95,7 +95,7 @@ Every line names how it was established. Session date of record: 2026-09-10.
   composition served the session. (Inference, labelled: the projection for this session should
   read `dsh-smith`; the confirming read is a projection query, not a log decode.)
 - **The `tool-cordis` row is `disabled`, which is a stronger statement than "gated".**
-  `dsh-smith/agent.cordis.yml:677-679` is `id: tool-cordis` / `disabled: !!js
+  The `tool-cordis` row of `dsh-smith/agent.cordis.yml` is `id: tool-cordis` / `disabled: !!js
   ctx.get('cordisInspect') !== void 0`, and the row declares **no `inject:` at all** (grep of
   `inject|disabled:|!!js` over the file returns lines 217, 221, 587, 596, 679 and no inject
   key). So the row cannot "wait on a service": it either loads and contributes, or is skipped.
@@ -116,7 +116,7 @@ Every line names how it was established. Session date of record: 2026-09-10.
   top-level zero, `dsh-subagent/lib/index.js:135-147`), a delegated expert is depth 1, and
   `resolveChildDepth` throws only when `childDepth > maxDepth` (`dsh-subagent/lib/types/child-agent.js:32-41`),
   so with a cap of 2 a depth-1 agent **may** spawn a depth-2 grandchild and a depth-3 attempt
-  is rejected. Deepest chain = 3 levels; the comment at `agent.cordis.yml:374-376` states that
+  is rejected. Deepest chain = 3 levels; the recursion-bound comment in `agent.cordis.yml` states that
   count correctly but labels the levels 1/2/3 instead of 0/1/2.
 
 
@@ -191,7 +191,7 @@ the installed preset is still byte-identical to the repo copy
   `subagent-model-selection: {enabled: true, allowedModels: [{provider: deepseek-official,
   model: deepseek-flash}]}` into `$DSH_HOME/settings.yaml` the same call returned `true` with
   one route (hot-reloaded); the file was then restored and it returned `false`. So
-  `modelSelectionSettings: true` at `agent.cordis.yml:415` is **wired and waiting**, and
+  `modelSelectionSettings: true` on the `subagent` row of `agent.cordis.yml` is **wired and waiting**, and
   `enabled`'s schema default is `false` (`lib/model-selection-settings.js:44`).
 - **The optional rows stay absent by design**: `tool-bash` (non-Windows gate), `tool-cordis`
   (gate, see D-1), `tool-subagent-codex`, `tool-subagent-claude-code` (product providers that
