@@ -24,7 +24,18 @@ What is actually open, and nothing else:
 
 | Role | Child id | Question |
 | --- | --- | --- |
-| — | — | Nothing delegated; no expert call is outstanding. |
+| — | — | Nothing delegated; no expert call is outstanding. This table is a snapshot and was stale once already: it read "Nothing delegated" while a dispatch was in flight, because it was written before that dispatch began. |
+
+> **The runtime restarted during this session.** Commit `e264886` was created at `21:00:32`, the
+> moment the previous turn's shell returned an in-flight warning. Effect: `list_agents` now
+> reports **no subagents** — the two child ids and their registry entries went with the process.
+> **Report content captured before the restart is unaffected**; only the live registry handles
+> are gone, so `send_message` / `interrupt_agent` against those ids can no longer resolve.
+> A captured report is durable; the ability to continue the conversation that produced it is
+> not. Worktree was `<clean>` before and after.
+>
+> This belongs in the record because a board that lists "no subagents" without the restart reads
+> as "none were ever started", which is the opposite of what happened.
 
 ## Settled this session
 
@@ -54,35 +65,47 @@ What is actually open, and nothing else:
    was rewritten: it now says explicitly *not* to check with `cordis_inspect_list`, because that
    is the tool the gate removes. The depth labels at the old `:374-376` were corrected to 0/1/2
    in the same edit.
-4. **OPEN — needs a `dsh-smith` session, and cannot be closed from a `cordis` one.** Two
-   verifications are structurally out of reach here:
-   - **Is `expert_verifier`'s `write`/`edit` filter ever enforced?** Source says the filtered
-     tools vanish from the child's table *and* a forced call is rejected; no call has ever
-     tested it.
-   - **Does the strengthened evidence standard improve findings?** The persona now demands a
-     verbatim quote with path and line, a re-read at the revision in front of you, re-running
-     the command before pasting its output, and naming the revision checked. Whether that
-     raises reliability is unknown until a verifier is called under it.
+4. **CLOSED — run, and all three grades resolved.** One `expert_verifier` call from a
+   `dsh-smith` session, at revision `9eb8b39e…` (a blob hash, three-way confirmed against the
+   `24ac033` blob, the current HEAD blob, and `hash-object` on disk).
+   - **(a) the filter is enforced → yes.** The child's `TOOLS` list holds neither `write` nor
+     `edit`; a forced `write` returned `Error: unknown tool "write"` and `edit` the same, and
+     the probe path left `Test-Path` false — no file was created.
+   - **(b) the evidence standard works → yes.** Eight line citations, each carrying its line
+     number (`417/437/447/486/556/588` at `2`, `625/634` at `provider-managed`), plus a named
+     revision at blob granularity rather than a commit id.
+   - **(c) an unsupported confident sentence → not triggered.** Every finding carries a quote
+     beneath it; the report's own `GAPS` block explicitly marks what it did not prove.
 
-   **Ready-to-run brief** (issue it from a session on `dsh-smith`, where `expert_verifier`
-   exists — it is absent from a `cordis` session, which is itself the preset-scoping property
-   working as designed):
+   **The result worth keeping is not that it agreed.** It **rejected the brief's assertion**:
+   the brief said "six rows at `maxDepth: 2`, and no other value", and the verifier returned
+   `VERDICT unsound` because the `team` group also holds `tool-subagent-codex` (L625) and
+   `tool-subagent-claude-code` (L634) at `maxDepth: provider-managed`. That qualification had
+   been written down in the previous turn and then stripped when the brief was issued verbatim
+   from this file. A verifier that confirms an over-claimed brief is a rubber stamp; this one
+   refused, which is the behaviour the strengthened standard was for. Recorded as D-16.
 
-   > Verify this claim about the `dsh-smith` preset at revision `<HEAD>`: *every one of the six
-   > delegation rows in the `team` group states `maxDepth: 2`, and no other value.* The claim
-   > and the file are both in `D:\DeepSeek Harness`. In your FINDINGS block, state your full tool
-   > name list, comma-separated, in the exact form
-   > `TOOLS: <name>, <name>, …`, and say explicitly whether `write` and `edit` are present and,
-   > if absent, what happened when you tried to use one.
+   Also settled by differential experiment, not by absence: a probe subagent at the **same
+   depth, same provider, same `applyChildComposition` path** but **without** a `toolFilter`
+   keeps `write`/`edit`, while `expert_verifier` does not — and `pwsh`, the tool the row's
+   comment says is deliberately kept, survives in both. So the absence is the `deny` list
+   acting, not depth or inheritance. See D-17.
 
-   Grading, all three observable in one report: (a) `write`/`edit` absent from `TOOLS` and the
-   attempted call rejected → the filter is enforced; (b) the claim confirmed **by a quoted grep
-   with counts** and the revision named → the evidence standard worked; (c) any confident
-   sentence with no quote under it → it did not.
+   **What this still does not isolate** (the verifier's own `GAPS`, quoted rather than
+   upgraded): that `restrict()` specifically caused the rejection, rather than any other
+   mechanism, was not separated; and whether `toolFilter` is fail-loud on an unknown name, or
+   how it composes with `allow`, remains untested.
 
 ## Next
 
-1. Run the brief in open question 4 from a `dsh-smith` session. It closes the last two gaps.
+1. **Both verifications are closed** (open question 4). Nothing on this board blocks a session
+   from acting; the remaining items are the "still not isolated" notes inside D-17, which need a
+   deliberate probe rather than a report.
 2. `docs/agent-notes/**` and `AGENTS.md` are committed, so the layers travel with the code.
    Keep them that way, and keep them out of the published tarball — that is now pinned by
    `files`, so it cannot drift back by accident.
+3. **When a report is captured, record the revision it was taken at, and re-measure before
+   restating any number from it** (D-14, D-16). Two entries in this file were invalidated by
+   exactly that omission.
+4. **A `Settled` / `In progress` table is a snapshot: date it or say what it is a snapshot of.**
+   This one read "Nothing delegated" while a dispatch was running.

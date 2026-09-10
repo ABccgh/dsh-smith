@@ -310,3 +310,73 @@
   `settings.yaml`, or a documented sandbox for them. Until then: ask, or record the question as
   open and let the next session with consent settle it.
 
+## D-16: Does the strengthened verifier evidence standard improve findings?
+- **Decided:** **Yes, and the evidence is the refusal rather than the agreement.** One
+  `expert_verifier` call under the strengthened persona met all four of its hard requirements —
+  verbatim quotes with path and line, a re-read at the revision in front of it, the command
+  re-run before its output was pasted, and an explicitly named revision — and it **rejected the
+  brief's own assertion** instead of confirming it.
+- **Because:** the brief said "every one of the six delegation rows in the `team` group states
+  `maxDepth: 2`, and no other value". The verifier returned `VERDICT unsound`, citing
+  `tool-subagent-codex` and `tool-subagent-claude-code` at `maxDepth: provider-managed`. That
+  qualification had been written down one turn earlier and was stripped when the brief was
+  issued verbatim from the board — so the verifier was right and the brief was wrong. It also
+  named its revision at **blob** granularity (`9eb8b39e…`, three-way confirmed against the
+  `24ac033` blob, the current HEAD blob, and `hash-object` on disk) rather than citing a commit
+  and reasoning from ancestry. The contrast that gives this weight is D-9: the same role, same
+  task type, previously returned a headline finding that was **false** and printed a grep
+  contradicting it. Same role, same task, opposite outcomes, the only change being the standard.
+- **Rejected:** reading the compliance as the result. A report that obeys the format while
+  confirming whatever it was handed is a rubber stamp; the property worth measuring is whether
+  it will contradict its brief on evidence, and this one did.
+- **Reversed by:** a run in which a verifier under this persona confirms an over-claimed brief,
+  or asserts something its own pasted output contradicts. One refusal is strong evidence, not a
+  guarantee, and the persona could still be satisfied while the finding is wrong — which is
+  exactly what D-9 describes, so the two entries are read together.
+
+## D-17: Is the `write`/`edit` filter on `expert_verifier` actually enforced?
+- **Decided:** **Yes — enforcement observed, and the alternative explanations excluded by
+  differential experiment.** The filtered tools are absent from the child's tool table *and* a
+  forced call is rejected with `unknown tool`.
+- **Because:** two lines of evidence, and the second is the one that matters. (1) Observation:
+  the child's `TOOLS` list contains neither `write` nor `edit`; a forced `write` returned
+  `Error: unknown tool "write"` and `edit` likewise, and the probe path left `Test-Path` false,
+  so nothing was created. (2) **Differential control**, because absence alone cannot distinguish
+  the filter from depth or inheritance: a probe subagent at the **same depth, same provider, and
+  the same `applyChildComposition` code path** but **without** any `toolFilter` retains `write`
+  and `edit`. The only declared difference is `toolFilter: {deny: [write, edit]}` on the
+  `tool-expert-verifier` row. `pwsh` — the tool that row's comment says is deliberately *not*
+  denied — survives in both, so the filter removed exactly the two names it names. Mechanism
+  read from the installed packages: `if (composition.toolFilter !== void 0)
+  childCtx.tools.restrict(composition.toolFilter);` (`dsh-subagent/lib/index.js:554`), with
+  `toolFilter: true` advertised by the spawn provider and a fail-loud guard when a provider
+  lacks it.
+- **Rejected:** resting on the absence alone. "This child has no `write`" is equally consistent
+  with a depth rule, an inheritance rule, or a different provider — the control run is what
+  removes those, and it is cheap.
+- **Reversed by:** a run in which an unfiltered subagent at the same depth also lacks the tools,
+  or one in which a filtered child retains them. **Still not isolated, and not claimed:** that
+  `restrict()` specifically — rather than another mechanism with the same observable effect —
+  produced the rejection; and whether `toolFilter` is fail-loud on an unknown name, or how it
+  composes with `allow`, is untested.
+
+## D-18: Did this preset's thesis survive being tested on itself?
+- **Decided:** **Partly, and the failure is in the human-readable layer.** The preset's claim is
+  that a verifier with an evidence standard finds what a summary-follower misses. That happened:
+  the verifier caught an over-claim in its own brief and refused it. The same preset's memory
+  layer, meanwhile, carried a stale `In progress` table that said "Nothing delegated" while a
+  dispatch was in flight, and no entry at all for the restart that destroyed the subagent
+  registry.
+- **Because:** the two facts sit in the same repository and the same day. The machine-checkable
+  parts of this project — the composition, the mount, the tool table, the filter — were all
+  verified by execution. The prose that records *what was done* was repeatedly found stale by an
+  independent reader rather than by its author: D-5 vs D-10, PROJECT.md's pre-fix snapshots, and
+  now the board's own `In progress` row. Three of this record's entries exist because someone
+  else read the files.
+- **Rejected:** treating the board as a passive log. A snapshot table with no timestamp is read
+  as current whenever it is opened, so it needs either a timestamp or a statement of what it is
+  a snapshot **of**. Both were missing.
+- **Reversed by:** a session that catches its own stale layer before a second party does. Until
+  that happens, the honest summary is that this project's verification discipline is stronger
+  than its bookkeeping, and the bookkeeping is what a stranger reads first.
+
