@@ -6,22 +6,46 @@
  * under `${DSH_HOME:-$HOME/.dsh}/.agent-presets/<id>/`, so installing is a
  * directory copy — nothing is generated and no harness file is edited.
  *
- * Refuses to overwrite an existing preset of the same name: a preset already
- * there may be one the user has been editing, and an installer must not be the
- * thing that silently replaces it.
+ * Two failure modes this script is written to avoid, both of which are silent
+ * by nature:
+ *
+ *   1. Installing into a directory the harness never scans. If `DSH_HOME` is
+ *      unset in an environment that does not use `~/.dsh`, the copy succeeds and
+ *      the preset simply never appears. The check below reports which home was
+ *      chosen and how to override it, before anything is written.
+ *   2. Leaving the previous version's files behind. A plain recursive copy over
+ *      an existing directory merges: a skill removed in the new version stays on
+ *      disk and keeps loading. Replacing therefore removes the target first, so
+ *      what is installed is exactly what this repository contains.
+ *
+ * Usage:
+ *   node bin/install.mjs               install (refuses to overwrite)
+ *   node bin/install.mjs --force       replace an existing installation
+ *   node bin/install.mjs --home <dir>  install into a specific DSH home
  */
-import { cp, mkdir, readdir, stat } from 'node:fs/promises'
+import { cp, mkdir, readdir, rm, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const PRESET_ID = 'dsh-smith'
 const SOURCE = resolve(dirname(fileURLToPath(import.meta.url)), '..', PRESET_ID)
-const DSH_HOME = process.env.DSH_HOME ?? join(homedir(), '.dsh')
+
+/** Arguments this script understands. */
+function parseArgs(argv) {
+  const homeIndex = argv.indexOf('--home')
+  const explicitHome = homeIndex === -1 ? undefined : argv[homeIndex + 1]
+  if (homeIndex !== -1 && explicitHome === undefined) {
+    console.error('install: --home needs a directory argument')
+    process.exit(1)
+  }
+  return { force: argv.includes('--force'), explicitHome }
+}
+
+const { force, explicitHome } = parseArgs(process.argv.slice(2))
+const DSH_HOME = explicitHome ?? process.env.DSH_HOME ?? join(homedir(), '.dsh')
 const ROOT = join(DSH_HOME, '.agent-presets')
 const TARGET = join(ROOT, PRESET_ID)
-
-const force = process.argv.includes('--force')
 
 async function exists(path) {
   try {
@@ -32,6 +56,22 @@ async function exists(path) {
   }
 }
 
+/**
+ * Decide whether a directory looks like a DeepSeek Harness home.
+ *
+ * Deliberately a warning, not a refusal: a first run before any profile exists
+ * is legitimate, and a wrong refusal is worse than an ignorable warning. What
+ * matters is that the chosen path is printed, so a silent no-op becomes visible.
+ * `--home` suppresses the warning, because an explicit path is the user's call.
+ */
+async function describeHome() {
+  const clues = []
+  for (const name of ['profiles', 'sessions', 'settings.yaml', 'storages']) {
+    if (await exists(join(DSH_HOME, name))) clues.push(name)
+  }
+  return clues
+}
+
 async function main() {
   if (!(await exists(SOURCE))) {
     console.error(`install: source preset not found at ${SOURCE}`)
@@ -40,6 +80,22 @@ async function main() {
     return
   }
 
+  console.log(`home:   ${DSH_HOME}`)
+  if (explicitHome === undefined && process.env.DSH_HOME === undefined) {
+    console.log('        (no DSH_HOME in the environment; using ~/.dsh)')
+  }
+  const clues = await describeHome()
+  if (clues.length === 0 && explicitHome === undefined) {
+    console.warn('warn:   this directory has none of the usual harness entries')
+    console.warn('warn:   (profiles/, sessions/, storages/, settings.yaml).')
+    console.warn('warn:   If your harness lives elsewhere, set DSH_HOME or pass --home <dir> —')
+    console.warn('warn:   otherwise this preset installs where nothing will scan for it.')
+  } else if (clues.length > 0) {
+    console.log(`found:  ${clues.join(', ')}`)
+  }
+  console.log(`target: ${TARGET}`)
+  console.log('')
+
   if (await exists(TARGET)) {
     if (!force) {
       console.error(`install: ${TARGET} already exists — refusing to overwrite.`)
@@ -47,18 +103,32 @@ async function main() {
       process.exitCode = 1
       return
     }
-    console.warn(`install: replacing the existing preset at ${TARGET} (--force)`)
+    // Remove before copying: a merge would keep files the new version dropped,
+    // and a stale skill still loads. Replacement must equal this repository.
+    await rm(TARGET, { recursive: true, force: true })
+    console.log('replacing the existing installation (--force)')
   }
 
   await mkdir(ROOT, { recursive: true })
   await cp(SOURCE, TARGET, { recursive: true, force: true })
 
-  const entries = await readdir(TARGET)
+  let entries
+  try {
+    entries = await readdir(TARGET)
+  } catch (error) {
+    console.error(`install: copied but cannot read back ${TARGET}`)
+    console.error(`install:   ${error && error.message ? error.message : String(error)}`)
+    process.exitCode = 1
+    return
+  }
+
   console.log(`installed: ${TARGET}`)
   console.log(`contents:  ${entries.join(', ')}`)
   console.log('')
-  console.log('next:      node bin/verify.mjs')
-  console.log('then:      start a session and pick the mode "DSH 智能体工坊"')
+  console.log('next:      node bin/verify.mjs && node bin/lint-skills.mjs')
+  console.log('then:      open a NEW session — a preset is mounted at session start, so a')
+  console.log('           session that is already open will not gain this one.')
+  console.log('           In the mode picker choose 「DSH 智能体工坊」.')
 }
 
 await main()

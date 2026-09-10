@@ -1,7 +1,6 @@
 {
   "name": "dsh-smith",
   "version": "0.1.0",
-  "private": true,
   "description": "A DeepSeek Harness agent preset specialized in building harness agents and Cordis plugins: a composition-design thinking protocol, a four-layer memory discipline, and a standing team of four named experts.",
   "keywords": [
     "deepseek-harness",
@@ -21,21 +20,28 @@
   "bin": {
     "dsh-smith-install": "bin/install.mjs",
     "dsh-smith-verify": "bin/verify.mjs",
-    "dsh-smith-lint-skills": "bin/lint-skills.mjs"
+    "dsh-smith-lint-skills": "bin/lint-skills.mjs",
+    "dsh-smith-drift-check": "bin/drift-check.mjs"
   },
   "scripts": {
     "install-preset": "node bin/install.mjs",
     "verify": "node bin/verify.mjs",
     "lint": "node bin/lint-skills.mjs",
+    "drift": "node bin/drift-check.mjs",
     "check": "node bin/lint-skills.mjs && node bin/verify.mjs"
   },
-  "files": [
-    "dsh-smith",
-    "bin"
-  ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ABccgh/dsh-smith.git"
+    "url": "https://github.com/ABccgh/dsh-smith.git"
+  },
+  "homepage": "https://github.com/ABccgh/dsh-smith#readme",
+  "bugs": {
+    "url": "https://github.com/ABccgh/dsh-smith/issues"
+  },
+  "dsh": {
+    "presetId": "dsh-smith",
+    "presetRoot": "dsh-smith",
+    "installTarget": "${DSH_HOME:-~/.dsh}/.agent-presets/dsh-smith"
   },
   "topics": [
     "deepseek-harness-plugins",
@@ -43,6 +49,7 @@
     "dsh",
     "cordis",
     "agent-preset",
+    "preset",
     "expert-team"
   ]
 }

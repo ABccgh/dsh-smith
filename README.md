@@ -33,6 +33,10 @@ node bin/install.mjs
 
 安装脚本把 `dsh-smith/` 整个目录复制到 `${DSH_HOME:-$HOME/.dsh}/.agent-presets/dsh-smith/`。它不会覆盖已存在的同名预设（要替换请加 `--force`）。
 
+脚本会先打印它选定的 home 与目标路径，并在该目录**缺少 harness 常见条目**（`profiles/`、`sessions/`、`storages/`、`settings.yaml`）时给出警告——因为把预设装进一个永远不会被扫描的目录是**静默失败**：复制成功，预设永远不出现。harness 装在别处就用 `DSH_HOME` 或 `--home <dir>` 指定。
+
+`--force` 是**真正的替换**，不是合并：它会先删除目标目录再复制。否则旧版本删掉的技能会留在磁盘上继续被加载，而你以为自己装的是新版本。
+
 > ### ⚠️ 必须开一个**新会话**
 >
 > preset 是在**会话启动时**挂载的。**已经开着的会话不会获得新预设**——它继续跑它自己启动时的那套组合。装完就在旧会话里问"怎么没生效"，是这个预设最常见的困惑来源。
@@ -44,17 +48,20 @@ node bin/install.mjs
 **验证安装**：
 
 ```sh
-node bin/verify.mjs        # 挂载 + 工具面
-node bin/lint-skills.mjs   # 五个技能的 frontmatter
+node bin/verify.mjs         # 挂载检查（能不能组合）
+node bin/lint-skills.mjs    # 五个技能的 frontmatter
+node bin/drift-check.mjs    # 与出厂 cordis 预设的偏离报告
 ```
 
-`bin/verify.mjs` 调用花名册的 `standingKeyFor(id)` 做真实挂载检查——组合每个插件行，但不启动 agent、不启动会话、不启动回合——并在同一个运行时里再断言一次**工具面**：那四个 `expert_*` 名字是否真的注册到了模型可见的表里。它刻意区分结局，**绝不把「没检查」说成「检查通过」**：
+`bin/verify.mjs` 调用花名册的 `standingKeyFor(id)` 做真实挂载检查——组合每个插件行，但不启动 agent、不启动会话、不启动回合——然后**打印出它自己做不到的那一步**（工具面确认）供你在真实会话里执行。它刻意区分结局，**绝不把「没检查」说成「检查通过」**：
 
 | 输出 | 含义 | 退出码 |
 | --- | --- | --- |
-| `MOUNTED OK` | 组合成功，且四个专家工具都在运行时工具表里 | 0 |
+| `MOUNTED OK` | 组合成功：无未激活行、无泄漏到根 realm 的服务 | 0 |
 | `MOUNT REJECTED` | 无法组合，并打印确切原因 | 1 |
 | `INCONCLUSIVE` | 本机没有可询问的 harness 运行时，**什么都没验证** | 1 |
+
+`MOUNTED OK` **不等于工具可用**——它只证明每个行都激活了。工具面确认脚本做不到，`verify` 会把该做的两步打印给你，原因详见下文「验证状态」。
 
 裸 Cordis 运行时不含 harness 的注册表，所以在普通 shell 里 `verify` 通常返回 `INCONCLUSIVE`。同样的检查也可以在任意会话里手工做：`standingKeyFor('dsh-smith')`，再按下面「验证状态」一节读取真实工具表。
 
@@ -82,14 +89,20 @@ dsh --agent-preset dsh-smith
 
 人格前缀另有一段五步推理序：目标生命周期 → 服务归属 → 证据 → 最小充分组合 → 证伪。核心要求是**区分「已核实」与「推断」**，并在用户会把推断读成事实的地方标注出来。
 
+**团队名册也写在人格前缀里**，而不是只放在技能文件中。原因是可观测的失败模式：一个没读过技能的主智能体根本不知道有四位专家，于是所有活都自己干；把名册放进始终加载的前缀，委托才可能发生。技能则承载细节——交接契约、每个角色的输出格式、如何组合新角色。
+
 ### 2. 记忆纪律
 
-| 层 | 路径 | 生命周期 |
+记忆层**锚定在项目根**，而项目根不一定是当前工作目录；`dsh-memory-chronicle` 给出四级判定顺序，并规定"连标记文件都没有"时不得凭空发明根，而要在工作板上留下未解决标记供下一个会话重新判定。
+
+| 层 | 路径（相对项目根） | 生命周期 |
 | --- | --- | --- |
 | 指令 | `AGENTS.md`（按目录） | 持久，自动加载 |
 | 编年史 | `docs/agent-notes/PROJECT.md` | 持久，就地修订 |
-| 决策 | `docs/agent-notes/DECISIONS.md` | **只追加**，含「什么会推翻它」 |
+| 决策 | `docs/agent-notes/DECISIONS.md` | **不可变**，只追加 |
 | 工作板 | `docs/agent-notes/BOARD.md` | 易变，自由重写 |
+
+`DECISIONS.md` 的条目**完全不可修改**——被推翻的决策由一条**新条目**说明，绝不去改写旧条目。早先的版本允许"只改 Status 行"这一个例外，那与同段的"只追加"自相矛盾，已删除。代价是被推翻的条目在文件里仍读起来像现行结论；补偿是这份文件永不重写，而"当前答案"由 `PROJECT.md` 承载——读者本来就先看那里。
 
 `AGENTS.md` 的加载预算在本预设中从默认 65536 提升到 **196608 字节**，工具结果修剪阈值也从 8192/4096/1024 放宽到 12288/6144/2048。**这两个数字是推断，不是测量出来的**：理由是专家报告与挂载验证输出是本预设的长结果。它们没有被任何真实会话的字节数或 token 读数验证过，而且两者反向耦合——指令预算放大，留给工具结果的上下文就更少。如果你的模型上下文窗口不大，请把它们调回默认值。
 
@@ -198,14 +211,17 @@ failed to apply loader entry tool-cordis: Host Cordis inspect provider "Service"
 
 针对 DeepSeek Harness **0.1.5-rc.1** 的行名与配置面编写。行名、服务键与配置字段属于部署内部接口，升级后可能移动。
 
-**本 preset 派生自出厂 `cordis` 预设，因此会随上游升级而漂移。** 仓库里没有自动化漂移检测——升级后请自行重跑：
+**本 preset 派生自出厂 `cordis` 预设，因此会随上游升级而漂移。** 升级后请重跑：
 
 ```sh
-node bin/verify.mjs        # 组合还能不能挂、工具面还在不在
-node bin/lint-skills.mjs   # 五个技能的 frontmatter 还完不完整
+node bin/drift-check.mjs   # 与出厂 cordis 逐行比对，报告共有行里哪些配置面变了
+node bin/verify.mjs        # 组合还能不能挂
+node bin/lint-skills.mjs   # 五个技能是否仍完整
 ```
 
-差分本仓库副本与已安装的出厂预设，也是升级后值得做的一次人工检查：两者共有的行如果被上游改过配置面，本副本不会自动跟随。
+`drift-check` **只报告，不自动同步**——本预设刻意改写了它继承的多行（人格、指令预算、修剪阈值、`maxDepth`、`tool-cordis` 的门），一个"体贴地"帮你同步的工具会把这份副本的意义整个抹掉。它列出每个共有行在**包名、`disabled` 行、配置键集合**上的差异；是否跟随上游是设计决定，需要人工改。
+
+当前状态（针对 0.1.5-rc.1，实测）：共有 30 行，其中 **6 行有意偏离**——`persona`（suffix 改为整套工作协议）、`agent-instructions`（预算提高）、`tool-result-pruner`（阈值放宽）、`tool-subagent` 与 `tool-subagent-fork`（显式 `maxDepth`）、`tool-cordis`（加条件门）。上游独有 2 行 `planning` / `delegation`，在本副本里对应重命名后的 `thinking` / `team`。
 
 ## 许可与来源
 

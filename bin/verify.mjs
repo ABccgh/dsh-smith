@@ -99,14 +99,18 @@ async function loadCordis() {
   }
 }
 
-/** Count the rows a composition file names, at top level and inside its groups. */
+/**
+ * Count the rows a composition file names, at any nesting depth.
+ *
+ * Indentation is matched loosely on purpose: pinning it to exactly four spaces
+ * made the count silently wrong for any group whose rows are indented
+ * differently, and a wrong number presented as a fact is worse than no number.
+ * The file's own YAML is the authority on nesting; this is only a sanity figure.
+ */
 async function namedRows(path) {
   try {
     const text = await readFile(path, 'utf8')
-    const lines = text.split('\n')
-    const top = lines.filter((line) => /^- id: /.test(line)).length
-    const nested = lines.filter((line) => /^ {4}- id: /.test(line)).length
-    return top + nested
+    return text.split('\n').filter((line) => /^\s*- id: \S/.test(line)).length
   } catch {
     return undefined
   }

@@ -64,6 +64,8 @@ rather than from a template:
 2. Read `PROJECT.md` before designing anything, and `DECISIONS.md` before re-opening a
    question that may already be settled.
 3. Read `BOARD.md` when you resume a task rather than start one.
+4. If step 3 found an unresolved-root note on the board, re-resolve the root before writing
+   anything. A chosen root is a decision the next session must confirm, not inherit.
 
 If a layer does not exist yet, create it with the first real entry rather than a
 placeholder. A memory file containing only its headings is worse than no file, because it
@@ -79,11 +81,27 @@ reads as maintained.
 - **Because:** <the evidence or constraint that decided it>
 - **Rejected:** <the alternative, and why it lost>
 - **Reversed by:** <what would make this wrong — a check, a measurement, a changed constraint>
-- **Status:** current | superseded by D-<m>
 ```
 
-Never edit an existing entry. A changed decision gets a new entry and an update to the old
-entry's `Status` line — that one field is the only mutation a decision entry allows.
+**A decision entry is immutable.** Do not edit one — not even a status line. An earlier version of
+this skill allowed "the one mutation" of a `Status:` field, which contradicted the append-only rule
+in the same paragraph; the rule was right and the exception was not.
+
+A decision that is later overturned gets a **new** entry that says so in its own words:
+
+```markdown
+## D-<m>: Is D-<n> still right?
+- **Decided:** No — D-<n> is superseded.
+- **Because:** <what changed, or the check that failed>
+- **Rejected:** keeping D-<n> because its reasoning still reads as sound
+- **Reversed by:** <what would restore D-<n>>
+```
+
+The cost of this rule is that a superseded entry keeps reading as current until you scroll. The
+compensation is that the file is never rewritten, so no reader can silently lose the reason a past
+decision was made — and `PROJECT.md` carries the *current* answer, which is where a reader looks
+first anyway. Keep `PROJECT.md`'s statement of an overturned decision updated; that is the file
+allowed to change.
 
 `PROJECT.md` — sections, edited in place:
 
@@ -106,6 +124,10 @@ entry's `Status` line — that one field is the only mutation a decision entry a
 ## Open questions       <!-- each with the check that would answer it -->
 ## Next                  <!-- the immediate next action -->
 ```
+
+If you keep only two of these three files, keep `PROJECT.md` and `BOARD.md`: the chronicle carries
+what is true and the board carries what is next, and a decisions log with no current answer is the
+one a reader can do without.
 
 ## Rules that keep the record trustworthy
 
