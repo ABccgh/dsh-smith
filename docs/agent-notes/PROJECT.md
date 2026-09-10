@@ -73,8 +73,52 @@ Every line names how it was established. Session date of record: 2026-09-10.
   `session.jsonl.zstd` and `session.v3.jsonl.zstd` names were covered) found zero hits for
   `pwsh`, `exit_plan_mode`, `todo_write`, or any `cordis_` string; a control-calibrated scan
   was needed precisely because a zero-hit result from these files proves nothing on its own.
-  The census is a moving target — a later recount saw 117, the extra one being the delegated
-  child session created during this session.
+  The census is a moving target: a recount during the same session saw 117, and this session
+  saw **120** (`109 session.jsonl.zstd` + `11 session.v3.jsonl.zstd`), every one still
+  header-only, with no second file of any kind in the sessions store. **The `.v3` name is not
+  a child marker**: the root session of this very repo carries `session.v3.jsonl.zstd`.
+- **`agentPreset` in a header is a creation-time hint; the projection is the authority.**
+  The header field is optional (`dsh-session-format/lib/types/types.d.ts:19`). The web-app
+  composition sets the default preset id in its own row — `dsh-web-app/cordis.patch.yml:481-484`,
+  `id: agent-presets` with `config.default: standard` — and the API reports a session's preset
+  from `ctx.sessionProjections.stateOf(session, 'agentPreset')`
+  (`dsh-api-session-controller/lib/index.js:363` and `:522`), a projection whose `init` merely
+  adopts the header while its `apply` is driven by the `agent-preset/selected` event carrying
+  the **mounted** preset id (`dsh-agent-presets/lib/index.js`, and its projection definition at
+  `lib/index.js:1071-1079`). **Measured divergence, same tree and same tool table:** the root
+  session of this repo reads `"agentPreset":"standard"` while the two expert children it
+  spawned, one delegation deeper, read `"agentPreset":"dsh-smith"`. Plain `standard` cannot
+  explain the root session at all — the shipped `standard` composition
+  (`dsh-agent-presets/presets/standard/agent.cordis.yml`, 12928 B) declares `subagent` and
+  `subagent_fork` but **no `expert_*` row**, while this repo's preset (40032 B) declares all
+  four. So a header's value is evidence *that the field was written*, never evidence of which
+  composition served the session. (Inference, labelled: the projection for this session should
+  read `dsh-smith`; the confirming read is a projection query, not a log decode.)
+- **The `tool-cordis` row is `disabled`, which is a stronger statement than "gated".**
+  `dsh-smith/agent.cordis.yml:677-679` is `id: tool-cordis` / `disabled: !!js
+  ctx.get('cordisInspect') !== void 0`, and the row declares **no `inject:` at all** (grep of
+  `inject|disabled:|!!js` over the file returns lines 217, 221, 587, 596, 679 and no inject
+  key). So the row cannot "wait on a service": it either loads and contributes, or is skipped.
+  Because the registry exists from host-composition boot (above), the predicate is true, the
+  row is skipped, and `dsh-smith` therefore **can never** be the composition that registers the
+  `cordis_*` tools. The absence is a property of this preset, not of mount order.
+- **Omitting `maxDepth` on a `tool-subagent` row resolves to 3, not 2.** The row schema is
+  `maxDepth: z.union([z.natural().max(Number.MAX_SAFE_INTEGER), z.const("provider-managed")]).default(3)`
+  (`dsh-tool-subagent/lib/index.js:269`), and Cordis applies schema defaults before `apply`
+  runs (`cordis/lib/index.js:955-957`, `resolveConfig` → `Config["~standard"].validate(config)`
+  at plugin instantiation; proof of application is `dsh-tool-subagent/lib/index.js:508`, which
+  branches on `typeof config.maxDepth === "number"` and so can only ever see the defaulted
+  value). **In this composition the expert rows omit it**: `maxDepth: 2` sits on `subagent`
+  (L405) and `subagent_fork` (L425) only, while `expert_architect` (L429), `expert_verifier`
+  (L467), `expert_protocol` (L519) and `expert_chronicler` (L550) declare `provider`,
+  `toolName`, `reasoningEffort` and `persona` and nothing else — so those four resolve to 3.
+  The recursion that results: the lead is depth 0 (`delegationDepthOf` treats absence as
+  top-level zero, `dsh-subagent/lib/index.js:135-147`), a delegated expert is depth 1, and
+  `resolveChildDepth` throws only when `childDepth > maxDepth` (`dsh-subagent/lib/types/child-agent.js:32-41`),
+  so with a cap of 2 a depth-1 agent **may** spawn a depth-2 grandchild and a depth-3 attempt
+  is rejected. Deepest chain = 3 levels; the comment at `agent.cordis.yml:374-376` states that
+  count correctly but labels the levels 1/2/3 instead of 0/1/2.
+
 
 ## Component map
 
@@ -97,47 +141,68 @@ settled questions.
 
 | Item | Outcome |
 | --- | --- |
-| `expert_*` reach the model tool table | **Yes** — all four present, enumerated from a live `dsh-smith` session |
-| The personas emit their contracted blocks | **2 of 4 measured, both yes** — `expert_architect`'s *final* report was exactly `DECISION`, `BOUNDARIES`, `TRADEOFFS`, `RISKS`, `ACCEPTANCE` in order, and `expert_chronicler`'s was exactly `RECORDED`, `DERIVED`, `OPEN`. `expert_verifier` / `expert_protocol` were never called. |
-| `tool-cordis` landing in a cold process | **Gated off in a warm process**, where the registry provably exists; cold start not reproduced |
-| `package.json` valid under npm | **Yes** — `npm pack --dry-run` exits 0: 15 files, 56.3 kB packed / 154.0 kB unpacked, all four `bin` targets included and each beginning `#!/usr/bin/env node` |
+| `expert_*` reach the model tool table | **Yes** — all four present, re-enumerated from a fresh root session of this repo after a harness restart, and again in the delegated children |
+| The personas emit their contracted blocks | **4 of 4 measured, all yes** — `expert_architect` gave exactly `DECISION`/`BOUNDARIES`/`TRADEOFFS`/`RISKS`/`ACCEPTANCE`, `expert_chronicler` exactly `RECORDED`/`DERIVED`/`OPEN`, and this session `expert_verifier` exactly `VERDICT`/`FINDINGS`/`SURVIVED`/`GAPS` and `expert_protocol` exactly `ANSWER`/`EVIDENCE`/`CONFLICTS`/`UNKNOWN`. All four matched their persona text block-for-block in order, from the **final** message of each child. |
+| `tool-cordis` landing in a cold process | **Never — decided, not just unobserved.** The row is `disabled` (not `inject`-gated), the predicate is true from host boot, so the row is skipped for the process's life. Measured again in a fresh post-restart session: zero `cordis_*` tools. |
+| `package.json` valid under npm | **Yes** — `npm pack --dry-run` exits 0, but the packed set has **grown from 15 files / 56.3 kB to 19 files / 65.5 kB packed, 179.2 kB unpacked**, because `AGENTS.md`, `.gitattributes` and `docs/agent-notes/*.md` are now committed and nothing excludes them. See the gap below. |
 | shields.io badge renders | **Resolves** — HTTP 200, an SVG labelled `topics` / `DeepSeek Harness Plugins` |
 
-Also verified this session: `node bin/lint-skills.mjs` reports **all five skills lint clean**.
+Also verified this session: `node bin/lint-skills.mjs` reports **all five skills lint clean**;
+the installed preset is still byte-identical to the repo copy
+(`A6D2A9C1…DE051`, 40032 B, both paths).
 
 ## Known gaps
 
+- **The published tarball now ships the memory layers.** `npm pack --dry-run` (this session,
+  exit 0) lists 19 files including `AGENTS.md` (2.2 kB), `.gitattributes` (463 B) and
+  `docs/agent-notes/BOARD.md` + `DECISIONS.md` + `PROJECT.md` (20.5 kB combined). They travel
+  with the **git repository** by design, but nothing keeps them out of the **npm package**:
+  `package.json` has no `files` allowlist, so npm falls back to `.gitignore` (the
+  `gitignore-fallback` warning). A `files` list would pin the publishable set and silence the
+  warning — the round trip to the registry is the one place the internal notes should not go
+  unless that is deliberate.
 - **The `cordis_*` tools are absent by design** (D-1), and the absence was confirmed against
-  the live table above rather than inferred.
-- **Cold start is unreproduced.** Every measurement here comes from one warm GUI process.
-- **`expert_verifier` and `expert_protocol` have never been invoked**; their output contracts
-  are unmeasured. (`expert_chronicler` is exercised by this report, but a persona judging its
-  own contract is not independent evidence of it.)
-- The optional rows stay absent by design: `tool-bash` (non-Windows gate), `tool-cordis`
+  the live table rather than inferred. The preset's own advice at `agent.cordis.yml:670-671` —
+  "Check which case you are in with `cordis_inspect_list`" — cannot be followed from a
+  `dsh-smith` session, because the tool it names is exactly the one the gate removes. That
+  line should name the shipped `cordis` preset as the instrument instead.
+- **`list_subagent_models` never appears on this deployment** — now mechanism-level, and the
+  reason is stronger than "a row is missing". The tool is registered only when a model
+  selection policy resolves (`dsh-tool-subagent/lib/index.js:389`,
+  `if (modelSelectionPolicy !== void 0) registerListSubagentModels(...)`), and that policy
+  requires the **Host**-scope provider
+  `@deepseek-ai/dsh-tool-subagent/model-selection-settings` (`:582-614`) plus a scoped preset
+  Context. The base composition does not mount it, so no session of this profile can select a
+  child model, and `modelSelectionSettings: true` at `agent.cordis.yml:403` is inert here.
+  A related guard makes the failure loud rather than silent:
+  `dsh-tool-subagent/lib/invariant.js:36-44` fails the step if a selectable tool exists without
+  its projection.
+- **The optional rows stay absent by design**: `tool-bash` (non-Windows gate), `tool-cordis`
   (gate, see D-1), `tool-subagent-codex`, `tool-subagent-claude-code` (product providers that
   production `dsh` does not install). `subagent_codex` / `subagent_claude_code` are verified
   absent from the live table.
-- There is no `.npmignore`, so npm falls back to `.gitignore` rules (the `gitignore-fallback`
-  warning in `npm pack --dry-run`).
-- `@deepseek-ai/dsh-tool-subagent-report` is a **broken junction** in this deployment
+- **`@deepseek-ai/dsh-tool-subagent-report` is a broken junction** in this deployment
   (`node_modules/@deepseek-ai/dsh-tool-subagent-report` resolves to a missing target). Check
   `lib/` existence, not the directory entry, before planning against any package.
-- `modelSelectionSettings: true` on the generic `subagent` row (`agent.cordis.yml` line 403)
-  depends on a host row the base composition does not mount, so `list_subagent_models` is
-  expected never to appear. Unconfirmed — the live table was not enumerated against that
-  expectation specifically.
+- **The installed DSH packages do not live in this repo.** `D:\DeepSeek Harness\node_modules`
+  has no `@deepseek-ai` directory; every package read for this record came from the npx
+  checkout (`C:\Users\曦曦\AppData\Local\npm-cache\_npx\1e7f6d9597241db0\node_modules\@deepseek-ai\`).
 - The installed-copy hash is a **point-in-time** equality; it says nothing about whether the
   copy stays in sync after a later edit to `dsh-smith/**` without re-running `install.mjs`.
 
 ## Stale claims to re-check
 
-- **The README's `cordis_*` claim is wrong and needs rewriting (user's decision, not ours).**
-  It says a `dsh-smith` session "gets `cordis_*` tools only if some other live composition in
-  the same process already registered them". The source says the opposite in structure: the
-  four *providers* (`Service`, `Event`, `Builtin`, `Tool`) are process-global and colliding,
-  while the model-facing `cordis_*` *tools* are registered per session by this row's `apply`.
-  A disabled row therefore yields no `cordis_*` tools in that session no matter what any other
-  composition registered — which is exactly what the live table shows.
+- **The README's `cordis_*` claim was wrong and has been rewritten (this session's earlier
+  revision).** The replacement — the row is skipped outright, so `dsh-smith` never provides the
+  tools — matches the source and the live table.
+- **An expert report is a source, not a finding.** The `expert_verifier` call this session
+  returned `FINDINGS` whose headline defect was false: it asserted `maxDepth: 2` sits on "all
+  four delegation/expert rows" and cited commit `8cf70e9` as proof. A re-grep of the same
+  40032-byte file returns six `maxDepth` hits (L374, L405, L412, L425, L592, L601) and the
+  expert rows carry none; `8cf70e9` is two revisions behind `HEAD`. Its depth arithmetic was
+  also wrong in the other direction (it proposed "lead + one child", i.e. two levels, where
+  three are reachable). Both the false claim and the arithmetic were caught only by re-running
+  the check — which is why this file records the re-grep, not the report.
 - The `register()` doc comment in `dsh-cordis-host-runner/lib/types/inspect-registry.d.ts`
   line 38 says "returns idempotent disposer", which reads as "duplicate registration is safe".
   The implementation is precise about both halves: it **throws** on a duplicate id at line 732,
