@@ -127,7 +127,13 @@ dsh --agent-preset dsh-smith
 - **没强制的部分**：它**仍然有 `pwsh`**，而 shell 能写文件。所以这**不是**沙箱边界，我也不会把它写成沙箱。它的作用是设计信号——审查**靠论证纠正**（把补丁作为文本交回来），而不是悄悄变成一次没人看见的重写。persona 已如实写明这一点。
 - **故意不 deny `pwsh`**：复现缺陷是验证者最有力的证据，一个什么都不能跑的验证者只是校对员。代价是这条约束终究是**行为约束**，不是能力约束。
 
-四者默认后台运行（`backgroundMode: continuable`），因此一条消息可以并行启动全部专家。递归上限由**每一行显式写明的 `maxDepth: 2`** 界定为「主智能体 → 专家 → 专家的助手」——包括 `subagent_fork`：该行原先省略了 `maxDepth`，而省略并不会继承兄弟行的值，工具 schema 会补 `.default(3)`，于是 fork 链能比其它行多下一层。现已统一。
+四者默认后台运行（`backgroundMode: continuable`），因此一条消息可以并行启动全部专家。
+
+**递归上限在全部六条委派行上显式写明 `maxDepth: 2`**——`subagent`、`subagent_fork`，以及四条专家行。前两条一直有；**后四条一直没有**，而"省略"不等于"继承"：`dsh-tool-subagent` 自己的 schema 会补 `.default(3)`，于是四条专家行实际带着 **3** 的预算、又运行在深度 1，**比主智能体自己的工具还能多下一层**——`agent(0) → expert(1) → helper(2) → helper(3)` 是可到达的。这与我曾在一个提交信息里声称的"每一行都写明了"相反，那一版注释还把层级标成了 1/2/3。
+
+正确的计数（读自 `resolveChildDepth`：`childDepth = parent + 1`，只在 `childDepth > maxDepth` 时拒绝；顶层会话头携带 `delegationDepth: 0`）：**从主智能体起是 0、1、2**。六行统一为 2 之后，最深链路是 `agent(0) → expert(1) → helper(2)`，第四层在 `start` 处被拒。
+
+**一条只在两行上成立的界不是界**——这是本仓库自己的教训，记在 `DECISIONS.md` 的 D-10。
 
 **这个团队没有"端到端验证者"。** 名册覆盖设计、对抗审查、外部事实、记忆四件事，但**没有人负责"整条流程真的跑通了吗"**。这正是我构建本预设时犯的错：逐行验证到了 ACTIVE，就以为功能可用。改动跨多个部件时，请你自己跑端到端检查，或明确要求 `subagent` 只做这件事并报告**观测到的结果**而非结论。
 
@@ -243,9 +249,11 @@ failed to apply loader entry tool-cordis: Host Cordis inspect provider "Service"
 
 - **四条专家工具确实到达了模型工具表。** `expert_architect` / `expert_verifier` / `expert_protocol` / `expert_chronicler` 全部在会话的工具 schema 里，`subagent` / `subagent_fork` 同在，而 `subagent_codex` / `subagent_claude_code` **恰好缺席**——与那两行 `disabled: true` 的预测一致。
   > 这项证据**强于**我原先指定的检查方式。`cordis_inspect_query → Tool.listTools` 那个会话里跑不了（`cordis_*` 缺席），而它的实现是 `ctx.tools.schemas(context.agent)`——返回的正是同一张表。**会话自己持有的函数 schema 就是交到模型手上的那张表**，用不着再去自省它。
-- **两个人格确实按契约输出。** `expert_architect` 给出 `DECISION / BOUNDARIES / TRADEOFFS / RISKS / ACCEPTANCE`，`expert_chronicler` 给出 `RECORDED / DERIVED / OPEN`。
-  > 这里有一个会骗过人的陷阱：**架构专家的中间态消息以 `# 1. DECISION` 开头并做了摘要，只有最终报告才带齐五个块。** 人格的中间形态不等于它的契约——判断契约要看**终稿**，`expert_verifier` 与 `expert_protocol` 至今未被调用过，它们两个仍未验证。
-- **`package.json` 在 npm 下有效**：`npm pack --dry-run` 退出码 0，15 个文件，四个 bin 目标齐备且都有 node shebang。
+- **四个人格全部按契约输出**（四次调用，逐一比对终稿的块与 persona 文本）：`expert_architect` → `DECISION / BOUNDARIES / TRADEOFFS / RISKS / ACCEPTANCE`；`expert_chronicler` → `RECORDED / DERIVED / OPEN`；`expert_verifier` → `VERDICT / FINDINGS / SURVIVED / GAPS`；`expert_protocol` → `ANSWER / EVIDENCE / CONFLICTS / UNKNOWN`。
+  > **但人格合规不等于报告可信——这是本仓库最值钱的一条教训。** 验证专家的契约完全合规，而它的头号发现是**假的**：它断言 `maxDepth: 2` 存在于全部四条专家行，**并打印出一份与自己的断言相矛盾的 grep**（六个命中，无一在专家行上），引用的是一个提交正文而不是文件，而且那个提交落后 HEAD 两个版本。重新 grep 同一个文件复现了原始审计：四条专家行**根本没有** `maxDepth`，因此各自取 schema 默认值 **3**——与它的断言相反，也与它正在评审的那段注释相反。它的替代深度算术同样是错的，方向还相反。
+  >
+  > 它照抄的是**推断链的上游**（提交信息、任务描述、我此前的说法），而不是文件本身。已据此强化 persona 的证据标准：每条发现必须**逐字引用**读到的文本并给出路径与行号、引用前**重跑**那条命令、并声明**所检查的版本**；无法这样支撑的发现只能作为 `GAPS` 里的未证实项。
+- **`package.json` 在 npm 下有效**：`npm pack --dry-run` 退出码 0；加了 `files` 允许列表后为 14 个文件、58.1 kB，四个 bin 目标齐备，记忆层与 `.gitignore`/`.gitattributes` 均被排除。
 - **README 徽章可解析**：HTTP 200，SVG 标注 `topics: DeepSeek Harness Plugins`。
 
 ### 已用真实挂载验证的部分
@@ -259,9 +267,15 @@ failed to apply loader entry tool-cordis: Host Cordis inspect provider "Service"
 
 ### 仍然存在的缺口
 
-1. **`expert_verifier` 与 `expert_protocol` 的输出契约未被观测。** 两个已验证，两个没有。委托一次任何任务给它们即可关闭。
-2. **`tool-cordis` 的冷启动未被复现。** 结论现在建立在**生命周期**论证上（注册表由构造函数创建、挂在永不释放的行下），比挂载顺序论证强得多，但仍未在冷启动进程里直接观测。
-3. **`modelSelectionSettings: true` 很可能静默无效。** 该设置依赖宿主挂载 `@deepseek-ai/dsh-tool-subagent/model-selection-settings` 行，本部署的基础组合里没有它。会话工具表里也没有 `list_subagent_models`，**与该推断一致**——但这个配置键不报错，所以要么它是惰性的，要么它静默回退。
+1. **`modelSelectionSettings: true` 很可能静默无效。** 该设置依赖宿主挂载 `@deepseek-ai/dsh-tool-subagent/model-selection-settings` 行，本部署的基础组合里没有它。会话工具表里也没有 `list_subagent_models`，**与该推断一致**——但这个配置键不报错，所以要么它是惰性的，要么它静默回退。
+2. **`expert_verifier` 的 `write`/`edit` 过滤从未被真正强制过一次。** 该行确实挂载、它的工具确实在表里、人格契约确实合规——但"被过滤的工具调用会被拒"这句只有源码支持，没有一次实际尝试。
+3. **加强后的验证者证据标准尚未被检验。** 它在 persona 里已写明（逐字引用、重跑命令、声明版本），但**下一次真正调用之前，无法知道它是否真的改变了发现的可靠性**。这是唯一一条"改进本身也待验证"的条目。
+
+### 已关闭
+
+- **四个人格的输出契约** —— 四次调用，全部合规（见上）。
+- **`tool-cordis` 的落点** —— 不再是"取决于挂载顺序"。`disabled` 是**跳过**而非**等待**（`cordis-plugin-loader/lib/index.js:391` 在 `init()` 之前返回），该行没有声明任何 `inject:`，而注册表在**构造函数**里建立且永不释放。**生命周期事实，不是顺序事实**：重启不会改变它。
+- **会话头的 `agentPreset` 不能证明会话由哪个预设在服务** —— 它是**创建时提示**。本仓库根会话的头写着 `standard`，而它派生的两个子会话写着 `dsh-smith`，三者工具表相同；出厂 `standard` 组合里根本没有 `expert_*` 行。**挂载后的工具表才是权威。**
 4. **`expert_verifier` 的 `write`/`edit` 过滤从未被强制过一次。** 该行确实挂载了、它的工具确实在表里，但"被过滤的工具调用会被拒"这句只有源码支持，没有一次实际尝试。
 
 脚本能做的部分仍受限于动态插件无法把 preset 挂到 agent 上（`ctx.fiber` 被 guard 屏蔽），`bin/verify.mjs` 因此**打印**该做的两步而不是假装检查过。
@@ -279,6 +293,8 @@ node bin/lint-skills.mjs   # 五个技能是否仍完整
 ```
 
 `drift-check` **只报告，不自动同步**——本预设刻意改写了它继承的多行（人格、指令预算、修剪阈值、`maxDepth`、`tool-cordis` 的门），一个"体贴地"帮你同步的工具会把这份副本的意义整个抹掉。它列出每个共有行在**包名、`disabled` 行、配置键集合**上的差异；是否跟随上游是设计决定，需要人工改。
+
+一个要知道的边界：**它只比对两份文件都有的行**。本预设独有的六行（`thinking`、`team` 两个 group 与四条专家行）不在比对范围内，所以那四条专家行上的 `maxDepth: 2` 在这里**不会**出现——要检查递归统一性，直接按行审计 `maxDepth` 更可靠。
 
 当前状态（针对 0.1.5-rc.1，实测）：共有 30 行，其中 **6 行有意偏离**——`persona`（suffix 改为整套工作协议）、`agent-instructions`（预算提高）、`tool-result-pruner`（阈值放宽）、`tool-subagent` 与 `tool-subagent-fork`（显式 `maxDepth`）、`tool-cordis`（加条件门）。上游独有 2 行 `planning` / `delegation`，在本副本里对应重命名后的 `thinking` / `team`。
 

@@ -26,6 +26,7 @@
 - **Reversed by:** an upstream `CordisInspectRegistryService.register()` that is idempotent —
   returns the existing disposer for an already-registered provider id instead of throwing —
   shipped in a DSH release. Then the gate is deleted and the row enabled unconditionally.
+  <!-- SUPERSEDED BY D-8: that release would NOT restore the tools on its own. See D-8. -->
 
 ## D-2: Does the upstream idempotent-`register()` fix need a refcount?
 - **Decided:** Open — deliberately not settled. Recorded so the next session does not
@@ -119,4 +120,81 @@
 - **Reversed by:** an explicit decision that the package *should* carry the chronicle for
   consumers — in which case add a `files` entry that admits them on purpose, and delete this
   entry's "unless".
+
+## D-7: Decision on D-6's publish surface — memory layers stay out of the tarball
+- **Decided:** Closed, and D-6's first branch is the one taken. `package.json` now carries
+  `"files": ["bin", "dsh-smith", "README.md", "LICENSE"]`. The memory layers stay in the git
+  repository and stay out of the npm package.
+- **Because:** the allowlist was measured rather than assumed. `npm pack --dry-run` now packs
+  **14 files / 58.1 kB** (was 19 / 65.5 kB), and every one of `AGENTS.md`,
+  `docs/agent-notes/{PROJECT,DECISIONS,BOARD}.md`, `.gitattributes` and `.gitignore` is
+  excluded — while nothing the preset needs was dropped: all four `bin/` scripts, the whole
+  `dsh-smith/` tree including five skills, `preset.yml`, `README.md` and `LICENSE` are in.
+  The chronicle's audience is this repository: it holds hashes, session ids, and half-open
+  questions, and a consumer installing an agent preset has no use for them.
+- **Rejected:** leaving the set defined by exclusion. That is the property that drifted by four
+  files the moment the memory layers were committed, and it would drift again on the next
+  addition. Also rejected: an `.npmignore`, which silences the same warning while keeping the
+  publishable set unpinned.
+- **Reversed by:** an explicit decision that the package should carry the chronicle; then add
+  `docs` to `files` on purpose and record why.
+
+## D-8: Would an idempotent upstream `register()` alone restore `cordis_*` to this preset?
+- **Decided:** No — and D-1's reversal condition is therefore **too weak**. Two independent
+  upstream changes are needed, not one: `register()` must become idempotent **and** a
+  composition must be able to obtain the seven tools without running this row's `apply`, which
+  is what registers the providers.
+- **Because:** the two registration surfaces have different scopes (counted in
+  `dsh-tool-cordis/lib/index.js`: one `ctx.cordisInspect.register` loop over four providers,
+  seven `ctx.tools.register` calls). The providers are process-global and colliding; the seven
+  tools are session-scoped and are registered **by the same `apply`**. So skipping `apply` to
+  avoid the collision also skips the tools — the opposite of what is wanted. Idempotent
+  `register()` removes the collision but leaves the tools registered into whichever session
+  loaded the row first, not this one.
+- **Rejected:** the naive refcount that the `expert_architect` report recommended alongside
+  idempotency. No `refcount`/`refCount` token exists in `dsh-cordis-host-runner/lib/index.js`,
+  so it is a new mechanism; and disposing the providers at zero consumers would leave a live
+  `cordis_*` tool reading a registry that is gone, because `cordis_inspect_list` /
+  `cordis_inspect_query` read it at call time. This half of the report never reproduced.
+- **Reversed by:** an upstream split in which the tool registration does not also own the
+  provider registration — e.g. a `tool-cordis` that consumes an already-registered provider set
+  when present. That is what this repository cannot express from YAML, and it is the ceiling
+  recorded in the README.
+
+## D-9: Is a persona's contract satisfied by its final report alone?
+- **Decided:** Yes for the contract, **no for the finding**. All four personas were called and
+  all four emitted exactly their contracted blocks in their final messages — but the
+  `expert_verifier`'s headline finding was **false**, so persona compliance says nothing about
+  report quality.
+- **Because:** measured this session. `expert_verifier` → `VERDICT` / `FINDINGS` / `SURVIVED` /
+  `GAPS`, matching `agent.cordis.yml`; `expert_protocol` → `ANSWER` / `EVIDENCE` / `CONFLICTS` /
+  `UNKNOWN`. Both compliant. Yet the verifier declared `maxDepth: 2` present on all four expert
+  rows, and **printed a grep whose own output contradicted that** (six hits, none on an expert
+  row), citing a commit body instead of the file, at a revision two commits behind. Re-grepping
+  the same 40032-byte file reproduced the original audit exactly: the expert rows carry **no**
+  `maxDepth` at all, so they defaulted to 3 — the opposite of both its claim and the composition
+  comment it was reviewing.
+- **Rejected:** "the persona contract was met, so the review is trustworthy". Two different
+  claims, and the second does not follow from the first.
+- **Reversed by:** nothing about personas — the fix is in the persona's *evidence standard*,
+  which now requires a verbatim quote with path and line, re-running the command before pasting
+  its output, and naming the revision checked. Whether that raises finding quality is itself
+  unproven until the next verifier call.
+
+## D-10: Where does the recursion bound actually sit, and is it one bound?
+- **Decided:** On **all six** delegating rows, now explicitly — and it was **not** one bound
+  before this session. The four expert rows stated no `maxDepth` and therefore carried the
+  schema default 3, giving an expert a *deeper* budget than the lead's own tools.
+- **Because:** `maxDepth` is checked as `childDepth > maxDepth` with
+  `childDepth = delegationDepthOf(parent) + 1` (`dsh-subagent/lib/index.js:432`), and a
+  top-level session header carries `delegationDepth: 0` — so levels count 0, 1, 2 from the lead,
+  not 1, 2, 3 as the composition comment claimed. With `subagent`/`subagent_fork` at 2 and the
+  expert rows defaulting to 3, the reachable chain was lead(0) → expert(1) → helper(2) →
+  helper(3): the expert's subtree could go one level deeper than the lead's. All six rows now
+  state `maxDepth: 2`, making the deepest chain lead(0) → expert(1) → helper(2).
+- **Rejected:** resting on the two rows that were already correct and the comment that described
+  a bound the file did not implement. A bound that holds on two of six rows is not a bound.
+- **Reversed by:** a deliberate decision to let experts recurse further than the lead; then
+  state a number on every row anyway, because the omission is what broke the invariant, not the
+  value.
 

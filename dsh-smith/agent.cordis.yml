@@ -370,10 +370,22 @@
 #
 # `backgroundMode: continuable` makes calls background by default and returns the
 # durable child id, which is what lets one message start four experts at once.
-# Because this preset's tools are inherited by every child, the row-level
-# `maxDepth: 2` below is what bounds the recursion: the agent (depth 1), an
-# expert (depth 2), and an expert's own helper (depth 3) is the deepest chain
-# this composition can form.
+#
+# THE RECURSION BOUND, counted rather than described. `resolveChildDepth` in
+# `@deepseek-ai/dsh-subagent` computes `childDepth = delegationDepthOf(parent) + 1`
+# and rejects only when `childDepth > maxDepth`. A top-level agent's header carries
+# `delegationDepth: 0`, so the levels are 0, 1, 2, … — NOT 1, 2, 3. An earlier
+# comment here said "the agent (depth 1), an expert (depth 2), an expert's own
+# helper (depth 3)", which was off by one on all three labels.
+#
+# The count only holds if EVERY delegating row states the cap, so all six do:
+# `tool-subagent`, `tool-subagent-fork`, and the four expert rows. That last group
+# is the one that was missing. An expert row runs at depth 1, so the schema default
+# of `maxDepth: 3` — which is what an omitted cap becomes, per
+# `dsh-tool-subagent`'s own config schema — would have let an expert spawn deeper
+# than the lead's own tools may go: agent(0) -> expert(1) -> helper(2) -> helper(3).
+# With every row at 2, the deepest reachable chain is agent(0) -> expert(1) -> helper(2),
+# and a fourth level is refused at `start`.
 #
 # `workflowEngine` answers only to this preset — nothing outside an agent reads
 # it — so every row that reaches it shares one entry-local realm here, and a
@@ -432,6 +444,7 @@
         provider: spawn
         toolName: expert_architect
         backgroundMode: continuable
+        maxDepth: 2
         agentOptions:
           reasoningEffort: max
         persona: |-
@@ -470,6 +483,7 @@
         provider: spawn
         toolName: expert_verifier
         backgroundMode: continuable
+        maxDepth: 2
         agentOptions:
           reasoningEffort: max
         toolFilter:
@@ -504,9 +518,26 @@
           3. SURVIVED — what you attacked and could not break.
           4. GAPS — what you could not test, and what would be needed to test it.
 
-          An unverifiable claim is reported as unprovable rather than guessed at in either direction.
-          Never inflate a style preference into a defect, and never report a finding without the evidence
-          that produced it. "The code looks fine" is not a verification result.
+          EVIDENCE STANDARD — the failure this role has actually committed, so treat it as your first
+          hazard. A review once declared a claim unsound, listed the rows it said were wrong, and printed a
+          grep whose own output contradicted the finding; it had reasoned from a commit message instead of
+          from the file. So, for every finding:
+
+          * Quote the exact text you read, with the path and line, verbatim and complete. If you are
+            summarising, say so and give the raw output beside it.
+          * Re-read the artefact AS IT IS NOW, at the revision in front of you. A commit message, a task
+            description, a previous report, and your own earlier reasoning are all hearsay about the
+            current file and none of them is evidence.
+          * Before writing a finding, re-run the command it rests on and read the result you are about to
+            paste. If the paste does not support the sentence above it, the sentence is wrong — not the
+            paste.
+          * State the revision you checked. If it is not the revision under review, say that instead of
+            implying you checked the one in front of you.
+
+          A finding you cannot support this way is reported under GAPS as unproven, never as a defect. An
+          unverifiable claim is reported as unprovable rather than guessed at in either direction. Never
+          inflate a style preference into a defect. "The code looks fine" is not a verification result, and
+          neither is a confident sentence without a quote under it.
 
           One more duty, because it is the failure this team is most prone to: when the brief asks you to
           confirm that something WORKS, check that the evidence actually establishes it. A composition
@@ -522,6 +553,7 @@
         provider: spawn
         toolName: expert_protocol
         backgroundMode: continuable
+        maxDepth: 2
         persona: |-
           You are the Protocol and Ecosystem Expert on a DeepSeek Harness development team. You answer
           questions about what a package, runtime, agent product, or specification actually says, and you
@@ -553,6 +585,7 @@
         provider: spawn
         toolName: expert_chronicler
         backgroundMode: continuable
+        maxDepth: 2
         persona: |-
           You are the Chronicler on a DeepSeek Harness development team. You maintain the project's memory
           so that a future session inherits conclusions instead of re-deriving them.
@@ -632,48 +665,63 @@
     fetch: true
     searchTimeoutMs: 60000
 
-# ── self-modification (with a known limitation) ─────────────────────────────
+# ── self-modification (disabled on this deployment — read this) ─────────────
 #
 # Read the live runtime, mount a temporary plugin, unmount it. The toolset is a
 # trust boundary, not a sandbox — see this file's header.
 #
-# WHY THIS ROW IS GATED, AND WHAT THE GATE COSTS.
+# TWO REGISTRATION SURFACES, DIFFERENT SCOPES. `tool-cordis`'s `apply` does three
+# things, and they do not share a lifetime:
 #
-# `tool-cordis` is not idempotent. On apply it registers four Host inspect
-# providers (Service, Event, Builtin, Tool) into `cordisInspect`, whose provider
-# map is keyed by id and THROWS on a duplicate. Rows load in roster order, so the
-# first composition in a process to claim those ids wins: every later composition
-# containing this row fails its ENTIRE mount with
+#   1. one prompt section `tool:cordis` (ctx.systemPrompt.section)   -> this session
+#   2. FOUR Host inspect providers — Service, Event, Builtin, Tool
+#      (one `ctx.cordisInspect.register` loop, four iterations)      -> PROCESS GLOBAL
+#   3. SEVEN model-facing tools — cordis_inspect_list / _query / _self,
+#      cordis_define / run / stop / undefine (ctx.tools.register)     -> this session
+#
+# Counted, not reasoned: `ctx.cordisInspect.register` appears once in
+# `dsh-tool-cordis/lib/index.js`, `ctx.tools.register(` seven times. Only the
+# providers are process-global, and they are the ones the registry keys by id and
+# THROWS on when duplicated. So a second composition containing this row fails its
+# ENTIRE mount:
 #   failed to apply loader entry tool-cordis: Host Cordis inspect provider
 #   "Service" is already registered
-# and leaves no partial state. That was measured, not inferred: removing this
-# gate makes the preset unmountable in any process where another session already
-# registered those providers.
+# Measured, not inferred: removing the gate below makes the preset unmountable in
+# any process where another session already claimed those ids.
 #
-# The gate is the lesser of two bad options — but it is NOT a correct fix, and it
-# does not do what an earlier version of this comment claimed:
+# THE GATE IS TRUE FOR THE LIFE OF THE PROCESS, so this preset never registers the
+# tools — not sometimes, never:
 #
-#   * `ctx.get('cordisInspect') !== void 0` answers "does the REGISTRY exist",
-#     not "has anything REGISTERED into it". The registry is created eagerly by
-#     `@deepseek-ai/dsh-cordis-host-runner` (the web profile mounts it host-side),
-#     so on this deployment the gate is simply always true.
-#   * Therefore a dsh-smith session does NOT get `cordis_*` tools of its own. It
-#     gets them only if some other live composition in the same process already
-#     registered them AND that composition is still alive.
+#   * `ctx.get('cordisInspect') !== void 0` asks whether the REGISTRY exists, not
+#     whether anything has REGISTERED into it.
+#   * The registry is built in `DynamicCordisRunnerService`'s CONSTRUCTOR
+#     (`dsh-cordis-host-runner/lib/index.js:1598`) under an unconditional host row
+#     that is never disposed. That is a lifetime fact, not a mount-order one, so a
+#     restart will not change it.
+#   * The row declares no `inject:`, and `disabled` is a skip rather than a wait
+#     (`cordis-plugin-loader/lib/index.js:391` returns before init()), so there is
+#     no "waiting on injection" path either.
+#   * Consequence: the seven tools are registered per session by step 3 above, and
+#     step 3 never runs here. Their absence is independent of what any other
+#     composition registered — an earlier version of this comment claimed the
+#     opposite, and the live tool table of a session on this preset shows none.
 #   * `ctx.get` is used instead of `ctx.cordisInspect` because a `!!js` gate is
-#     evaluated against the Loader context, where the Cordis guard rejects
-#     property access to a service the context never declared.
+#     evaluated against the Loader context, where the Cordis guard rejects property
+#     access to a service the context never declared.
 #
-# What this gate buys: the preset mounts, and its expert team, thinking protocol,
-# and memory layers all work. What it costs: plugin authoring tools may be
-# absent, and the outcome depends on mount order and on other sessions' lifetime.
-# Check which case you are in with `cordis_inspect_list`: if it answers, the
-# tools are live; if the tool is unknown, work on Cordis plugins from a session
-# on the shipped `cordis` preset instead.
+# WHAT TO DO INSTEAD. Do not check with `cordis_inspect_list` — that is the tool
+# this gate removes. Check by trying it, or by looking for `cordis_` names in your
+# own tool table; if they are absent (they are), do Cordis plugin work from a
+# session on the shipped `cordis` preset.
 #
-# The real fix belongs upstream: make `CordisInspectRegistryService.register()`
-# idempotent — return the existing disposer for an already-registered provider id
-# instead of throwing. A preset cannot express that from YAML.
+# The real fix belongs upstream and has two halves: make
+# `CordisInspectRegistryService.register()` idempotent (return the existing
+# disposer for an already-registered provider id instead of throwing), and let a
+# composition that only wants the TOOLS consume the existing four providers
+# without re-registering them. The second half is not expressible from YAML, which
+# is this repository's known ceiling. A naive refcount is NOT the fix: removing the
+# providers at zero consumers would leave a live `cordis_*` tool without its
+# registry — recorded as an open question in `docs/agent-notes/DECISIONS.md`.
 - id: tool-cordis
   name: '@deepseek-ai/dsh-tool-cordis'
   disabled: !!js ctx.get('cordisInspect') !== void 0

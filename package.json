@@ -17,6 +17,12 @@
   "engines": {
     "node": ">=20"
   },
+  "files": [
+    "bin",
+    "dsh-smith",
+    "README.md",
+    "LICENSE"
+  ],
   "bin": {
     "dsh-smith-install": "bin/install.mjs",
     "dsh-smith-verify": "bin/verify.mjs",
