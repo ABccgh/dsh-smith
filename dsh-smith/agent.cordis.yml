@@ -384,14 +384,21 @@
     # the inherited history remains eligible for KV Cache reuse. This preset
     # keeps fork continuable; parent and child inherit the same messaging tool,
     # while the parent id and return guidance follow the inherited history.
-    # maxDepth is omitted so the cap rides the shared spawn provider and every
-    # expert row below keeps working.
+    #
+    # maxDepth is stated, not omitted. It defaults to 3 in the tool's own schema
+    # (`z.union([...]).default(3)`, not the `3` its type doc mentions as a
+    # fallback), and the fork provider advertises `depthLimit` itself — so an
+    # omitted cap would NOT "ride the shared spawn provider": it would silently
+    # become 3 for this row alone, letting a fork chain reach
+    # agent(1) -> fork(2) -> fork(3) -> fork(4) while every expert row stays
+    # capped at 2. Stating it keeps one recursion budget for the whole team.
     - id: tool-subagent-fork
       name: '@deepseek-ai/dsh-tool-subagent'
       config:
         provider: fork
         toolName: subagent_fork
         backgroundMode: continuable
+        maxDepth: 2
 
     # 1. Architecture and design. This role's error is the most expensive to find
     #    late, so it reasons at the adapter's maximum effort.
