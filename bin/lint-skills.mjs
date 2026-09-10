@@ -21,33 +21,19 @@
  * accept keys this script does not know about.
  *
  * Usage:
- *   node bin/lint-skills.mjs                 lint the dsh-smith repo copy
- *   node bin/lint-skills.mjs --preset <id>   lint a specific preset's repo copy
- *   node bin/lint-skills.mjs --path <dir>    lint a specific preset directory
- *   node bin/lint-skills.mjs --installed     lint the installed copy
+ *   node bin/lint-skills.mjs                    lint the repo copy
+ *   node bin/lint-skills.mjs --path <dir>       lint a specific preset directory
+ *   node bin/lint-skills.mjs --installed        lint the installed copy
  */
 import { readdir, readFile, stat } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
-import {
-  dshHome,
-  installedPresetDir,
-  presetEntry,
-  presetFromArgv,
-  repoPresetDir,
-  UnknownPresetError,
-} from './presets.mjs'
+import { homedir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-let PRESET_ID
-try {
-  PRESET_ID = presetFromArgv(process.argv.slice(2))
-} catch (error) {
-  console.error(`lint-skills: ${error instanceof UnknownPresetError ? error.message : String(error)}`)
-  process.exit(1)
-}
-
-const DSH_HOME = dshHome()
-const REPO_PRESET = repoPresetDir(PRESET_ID)
-const INSTALLED_PRESET = installedPresetDir(PRESET_ID, DSH_HOME)
+const PRESET_ID = 'dsh-smith'
+const DSH_HOME = process.env.DSH_HOME ?? join(homedir(), '.dsh')
+const REPO_PRESET = resolve(dirname(fileURLToPath(import.meta.url)), '..', PRESET_ID)
+const INSTALLED_PRESET = join(DSH_HOME, '.agent-presets', PRESET_ID)
 /** Below this, a description is too terse to work as a "use when…" cue. */
 const MIN_DESCRIPTION = 40
 

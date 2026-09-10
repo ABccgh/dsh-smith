@@ -1,13 +1,5 @@
 # DeepSeek Harness (package `dsh-smith`) — chronicle
 
-> **Scope note, added when the second preset shipped.** Everything below this note is the
-> `dsh-smith` preset's record and stays scoped to it. `dsh-forge` — the software-delivery
-> preset added later — has its own subsection under `## Current state` and its own user-facing
-> page at `docs/dsh-forge.md`. Where a sentence here says "this preset" without naming one, read
-> it as `dsh-smith`; the two presets have **different lineages** (`dsh-smith` ← shipped `cordis`,
-> `dsh-forge` ← shipped `standard`), so any statement about drift, inheritance, or a shared row
-> applies to one of them, never to both.
-
 ## What this is
 
 `dsh-smith` is a DeepSeek Harness **agent preset**, published as the npm package `dsh-smith`.
@@ -21,17 +13,10 @@ store; that is a path encoding, not a second project.)
 
 Every line names how it was established. Session date of record: 2026-09-10.
 
-- **The installed preset is byte-identical to this repo's copy — re-measured, and the earlier
-  figures in this file are historical.** Current: SHA-256
-  `77E34CB76EF2B41D06FE8278FCD0875EC9C19EE3059884D89DA44B4AE25C13DB`, **43,211 bytes / 730
-  lines**, both at `dsh-smith/agent.cordis.yml` and at the installed path above. A session on
-  `dsh-smith` is therefore running exactly this file, not a stale install.
-
-  > Superseded figures that still appear below, kept because they are the measurements the
-  > surrounding paragraphs were written from: `A6D2A9C1…DE051` at **40,032 bytes**, and a
-  > **19-file / 65.5 kB** tarball. Both were true when written and neither is true of HEAD. Any
-  > sentence resting on them describes a past revision — check the number before repeating the
-  > claim, and prefer the current pair above.
+- **The installed preset is byte-identical to this repo's copy.** SHA-256
+  `A6D2A9C1F647E2EDCA9DA328CC780649CF80054A6293851B9F6A4C9FEE5DE051`, 40032 bytes, both
+  at `dsh-smith/agent.cordis.yml` and at the installed path above. A session on `dsh-smith`
+  is therefore running exactly this file, not a stale install.
 - **Deployment version 0.1.5-rc.1**, from
   `${DSH_HOME}/profiles/node_modules/@deepseek-ai/dsh-base/package.json`.
 - **Host composition** = profile `web`: bundles `@deepseek-ai/dsh-base` +
@@ -117,47 +102,36 @@ Every line names how it was established. Session date of record: 2026-09-10.
   Because the registry exists from host-composition boot (above), the predicate is true, the
   row is skipped, and `dsh-smith` therefore **can never** be the composition that registers the
   `cordis_*` tools. The absence is a property of this preset, not of mount order.
-- **Omitting `maxDepth` on a `tool-subagent` row resolves to 3, not 2 — and all six delegation
-  rows therefore state it explicitly. CORRECTED: this paragraph used to describe the pre-fix
-  state and was left standing after the fix.** The mechanism is unchanged and still the reason
-  the omission mattered: the row schema is
+- **Omitting `maxDepth` on a `tool-subagent` row resolves to 3, not 2.** The row schema is
   `maxDepth: z.union([z.natural().max(Number.MAX_SAFE_INTEGER), z.const("provider-managed")]).default(3)`
   (`dsh-tool-subagent/lib/index.js:269`), and Cordis applies schema defaults before `apply`
   runs (`cordis/lib/index.js:955-957`, `resolveConfig` → `Config["~standard"].validate(config)`
   at plugin instantiation; proof of application is `dsh-tool-subagent/lib/index.js:508`, which
   branches on `typeof config.maxDepth === "number"` and so can only ever see the defaulted
-  value). **What changed:** the four expert rows used to omit the key and resolve to 3, which at
-  depth 1 gave an expert subtree one level MORE than the lead's own tools. All six delegation
-  rows — `subagent`, `subagent_fork`, and the four experts — now state `maxDepth: 2`.
+  value). **In this composition the expert rows omit it**: `maxDepth: 2` sits on `subagent`
+  (L405) and `subagent_fork` (L425) only, while `expert_architect` (L429), `expert_verifier`
+  (L467), `expert_protocol` (L519) and `expert_chronicler` (L550) declare `provider`,
+  `toolName`, `reasoningEffort` and `persona` and nothing else — so those four resolve to 3.
   The recursion that results: the lead is depth 0 (`delegationDepthOf` treats absence as
   top-level zero, `dsh-subagent/lib/index.js:135-147`), a delegated expert is depth 1, and
   `resolveChildDepth` throws only when `childDepth > maxDepth` (`dsh-subagent/lib/types/child-agent.js:32-41`),
-  so with a cap of 2 a depth-1 agent may spawn a depth-2 grandchild and a depth-3 attempt is
-  rejected. Deepest chain = 3 levels, labelled 0/1/2.
-
-  > The superseded paragraph also carried stale measurements — `maxDepth` at L405/L425 where it
-  > is now L417/L437, expert rows at L429/L467/L519/L550 where they are now L441/L480/L550/L582,
-  > and a 40,032-byte file size where it is now 43,211. Same lesson as D-14: quote, do not cite
-  > a line number, and re-measure before restating a size.
+  so with a cap of 2 a depth-1 agent **may** spawn a depth-2 grandchild and a depth-3 attempt
+  is rejected. Deepest chain = 3 levels; the recursion-bound comment in `agent.cordis.yml` states that
+  count correctly but labels the levels 1/2/3 instead of 0/1/2.
 
 
 ## Component map
 
 | Path | Responsibility |
 | --- | --- |
-| `package.json` | npm root; `bin` map of five launchers plus `dsh.presets[]` (one entry per shipped preset) |
-| `README.md` | user-facing documentation for `dsh-smith`; carries the tool-cordis limitation, the 验证状态 table, and a pointer to `docs/dsh-forge.md` |
-| `docs/dsh-forge.md` | user-facing documentation for `dsh-forge`, including its own 验证状态 tiers |
-| `bin/presets.mjs` | **the preset registry**: id → repo dir, display name, upstream preset, expected tools. The other four scripts read their paths from it, so a preset id is defined once |
-| `bin/install.mjs` | copies `<repoDir>/` into the harness home; `--preset <id>`, defaults to `dsh-smith` |
+| `package.json` | npm root; `bin` map of four launchers plus `dsh.presetId` / `presetRoot` / `installTarget` |
+| `README.md` | user-facing documentation, including the tool-cordis limitation section and the 验证状态 table |
+| `bin/install.mjs` | copies `dsh-smith/` into the harness home; warns when the target lacks harness markers |
 | `bin/verify.mjs` | mount check via `agentPresets.standingKeyFor(id)`; distinguishes MOUNTED / REJECTED / INCONCLUSIVE |
-| `bin/preflight.mjs` | **static half of the mount check**: resolves every row's package and validates every config against that plugin's own `Config` schema. Prints the failure classes it cannot see |
-| `bin/lint-skills.mjs` | frontmatter lint over a preset's skills |
-| `bin/drift-check.mjs` | row-by-row diff against that preset's **own** upstream; reports, never syncs |
-| `dsh-smith/agent.cordis.yml` | the `dsh-smith` composition |
+| `bin/lint-skills.mjs` | frontmatter lint over the five skills |
+| `bin/drift-check.mjs` | row-by-row diff against the shipped `cordis` preset; reports, never syncs |
+| `dsh-smith/agent.cordis.yml` | the composition under test (682 lines) |
 | `dsh-smith/skills/**` | exactly five skills; two copied unmodified from the shipped `cordis` preset (with a correction banner), three original |
-| `dsh-forge/agent.cordis.yml` | the `dsh-forge` composition (38 named rows) |
-| `dsh-forge/skills/**` | exactly four skills, all original |
 
 ## Current state
 
@@ -174,99 +148,19 @@ settled questions.
 | shields.io badge renders | **Resolves** — HTTP 200, an SVG labelled `topics` / `DeepSeek Harness Plugins` |
 
 Also verified this session: `node bin/lint-skills.mjs` reports **all five skills lint clean**;
-the installed preset was byte-identical to the repo copy at the revision this line was written
-from (`A6D2A9C1…DE051`, 40,032 B — see the supersession note at the top of this section for the
-current figures).
-
-### `dsh-forge` — the second preset (added this session)
-
-Its user-facing record is `docs/dsh-forge.md`. What belongs in the chronicle is the verified
-fact base and, more importantly, **the boundary of what was verified** — and this subsection was
-itself corrected twice, first by an independent adversarial review and then by the user actually
-running the mount check, so it is the freshest evidence in this file.
-
-| Item | Outcome |
-| --- | --- |
-| Preset exists and installs | **Yes.** The success path prints `installed: C:\Users\曦曦\.dsh\.agent-presets\dsh-forge` and `contents: agent.cordis.yml, preset.yml, skills`, exit 0. **Recorded precisely because the first version of this row quoted the refusal path instead**: `target:` and `found:` are printed on *both* paths (`bin/install.mjs:95-108` refusal, `:137-138` success), so they are not evidence of a completed install — a reader re-running the command to confirm gets exit 1 and cannot tell whether the record or the install is broken. The install write is the sanctioned one; nothing was hand-edited under `~/.dsh`. |
-| The installed copy equals the repo copy | **Yes** — SHA-256 `C8353AF1D7B05193AF88D5DDC085D2B4B79B422DFDEA93C0D2AF70C0414A86A1`, **53,772 bytes / 882 lines**, identical at `dsh-forge/agent.cordis.yml` and at the installed path, re-checked file-by-file after the persona edits below forced a re-install. (This supersedes `5F5B8163…2873` / 53,063 B / 872 lines, which was correct before those edits.) A session on `dsh-forge` therefore runs exactly this file, not a stale install. Re-check this after any edit to `dsh-forge/**` — the equality is point-in-time, and this very session demonstrated the trap: editing the composition invalidated the recorded hash until `--force` re-installed it. |
-| Its four skills lint | **Yes** — `node bin/lint-skills.mjs --preset dsh-forge`: four `ok` lines, `all 4 skill(s) lint clean`, exit 0 |
-| Every row resolves and every readable config validates | **Yes, 0 failures** — `node bin/preflight.mjs --preset dsh-forge`: `validated: 24   skipped: 10   failed: 0` over 38 named rows |
-| The static preflight can actually fail | **Yes — falsified deliberately.** A copy with `mode: both` → `mode: nope` returned `$.mode expected "native" \| "ptc" \| "both" but got "nope"` (exit 1); a copy with `tool-fs`'s package renamed to a nonexistent one returned `package does not resolve` (exit 1). Both temp copies were deleted. A check that cannot fail proves nothing, which is why this row exists. Reinforced by an independent adversarial review (`expert_verifier`), which reproduced `validated: 22   skipped: 10   failed: 2` with both defects planted in one run, and separately confirmed that `{}` yields `$.mode missing required value`. |
-| **The tool surface reaches a model, under `both`** | **Yes — closed in a real session, the last item the mount check could not answer.** This session's table carries **32** names — the full catalog *and* `run_code` — so `wireSchemas`'s `both` branch does not collapse it (`dsh-tools/lib/index.js:2739-2742`). The nine rows `docs/dsh-forge.md` asks about are all present, `subagent_codex`/`subagent_claude_code` are exactly absent (their `disabled: true`), and so are `ralph` and `workflow` — composed at `:798` and `:792`, which makes 32 an **exact** match rather than "at least the nine". The doc's nine is a floor, not an inventory. |
-| **`run_code` + the `tools:sdk` section are not merely rendered — they are callable** | **Yes.** A delegated child's prompt carried the block introduced by `Program-only SDK bindings:` (`interface ToolArgsMap` / `ToolOutputMap` / `declare const tools`), and its `await tools.glob({pattern:"*.md", path:"D:\\DeepSeek Harness"})` returned **15 paths**. The section is generated per scope by `sdkSection()` (`dsh-tools/lib/index.js:2647-2661`) and a successful *call* through it is what distinguishes "the text was appended" from "the SDK is wired". `run_code` itself is correctly **not** a member of the `tools` object and **not** in the SDK type — it is the presentation transport (`:2780`), so its absence from both lists is structural and is a useful negative control. |
-| **`deny: [write, edit]` holds under `mode: both`** | **Yes — and it is removal at presentation, not a guard.** Filtered `expert_debugger`: `propcount = 30`, `write`/`edit` absent from the mounted table *and* the SDK section, `has_ralph=true`; forced calls threw `TypeError: tools.write is not a function` with `instanceof ToolCallError === false`, i.e. **the tool layer was never entered**, while `tools.glob` succeeded and `Test-Path` stayed false. Differential control (plain `subagent`, same depth/provider/path, no `toolFilter` on `:477-484`): **32** names, both present as functions, and `tools.edit` **really dispatched** to the code-runtime worker returning a typed `ToolCallError` with `toolName: "edit"`. This corrects the *wording* of D-17, not its verdict — see D-26. |
-| Independent adversarial review of this change | **Run, and it found real defects — all documentation, none in the composition.** Its verdict: *"sound on the composition; unsound on the documentation."* It confirmed all six load-bearing technical claims by re-reading source (the collapse rule and both citations, `run_code`'s non-registrability verbatim, `tool-cordis`'s genuine absence from `dsh-forge`, the realm/capability facts, and every number I published). Its findings, all now fixed, are recorded as D-22 rather than quietly applied. It also volunteered the one thing I had not asked for and needed: the row arithmetic I published was **fabricated** — right total, invented decomposition. |
-| The old scripts still behave as before | **Yes, byte-for-byte in behaviour** — with no `--preset`: lint reports the same five skills clean, drift reports `36 rows` local / `32` upstream with the same six drifted rows, install refuses to overwrite with the same message |
-| `dsh-smith/agent.cordis.yml` was not touched | **Yes** — `git status --short dsh-smith` is empty |
-| The tarball still excludes the memory layers, now with both presets | **Yes** — `npm pack --dry-run`: **22 files, 94.2 kB packed / 270.7 kB unpacked**, measured at the final revision of this change (earlier measurements this session: 92.9/266.7, then 93.1/267.2, then 93.7/269.0 — same 22-file set every time, sizes moving with each edit, which is the point: a byte figure is a fact about a revision, never a standing fact). Both preset directories are present and complete; `AGENTS.md`, `docs/**`, `.gitignore` and `.gitattributes` are all excluded. Supersedes the earlier `14 files / 58.1 kB` figure, which predates `dsh-forge/`, `bin/preflight.mjs` and `bin/presets.mjs`; that one in turn superseded a `19 files / 65.5 kB` figure from before the `files` allowlist existed. |
-| **`standingKeyFor('dsh-forge')`** | **RUN, AND IT PASSED — `MOUNTED OK`.** Via the dynamic-plugin probe from a session on the **shipped `cordis` preset**, where `tool-cordis` is `enabled=true` and `cordis_*` therefore exists. `compositionInventory()` from the resulting standing mount lists **35 leaf rows** (the 3 group containers are skipped by the same `flattenRows`/`mountedCompositionRows` rule): **31 active**, **2 `conditional`** (`tool-bash` / `tool-pwsh` platform gates), **2 `false`** (`tool-subagent-codex`, `tool-subagent-claude-code`), `broken=none`. It also settles what the static pass could not: **no row is "mounted but contributing nothing"** — the `compaction`/`toolResultPruner` realm pairing and `tool-presentation`'s wait on the host `codeRuntime` both came up active. |
-| **Row-count reconciliation** | **CLOSED — 38 = 3 groups + 35 leaves; 31 active, 2 `conditional`, 2 disabled.** Both counting paths skip group containers (`flattenRows`, `dsh-agent-presets/lib/index.js:991`; `mountedCompositionRows`, `:1038`), so the inventory's 35 is the **leaf** count and agrees with an independent YAML-parse of the file. **Both numbers this record published were wrong**: "35 active" mislabelled the total as the active count, and "34 enabled" was `38 − 4`, an arithmetic error because 38 includes the 3 containers that never appear in a row list. The one correct equation is **35 leaves − 4 disabled = 31 active** (on Windows `tool-bash` is off by its `!!js` gate and `tool-pwsh` is on, so exactly one of the two platform-gated rows runs). |
-| **`bin/verify.mjs` is not the mount check, and no session fixes it** | **Defect found and corrected.** The script builds its own bare runtime (`new cordis.Context()`, `bin/verify.mjs:204`), so `agentPresets` is absent **by construction** and it prints `INCONCLUSIVE — this runtime publishes no agentPresets service` **from every session** — measured twice, byte-identical, once in an ordinary shell and once inside a shipped-`cordis` session with `tool-cordis` active. This complements D-20 rather than contradicting it: D-20 says the *probe route* is closed in locally authored presets, and this adds that the *script route* is closed everywhere. Its header comment and its INCONCLUSIVE advice have been rewritten; it now says it is a diagnostic and points at the probe route. |
-
-> A row reading "The tool table a `dsh-forge` session reaches — **NOT MEASURED**" was deleted here. It
-> was true when written and was overtaken twice in the same session, first by the mount check and then
-> by the real-session measurements two rows above it — so the table contradicted itself in adjacent
-> lines. Kept as a note rather than silently removed because the shape recurs: **a status row is only
-> as current as the last measurement in the file it sits in**, and this one sat directly above its own
-> refutation.
-
-**The row count, measured rather than reasoned.** `Select-String -Pattern '^\s*- id: \S' dsh-forge/agent.cordis.yml`
-returns **38**. Measured by indentation: **20 rows at indent 0** and **18 at indent 4**. The 20 are
-**17 plain plugin rows plus 3 group containers** (`thinking`, `compaction`, `team`), and the 18 sit
-inside those containers. Note the number differs from `drift-check`'s for `dsh-smith` (36) because
-the two compositions are different files, not because either count is wrong.
-
-> An earlier version of this paragraph said "4 top-level rows … + 31 rows inside those groups".
-> Both halves were wrong and mutually inconsistent, and the four names it listed were simply the
-> first four it happened to look at. The lesson is the one this file keeps relearning: a
-> decomposition is a **measurement**, and a plausible-looking split of a correct total is still a
-> fabricated number. Count the indents.
-
-**The delegating-row count, measured.** Seven rows state `maxDepth: 2`: L474 `tool-subagent`,
-L493 `tool-subagent-fork`, and L503/L544/L625/L688/L725 the five expert rows. Two more rows —
-`tool-subagent-codex` and `tool-subagent-claude-code`, both `disabled: true` — state
-`maxDepth: provider-managed`, which is a cap owned by a product runtime rather than a number. So
-"all delegating rows are capped at 2" is true only of the **seven enabled** ones; the claim must
-be written that way, or it is the over-claim D-10 exists to correct. Those seven stating the cap is
-what makes the recursion bound a single number: agent(0) → expert(1) → helper(2).
-
-**The file parses to the structures it was written to intend, not merely to valid YAML.** A
-`schema` check cannot see this class of defect at all — a block scalar whose indentation strips
-the wrong prefix is still a string, still validates, and silently loses its shape. Parsed the
-composition with the profile's own `yaml` module and the same `!!js` tag shape the loader uses,
-then read the values back:
-
-- `persona.prefix` — 4,487 chars / 72 lines, first line `You are DSH Forge, a software development
-  agent. …`, last line `are worth the wait.`
-- `persona.suffix` — 5,173 chars / 84 lines, first line `# Working protocol`
-- `plan-mode.config.section` — 3,365 chars / 21 lines, **zero leading indent on line 2** (the
-  14-space source indentation is stripped correctly, so the protocol reaches the model as prose
-  rather than as an indented block)
-- `tool-presentation.config` → `{"mode":"both"}`; `repeat-tool-reminder.config` →
-  `{"thresholds":[3,6,10],"argumentsPreviewChars":2000}`; `tool-result-pruner.config` →
-  `{"thresholdChars":16384,"headChars":8192,"tailChars":4096}`
-- `skill-filesystem.config` → `{"customSkillDirs":[{"__jsExpr":"process.getBuiltinModule('node:url')
-  .fileURLToPath(new URL('skills/', baseUrl))"}]}` — the expression survives as a tagged node, which
-  is what the loader evaluates against `baseUrl`, so the preset's own `skills/` directory resolves
-  wherever the preset is copied to
-- the five expert rows carry exactly the intended budgets and filters: `toolName` set per row,
-  `maxDepth: 2` on all five, `reasoningEffort: max` on architect / verifier / debugger and
-  **absent** (inherited) on protocol / chronicler, and `toolFilter.deny` equal to `["write","edit"]`
-  on verifier and debugger with no `toolFilter` on the other three
+the installed preset is still byte-identical to the repo copy
+(`A6D2A9C1…DE051`, 40032 B, both paths).
 
 ## Known gaps
 
-- **CLOSED — the tarball no longer ships the memory layers.** D-7 added
-  `"files": ["bin", "dsh-smith", "README.md", "LICENSE"]` to `package.json`, and it was
-  measured: **14 files / 58.1 kB**, with `AGENTS.md`, all three `docs/agent-notes/*.md`,
-  `.gitattributes` and `.gitignore` excluded, and nothing the preset needs dropped. Kept here
-  rather than deleted because the paragraph below records what the exposure was and why a
-  `files` list — not an `.npmignore` — is what closes it.
-
-  > The superseded text, for the record: "The published tarball now ships the memory layers.
-  > `npm pack --dry-run` lists 19 files including `AGENTS.md`, `.gitattributes` and the three
-  > `docs/agent-notes/*.md`; `package.json` has no `files` allowlist, so npm falls back to
-  > `.gitignore` (`gitignore-fallback`)." All of that was true before D-7.
+- **The published tarball now ships the memory layers.** `npm pack --dry-run` (this session,
+  exit 0) lists 19 files including `AGENTS.md` (2.2 kB), `.gitattributes` (463 B) and
+  `docs/agent-notes/BOARD.md` + `DECISIONS.md` + `PROJECT.md` (20.5 kB combined). They travel
+  with the **git repository** by design, but nothing keeps them out of the **npm package**:
+  `package.json` has no `files` allowlist, so npm falls back to `.gitignore` (the
+  `gitignore-fallback` warning). A `files` list would pin the publishable set and silence the
+  warning — the round trip to the registry is the one place the internal notes should not go
+  unless that is deliberate.
 - **The `cordis_*` tools are absent by design** (D-1), and the absence was confirmed against
   the live table rather than inferred. **CORRECTED — the advice this entry quotes has since
   been fixed, and the entry was describing a state that no longer exists.** The composition's
@@ -311,51 +205,6 @@ then read the values back:
   checkout (`C:\Users\曦曦\AppData\Local\npm-cache\_npx\1e7f6d9597241db0\node_modules\@deepseek-ai\`).
 - The installed-copy hash is a **point-in-time** equality; it says nothing about whether the
   copy stays in sync after a later edit to `dsh-smith/**` without re-running `install.mjs`.
-- **CLOSED — `dsh-forge` has been mount-validated: `MOUNTED OK`.** Via the dynamic-plugin probe
-  from a session on the **shipped `cordis` preset**, with `compositionInventory()` listing 35 leaf
-  rows (31 active, 2 `conditional`, 2 `false`) and `broken=none`. The obstacle the previous version
-  of this entry described was real and is kept below, because it still bounds **every future
-  preset** and it still explains why the check needs that specific session:
-
-  1. `dsh-tool-cordis` registers four **process-global** inspect providers into `cordisInspect`,
-     and that registry keys by id and **throws** on a duplicate
-     (`dsh-cordis-host-runner/lib/types/inspect-registry.d.ts:38` documents the disposer as
-     idempotent; the implementation throws at `lib/index.js:732` on a duplicate id).
-  2. The host takes those four ids at boot: `dsh-web-app/cordis.patch.yml:122` composes
-     `cordis-host-runner`, whose constructor builds the registry and registers the providers.
-  3. Therefore **any other composition containing that row must gate it off**, or its whole
-     mount fails. `dsh-smith` gates it off; `dsh-forge` does not contain it at all.
-  4. Measured live loader state, confirming the consequence rather than reasoning about it: the
-     shipped `cordis` preset reports `tool-cordis enabled=true fiberPhase=active`, `dsh-smith`
-     reports `enabled=false fiberPhase=null`, and `dsh-forge` has no such entry. So the probe route
-     is open **only** in the shipped `cordis` preset — which is where the check was then run.
-
-  **A second correction this closure produced, and it is the sharper one: `node bin/verify.mjs`
-  cannot run this check from ANY session.** The script builds its own bare Cordis context
-  (`new cordis.Context()`, `bin/verify.mjs:204`), so `agentPresets` is absent by construction and
-  it prints `INCONCLUSIVE — this runtime publishes no agentPresets service` **including inside the
-  shipped-`cordis` session where the probe route worked** — measured twice, byte-identical output.
-  The earlier version of this entry told readers to "run that session's own verify" as if the
-  problem were the session; the problem is the script's construction. Its header and its
-  INCONCLUSIVE advice now say so. The route that actually reaches the roster is the dynamic-plugin
-  probe, and it is the one the mount verdict came from.
-- **CLOSED — the file and the inventory agree: 38 = 3 groups + 35 leaves, of which 31 active.**
-  The apparent one-row discrepancy was two arithmetic errors, both in this record, and neither in
-  the harness. `flattenRows` (`dsh-agent-presets/lib/index.js:991`) and `mountedCompositionRows`
-  (`:1038`) **both `continue` past `group: true` entries**, so a row list is leaves only: the
-  inventory's 35 is the leaf count, and an independent YAML parse of the file reproduces exactly
-  35. The errors were (a) labelling that 35 as "active" when 4 of the 35 are off, and (b) deriving
-  "34 enabled" as `38 − 4`, which subtracts from a total that includes the 3 containers no row
-  list contains. Correct equation: **35 leaves − 4 disabled = 31 active**; the two `!!js` gates are
-  reported three-way (`"conditional"`), and on Windows exactly one of them runs.
-- **`bin/preflight.mjs` does not reject unknown config keys**, and this is a property of
-  schemastery rather than a limitation of the script. Measured: `{ mode: 'both', bogus: 1 }`
-  against `@deepseek-ai/dsh-agent-tool-presentation`'s own `Config` returns
-  `{"value":{"mode":"both","bogus":1}}` — no issue. So a mistyped key name is invisible to the
-  static pass whenever it does not leave a required field absent. **A mount would notice — and
-  now one has run**, which is what turned this from a caveat into a bounded risk: the mount was
-  clean, so no such typo is present in *this* composition today. The caveat still governs the next
-  edit, because preflight will keep passing over the same mistake.
 
 ## Stale claims to re-check
 
@@ -364,13 +213,11 @@ then read the values back:
   tools — matches the source and the live table.
 - **An expert report is a source, not a finding.** The `expert_verifier` call this session
   returned `FINDINGS` whose headline defect was false: it asserted `maxDepth: 2` sits on "all
-  four delegation/expert rows" and cited commit `8cf70e9` as proof. A re-grep of the same file
-  **as it stood then (40,032 bytes; it is 43,211 now)** returns six `maxDepth` hits — L374 was
-  the comment, L405/L425 the two correct rows, L412 an unrelated key, L592/L601 the two
-  product-provider rows — and the four expert rows carry none; `8cf70e9` is two revisions behind
-  the `HEAD` of that time. Its depth arithmetic was also wrong in the other direction (it
-  proposed "lead + one child", i.e. two levels, where three are reachable). Both the false claim
-  and the arithmetic were caught only by re-running
+  four delegation/expert rows" and cited commit `8cf70e9` as proof. A re-grep of the same
+  40032-byte file returns six `maxDepth` hits (L374, L405, L412, L425, L592, L601) and the
+  expert rows carry none; `8cf70e9` is two revisions behind `HEAD`. Its depth arithmetic was
+  also wrong in the other direction (it proposed "lead + one child", i.e. two levels, where
+  three are reachable). Both the false claim and the arithmetic were caught only by re-running
   the check — which is why this file records the re-grep, not the report.
 - The `register()` doc comment in `dsh-cordis-host-runner/lib/types/inspect-registry.d.ts`
   line 38 says "returns idempotent disposer", which reads as "duplicate registration is safe".

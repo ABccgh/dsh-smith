@@ -1,7 +1,7 @@
 {
   "name": "dsh-smith",
   "version": "0.1.0",
-  "description": "Two DeepSeek Harness agent presets: `dsh-smith`, which builds harness agents and Cordis plugins, and `dsh-forge`, a software-delivery agent. Each carries a thinking protocol, a layered memory discipline, and a standing team of named experts.",
+  "description": "A DeepSeek Harness agent preset specialized in building harness agents and Cordis plugins: a composition-design thinking protocol, a four-layer memory discipline, and a standing team of four named experts.",
   "keywords": [
     "deepseek-harness",
     "dsh",
@@ -9,8 +9,7 @@
     "cordis",
     "plugin",
     "multi-agent",
-    "expert-team",
-    "software-development"
+    "expert-team"
   ],
   "license": "MIT",
   "author": "ABccgh",
@@ -21,30 +20,21 @@
   "files": [
     "bin",
     "dsh-smith",
-    "dsh-forge",
     "README.md",
     "LICENSE"
   ],
   "bin": {
-    "dsh-preset-install": "bin/install.mjs",
-    "dsh-preset-verify": "bin/verify.mjs",
-    "dsh-preset-lint-skills": "bin/lint-skills.mjs",
-    "dsh-preset-drift-check": "bin/drift-check.mjs",
-    "dsh-preset-preflight": "bin/preflight.mjs"
+    "dsh-smith-install": "bin/install.mjs",
+    "dsh-smith-verify": "bin/verify.mjs",
+    "dsh-smith-lint-skills": "bin/lint-skills.mjs",
+    "dsh-smith-drift-check": "bin/drift-check.mjs"
   },
   "scripts": {
     "install-preset": "node bin/install.mjs",
-    "install-forge": "node bin/install.mjs --preset dsh-forge",
     "verify": "node bin/verify.mjs",
-    "verify-forge": "node bin/verify.mjs --preset dsh-forge",
     "lint": "node bin/lint-skills.mjs",
-    "lint-forge": "node bin/lint-skills.mjs --preset dsh-forge",
-    "preflight": "node bin/preflight.mjs",
-    "preflight-forge": "node bin/preflight.mjs --preset dsh-forge",
     "drift": "node bin/drift-check.mjs",
-    "drift-forge": "node bin/drift-check.mjs --preset dsh-forge",
-    "check": "node bin/lint-skills.mjs && node bin/preflight.mjs && node bin/verify.mjs",
-    "check:all": "node bin/lint-skills.mjs && node bin/preflight.mjs && node bin/lint-skills.mjs --preset dsh-forge && node bin/preflight.mjs --preset dsh-forge"
+    "check": "node bin/lint-skills.mjs && node bin/verify.mjs"
   },
   "repository": {
     "type": "git",
@@ -55,18 +45,9 @@
     "url": "https://github.com/ABccgh/dsh-smith/issues"
   },
   "dsh": {
-    "presets": [
-      {
-        "id": "dsh-smith",
-        "repoDir": "dsh-smith",
-        "installTarget": "${DSH_HOME:-~/.dsh}/.agent-presets/dsh-smith"
-      },
-      {
-        "id": "dsh-forge",
-        "repoDir": "dsh-forge",
-        "installTarget": "${DSH_HOME:-~/.dsh}/.agent-presets/dsh-forge"
-      }
-    ]
+    "presetId": "dsh-smith",
+    "presetRoot": "dsh-smith",
+    "installTarget": "${DSH_HOME:-~/.dsh}/.agent-presets/dsh-smith"
   },
   "topics": [
     "deepseek-harness-plugins",
@@ -77,7 +58,6 @@
     "preset",
     "expert-team",
     "multi-agent",
-    "ai-agent",
-    "software-development"
+    "ai-agent"
   ]
 }

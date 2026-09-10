@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /**
- * Install one of this repository's agent presets into this machine's DeepSeek
- * Harness home.
+ * Install the `dsh-smith` agent preset into this machine's DeepSeek Harness home.
  *
  * The harness discovers locally authored presets as one directory per preset
  * under `${DSH_HOME:-$HOME/.dsh}/.agent-presets/<id>/`, so installing is a
@@ -20,18 +19,17 @@
  *      what is installed is exactly what this repository contains.
  *
  * Usage:
- *   node bin/install.mjs                    install dsh-smith (refuses to overwrite)
- *   node bin/install.mjs --preset <id>      install a specific preset
- *   node bin/install.mjs --force            replace an existing installation
- *   node bin/install.mjs --home <dir>       install into a specific DSH home
- *
- * `--preset` defaults to `dsh-smith`, so every invocation that predates the
- * second preset keeps its exact meaning.
+ *   node bin/install.mjs               install (refuses to overwrite)
+ *   node bin/install.mjs --force       replace an existing installation
+ *   node bin/install.mjs --home <dir>  install into a specific DSH home
  */
 import { cp, mkdir, readdir, rm, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
-import { UnknownPresetError, presetEntry, presetFromArgv, repoPresetDir } from './presets.mjs'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const PRESET_ID = 'dsh-smith'
+const SOURCE = resolve(dirname(fileURLToPath(import.meta.url)), '..', PRESET_ID)
 
 /** Arguments this script understands. */
 function parseArgs(argv) {
@@ -41,20 +39,10 @@ function parseArgs(argv) {
     console.error('install: --home needs a directory argument')
     process.exit(1)
   }
-  return { force: argv.includes('--force'), explicitHome, presetId: presetFromArgv(argv) }
+  return { force: argv.includes('--force'), explicitHome }
 }
 
-let parsed
-try {
-  parsed = parseArgs(process.argv.slice(2))
-} catch (error) {
-  console.error(`install: ${error instanceof UnknownPresetError ? error.message : String(error)}`)
-  console.error('install: shipped presets are listed in bin/presets.mjs.')
-  process.exit(1)
-}
-
-const { force, explicitHome, presetId: PRESET_ID } = parsed
-const SOURCE = repoPresetDir(PRESET_ID)
+const { force, explicitHome } = parseArgs(process.argv.slice(2))
 const DSH_HOME = explicitHome ?? process.env.DSH_HOME ?? join(homedir(), '.dsh')
 const ROOT = join(DSH_HOME, '.agent-presets')
 const TARGET = join(ROOT, PRESET_ID)
@@ -137,10 +125,10 @@ async function main() {
   console.log(`installed: ${TARGET}`)
   console.log(`contents:  ${entries.join(', ')}`)
   console.log('')
-  console.log(`next:      node bin/verify.mjs --preset ${PRESET_ID} && node bin/lint-skills.mjs --preset ${PRESET_ID}`)
+  console.log('next:      node bin/verify.mjs && node bin/lint-skills.mjs')
   console.log('then:      open a NEW session — a preset is mounted at session start, so a')
   console.log('           session that is already open will not gain this one.')
-  console.log(`           In the mode picker choose 「${presetEntry(PRESET_ID).displayName}」.`)
+  console.log('           In the mode picker choose 「DSH 智能体工坊」.')
 }
 
 await main()
