@@ -4,7 +4,7 @@
 
 > An agent preset for the DeepSeek Harness, specialized in building harness agents and Cordis plugins.
 
-[![topics](https://img.shields.io/badge/topics-DeepSeek%20Harness%20Plugins-blue)](#)
+[![topics](https://img.shields.io/badge/topics-DeepSeek%20Harness%20Plugins-blue)](https://github.com/search?q=topic%3Adeepseek-harness-plugins&type=repositories)
 
 ---
 
@@ -168,17 +168,34 @@ dsh --agent-preset dsh-smith
 
 ### `tool-cordis` 那一行
 
-### 冲突本身
+#### 两个注册面，作用域完全不同——这是理解一切的前提
 
-`tool-cordis` 在 apply 时把四个 Host inspect provider（`Service`、`Event`、`Builtin`、`Tool`）注册进 `cordisInspect`，而该注册表的 provider map **按 id 去重且直接 throw**。行按花名册顺序加载，所以**一个进程里第一个**声称这些 id 的组合获胜，之后每一个含该行的组合都会**整体挂载失败**：
+`tool-cordis` 的 `apply(ctx)` 做三类事，**它们的作用域不是一回事**（读自 `dsh-tool-cordis/lib/index.js`）：
+
+| 它注册什么 | 用什么 | 作用域 |
+| --- | --- | --- |
+| 一个提示段落 `tool:cordis` | `ctx.systemPrompt.section` | 挂载它的会话 |
+| **四个** Host inspect provider（`Service`、`Event`、`Builtin`、`Tool`） | `ctx.effect(() => ctx.cordisInspect.register(...))` | **进程全局** |
+| **七个** 工具（`cordis_inspect_list` / `_query` / `_self` / `define` / `run` / `stop` / `undefine`） | `ctx.tools.register` | 挂载它的会话 |
+
+计数是实测的：该文件里 `ctx.cordisInspect.register` 出现 **1 次**（在一层 `hostInspectProviders(ctx)` 循环里，
+迭代四次），`ctx.tools.register(` 出现 **7 次**。
+
+**只有那四个 provider 是进程全局的；七个工具不是。** 工具按 agent scope 注册，所以**一个组合关掉这一行，
+它的会话就是没有 `cordis_*` 工具——不管同进程里别的组合注册过什么。**
+
+#### 冲突本身
+
+那四个 provider 注册进 `cordisInspect`，而该注册表的 provider map **按 id 去重且直接 throw**。所以一个进程里
+第二个含 `tool-cordis` 的组合会**整体挂载失败**：
 
 ```
 failed to apply loader entry tool-cordis: Host Cordis inspect provider "Service" is already registered
 ```
 
-这是实测的，不是推断的：把下面那道门去掉，本预设在任何已有其它会话注册过这些 provider 的进程里**根本挂不上去**。
+实测的，不是推断：去掉下面那道门，本预设在任何已有其它会话注册过这些 provider 的进程里根本挂不上去。
 
-### 那道门是两害相权，而且它不像我先前写的那样工作
+#### 那道门恒为真，所以本预设永远拿不到这套工具
 
 ```yaml
 - id: tool-cordis
@@ -186,45 +203,68 @@ failed to apply loader entry tool-cordis: Host Cordis inspect provider "Service"
   disabled: !!js ctx.get('cordisInspect') !== void 0
 ```
 
-`ctx.get('cordisInspect')` 回答的是「**注册表是否存在**」，不是「**有没有东西注册进去了**」。而该注册表由 `@deepseek-ai/dsh-cordis-host-runner` 在其构造函数里**急切创建**（web profile 把它挂在 host plane），所以在类似本部署的环境里这道门**恒为真**。后果：
+`ctx.get('cordisInspect')` 问的是「**注册表是否存在**」，不是「**有没有东西注册进去**」。而该注册表由
+`DynamicCordisRunnerService` 的**构造函数**创建（`dsh-cordis-host-runner/lib/index.js:1598`），挂在一个
+**无条件、永不释放**的 host 行下面。
 
-- **dsh-smith 会话不会自己拿到 `cordis_*` 工具。** 只有当同一进程里另有存活的组合已经注册过它们时才拿得到——而这取决于挂载顺序和其它会话的存活期；
-- 门带来的好处只是：预设能挂上，专家团队、思考协议、记忆层都正常工作；
-- 门带来的代价是：插件创作工具可能缺席，且行为不可预测。
+这不是挂载顺序问题，是**生命周期问题**：`cordisInspect` 在整个进程生命里都存在，所以这道门**恒为真**，
+于是 `dsh-smith` 会话**永远没有 `cordis_*` 工具**。重启进程不会改变这一点。
 
-用 `ctx.get()` 而不是 `ctx.cordisInspect`：`!!js` 门在 Loader 上下文求值，Cordis guard 会拒绝未经声明的属性访问。
+我先前写的「只有当同进程里另有存活的组合已经注册过它们时才拿得到」**是错的**——那句话把工具当成了进程全局，
+而它们不是。门带来的唯一好处是：预设能挂上，专家团队、思考协议、记忆层都正常工作。
 
-### 怎么判断你处在哪种情况
+#### 怎么确认，以及该怎么办
 
-在会话里调用一次 `cordis_inspect_list`：
+在会话里尝试一次 `cordis_inspect_list`：
 
-- **它回答了** → 工具是活的，可以正常开发插件；
-- **提示工具不存在** → 本次会话没有这套工具，请改用出厂 **「创造模式」** 预设的会话来做 Cordis 插件工作。
+- **它回答了** → 你不在这种情况（例如你正在创造模式）；
+- **提示工具不存在** → 本次会话没有这套工具，请改用出厂 **「创造模式」** 预设的会话做 Cordis 插件工作。
 
-### 真正的修法不在这个仓库里
+`dsh-smith` 会话实测就是后者。
 
-应当把 `CordisInspectRegistryService.register()` 改成**幂等**——对已注册的 provider id 返回既有 disposer，而不是 throw。一个 preset 用 YAML 表达不了这件事，所以本仓库只能记录限制并保持可用。
+#### 真正的修法不在这个仓库里
+
+应当把 `CordisInspectRegistryService.register()` 改成**幂等**——对已注册的 provider id 返回既有 disposer
+而不是 throw。但那**不足以**让本预设恢复这套工具：真正需要的是让 `tool-cordis` 的注册变成可重入，或者让一个
+**新**组合只消费既有的四个 provider、只注册七个工具而不重复注册 provider。
+
+后者才是本预设该做的事，而它**需要一个新的小插件**——YAML 表达不了「注册工具但跳过 provider 注册」。
+这是本仓库已知的天花板，不是配置错误。
+
+> 关于「改成幂等」还有一个陷阱值得记下：一个朴素实现是**引用计数，归零即 dispose**。那样会删掉一个
+> 仍然活着的 `cordis_*` 工具正在依赖的 provider——工具在，provider 没了。这条记在仓库的
+> `DECISIONS.md` 里作为**未决问题**，不作为结论。
 
 ## 验证状态
 
-**已用真实挂载验证的部分**（`agentPresets.standingKeyFor('dsh-smith')`，在同一进程内多次复验）：
+### 已在真实会话里观测到的部分
+
+一个运行在本预设上的会话（`agentPreset` 与安装副本均逐一确认）直接回答了多项此前的缺口：
+
+- **四条专家工具确实到达了模型工具表。** `expert_architect` / `expert_verifier` / `expert_protocol` / `expert_chronicler` 全部在会话的工具 schema 里，`subagent` / `subagent_fork` 同在，而 `subagent_codex` / `subagent_claude_code` **恰好缺席**——与那两行 `disabled: true` 的预测一致。
+  > 这项证据**强于**我原先指定的检查方式。`cordis_inspect_query → Tool.listTools` 那个会话里跑不了（`cordis_*` 缺席），而它的实现是 `ctx.tools.schemas(context.agent)`——返回的正是同一张表。**会话自己持有的函数 schema 就是交到模型手上的那张表**，用不着再去自省它。
+- **两个人格确实按契约输出。** `expert_architect` 给出 `DECISION / BOUNDARIES / TRADEOFFS / RISKS / ACCEPTANCE`，`expert_chronicler` 给出 `RECORDED / DERIVED / OPEN`。
+  > 这里有一个会骗过人的陷阱：**架构专家的中间态消息以 `# 1. DECISION` 开头并做了摘要，只有最终报告才带齐五个块。** 人格的中间形态不等于它的契约——判断契约要看**终稿**，`expert_verifier` 与 `expert_protocol` 至今未被调用过，它们两个仍未验证。
+- **`package.json` 在 npm 下有效**：`npm pack --dry-run` 退出码 0，15 个文件，四个 bin 目标齐备且都有 node shebang。
+- **README 徽章可解析**：HTTP 200，SVG 标注 `topics: DeepSeek Harness Plugins`。
+
+### 已用真实挂载验证的部分
+
+（`agentPresets.standingKeyFor('dsh-smith')`，在同一进程内多次复验）
 
 - 挂载通过——无未激活行，无泄漏到根 realm 的服务；
-- `compositionInventory()` 报告 **33 行全部组合，32 行 `ACTIVE`**；
+- `compositionInventory()` 报告 **33 行全部组合，29 行 `ACTIVE`**；
 - 恰好 4 行按设计关闭：`tool-bash`（Windows 平台门）、`tool-cordis`（上述条件门）、`tool-subagent-codex` 与 `tool-subagent-claude-code`（未安装的可选产品提供者）；
-- 四条专家行 `tool-expert-architect / verifier / protocol / chronicler` 全部 `ACTIVE`；
-- **去掉 `tool-cordis` 那道门会整体挂载失败**——这是做过的对照实验，不是推断。
+- **去掉 `tool-cordis` 那道门会整体挂载失败**——做过的对照实验，不是推断。
 
-**仍然存在的验证缺口，逐条列出。** 上面每一条都只证明「行组合成功且处于 ACTIVE」，**不证明任何工具真的到了模型手上**——行激活与工具可用是两件事，把它们混为一谈是构建本预设时最主要的错误。
+### 仍然存在的缺口
 
-1. **四条专家行是否注册出模型可见的 `expert_*` 工具、子代理创建路径是否可用** —— 本仓库交付时**无端到端观测**，而且**脚本做不到这件事**。我试过三条路，全部走不通，记录在此以免有人重走：
-   - `tools.schemas(standingKey)` 返回空数组——这是**预期行为**，工具按 agent scope 解析，标准挂载的 scope 不是 agent scope；
-   - 低层 `ctx.agents.create({ sessionId })` 能造出 agent，但它**完全没有挂载任何 preset**（实测：工具表里连 `write` 都没有），所以它的工具面对本预设毫无说明力；
-   - 真正会把 preset 挂上去的工厂 `ctx.agentLoop.createAgent()` **动态插件用不了**：它读 `ctx.fiber`，而 Host guard 按设计屏蔽框架内部（`sandbox ctx does not expose "fiber"`）。
+1. **`expert_verifier` 与 `expert_protocol` 的输出契约未被观测。** 两个已验证，两个没有。委托一次任何任务给它们即可关闭。
+2. **`tool-cordis` 的冷启动未被复现。** 结论现在建立在**生命周期**论证上（注册表由构造函数创建、挂在永不释放的行下），比挂载顺序论证强得多，但仍未在冷启动进程里直接观测。
+3. **`modelSelectionSettings: true` 很可能静默无效。** 该设置依赖宿主挂载 `@deepseek-ai/dsh-tool-subagent/model-selection-settings` 行，本部署的基础组合里没有它。会话工具表里也没有 `list_subagent_models`，**与该推断一致**——但这个配置键不报错，所以要么它是惰性的，要么它静默回退。
+4. **`expert_verifier` 的 `write`/`edit` 过滤从未被强制过一次。** 该行确实挂载了、它的工具确实在表里，但"被过滤的工具调用会被拒"这句只有源码支持，没有一次实际尝试。
 
-   所以这项断言只能由**真实会话**完成。`bin/verify.mjs` 现在会**打印出那两条确切调用**而不是假装检查过：在新会话里跑 `cordis_inspect_query`（host / provider `Tool` / method `listTools`），确认那四个名字在表里。
-2. **`tool-cordis` 在目标部署落在哪种情况** —— 取决于挂载顺序与其它会话的存活期，见上一节。
-3. **`modelSelectionSettings: true` 很可能静默无效** —— 该设置依赖宿主挂载 `@deepseek-ai/dsh-tool-subagent/model-selection-settings` 行，本部署的基础组合里没有它，因此 `list_subagent_models` 很可能永远不会出现，而这个配置键不会报错。第 1 项的那次工具表读取会同时暴露它。
+脚本能做的部分仍受限于动态插件无法把 preset 挂到 agent 上（`ctx.fiber` 被 guard 屏蔽），`bin/verify.mjs` 因此**打印**该做的两步而不是假装检查过。
 
 ## 兼容性
 
