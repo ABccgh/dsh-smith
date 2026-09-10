@@ -5,6 +5,32 @@ description: Use when creating, changing, or validating a Cordis composition for
 
 # Editing Cordis compositions
 
+> ## Tool names in this file are out of date — read this first
+>
+> This skill is copied verbatim from the shipped `cordis` preset, and the
+> deployment it shipped with exposed a **different Cordis tool surface** than
+> this one does. Specifically:
+>
+> | This file says | This deployment actually has |
+> | --- | --- |
+> | `cordis_mount` | **does not exist** — use `cordis_define` then `cordis_run` |
+> | `cordis_unmount` | `cordis_stop` (keep the Plugin) or `cordis_undefine` (delete it) |
+> | `cordis_inspect what:"api" name:"X"` | `cordis_inspect_query` with `{platform, provider, method, input}` |
+> | `cordis_inspect what:"services"` | `cordis_inspect_query` provider `Service`, method `listService` |
+>
+> The **method** this skill teaches is still correct and is the reason it is
+> shipped here: copying a preset, editing the copy, mounting it to validate, and
+> never touching the shipped install. Only the tool names changed.
+>
+> Two behavioural differences matter when you follow it. `cordis_define` does
+> **not** run anything — it records an immutable Package. `cordis_run` does not
+> wait for the outcome either: it returns `awaiting-approval` or `starting`, and
+> a Client Package finishes asynchronously in the browser. Do not treat
+> `starting` as success.
+>
+> When this file and `cordis_inspect_list` disagree, **`cordis_inspect_list`
+> wins**: it reports the providers and methods that are actually registered.
+
 Every capability in this harness is a plugin row in a `cordis.yml`. There is no separate configuration language: changing what an agent can do means changing which rows are composed for it.
 
 ## Off-limits

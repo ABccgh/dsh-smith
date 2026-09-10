@@ -5,6 +5,20 @@ description: Create, modify, debug, or extend dynamic Cordis Plugins, including 
 
 # Develop Dynamic Cordis Plugins
 
+> ## One correction to the text below
+>
+> This skill is copied verbatim from the shipped `cordis` preset. Its tool table
+> (`cordis_define` / `cordis_run` / `cordis_stop` / `cordis_undefine`) matches
+> this deployment, but wherever it writes `cordis_inspect …` the tool here is
+> **`cordis_inspect_query`**, taking `{platform, provider, method, input}`, with
+> `cordis_inspect_list` to discover the providers and `cordis_inspect_self` for
+> this session's dynamic Plugins. When they disagree, `cordis_inspect_list` wins.
+>
+> Also worth knowing before you follow the workflow: `cordis_run` does not report
+> the final outcome. It returns `awaiting-approval` when the user must consent,
+> or `starting` while the Client is still activating — `starting` is not success,
+> and the real result arrives asynchronously.
+
 First determine whether a capability belongs on Host or Client, then query the real interface before writing code. Never infer a complete API from a Service name, Event payload, Slot props, theme token, or example.
 
 ## Standard workflow

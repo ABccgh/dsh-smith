@@ -143,7 +143,9 @@ dsh --agent-preset dsh-smith
 
 前两个技能**同时**由安装副本和出厂预设目录提供，两者都会被技能发现机制扫描到。技能按名字取胜者，所以不会冲突——但知道这个重复存在有用：读到"技能基目录"落在出厂路径时，那不代表本预设没装好。
 
-另外两个技能里**有已知过时的 API 名**（它们提到 `cordis_mount` / `cordis_unmount`，而本部署的工具集是 `cordis_define` / `cordis_run` / `cordis_stop` / `cordis_undefine`，没有任何 `cordis_mount`）。它们是照抄未改的上游文件。**以 `cordis_inspect_list` 返回的清单为准**，不要以这两个文件里的工具名为准。
+另外两个技能是**照抄未改的上游文件**，里面提到 `cordis_mount` / `cordis_unmount`——**本部署没有 `cordis_mount` 这个工具**，实际工具集是 `cordis_define` / `cordis_run` / `cordis_stop` / `cordis_undefine`。我**没有删改它们的正文**（那会让与上游的差分失效），而是在各自开头加了一段**更正横幅**，逐一列出过时名字与正确对应，并写明"与 `cordis_inspect_list` 冲突时以 `cordis_inspect_list` 为准"。
+
+这两个技能教的**方法依然正确**，这正是它们随包分发的原因：复制预设、改副本、挂载验证、绝不碰出厂安装。变的只是工具名。
 
 ## 已知限制
 
@@ -153,7 +155,7 @@ dsh --agent-preset dsh-smith
 
 ### 信任边界：这不是沙箱
 
-`cordis_define` + `cordis_run` 会把**模型写的 JavaScript 直接对着实时运行时求值**，而 `cordis_mount` 的产物会成为**其它会话挂载的 preset**。所以本预设的会话应当按**等同于 shell 访问**来对待：它能执行代码、能改运行中的进程、能写出别的会话会加载的组合。
+`cordis_define` + `cordis_run` 会把**模型写的 JavaScript 直接对着实时运行时求值**，而这样定义出来的 Package 会被 `cordis_run` 激活、并被本 agent 写进其它会话将挂载的 preset。所以本预设的会话应当按**等同于 shell 访问**来对待：它能执行代码、能改运行中的进程、能写出别的会话会加载的组合。
 
 那条 `!!js` 门、`isolate` realm、以及所有"平面"规则管的是**归属**，不是**权限**——它们防止配置错误，不防止恶意。`tool-cordis` 一旦激活，本预设就是完全可信代码。请只在你愿意让模型改这台机器的环境上使用它。
 
