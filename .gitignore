@@ -1,0 +1,25 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor and OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Local harness state that must never be committed
+.dsh/
+sessions/
+storages/
+.credentials.yaml
+settings.yaml
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key

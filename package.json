@@ -1,0 +1,45 @@
+{
+  "name": "dsh-smith",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A DeepSeek Harness agent preset specialized in building harness agents and Cordis plugins: a composition-design thinking protocol, a four-layer memory discipline, and a standing team of four named experts.",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "agent-preset",
+    "cordis",
+    "plugin",
+    "multi-agent",
+    "expert-team"
+  ],
+  "license": "MIT",
+  "author": "ABccgh",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "dsh-smith-install": "bin/install.mjs",
+    "dsh-smith-verify": "bin/verify.mjs"
+  },
+  "scripts": {
+    "install-preset": "node bin/install.mjs",
+    "verify": "node bin/verify.mjs"
+  },
+  "files": [
+    "dsh-smith",
+    "bin"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ABccgh/dsh-smith.git"
+  },
+  "topics": [
+    "deepseek-harness-plugins",
+    "deepseek-harness",
+    "dsh",
+    "cordis",
+    "agent-preset",
+    "expert-team"
+  ]
+}

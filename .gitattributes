@@ -1,0 +1,14 @@
+# Normalize every text file to LF in the repository.
+#
+# This matters more here than in most projects: `agent.cordis.yml` is a
+# composition the harness parses, and it is copied from this clone into a
+# harness home. A checkout that rewrites its line endings would hand the loader
+# a different file than the one that was verified.
+* text=auto eol=lf
+
+# Binary assets, should any ever be added.
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
