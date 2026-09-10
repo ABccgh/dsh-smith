@@ -50,6 +50,8 @@
     "cordis",
     "agent-preset",
     "preset",
-    "expert-team"
+    "expert-team",
+    "multi-agent",
+    "ai-agent"
   ]
 }
