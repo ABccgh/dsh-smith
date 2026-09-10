@@ -148,7 +148,32 @@ async function main() {
     return
   }
 
-  const [localText, upstreamText] = await Promise.all([readFile(LOCAL, 'utf8'), readFile(upstreamPath, 'utf8')])
+  // Read both files with a diagnostic rather than letting `readFile` reject
+  // uncaught: a mistyped `--upstream` path is the most likely way to reach this
+  // script wrongly, and a stack trace tells the caller nothing about which path
+  // was wrong. An empty comparison is not a failure — a lone `[]` upstream is a
+  // legitimate empty composition — but a MISSING file is.
+  let localText
+  let upstreamText
+  try {
+    localText = await readFile(LOCAL, 'utf8')
+  } catch (error) {
+    console.error(`drift-check: cannot read the local composition at ${LOCAL}`)
+    console.error(`drift-check:   ${error && error.message ? error.message : String(error)}`)
+    process.exitCode = 1
+    return
+  }
+  try {
+    upstreamText = await readFile(upstreamPath, 'utf8')
+  } catch (error) {
+    console.error(`drift-check: cannot read the upstream composition at ${upstreamPath}`)
+    console.error(`drift-check:   ${error && error.message ? error.message : String(error)}`)
+    console.error('drift-check: check the path, or omit --upstream to let this script locate')
+    console.error('drift-check: the shipped `cordis` preset under $DSH_HOME/profiles.')
+    process.exitCode = 1
+    return
+  }
+
   const local = readRows(localText)
   const upstream = readRows(upstreamText)
 

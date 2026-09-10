@@ -1,3 +1,12 @@
+# Ignore rules for the `dsh-smith` package and the preset it ships.
+#
+# This repository is not a harness home. Four patterns a session-rooted project
+# would need are deliberately ABSENT here — `.dsh/`, `sessions/`, `storages/`, and
+# `.credentials.yaml` / `settings.yaml` — because they describe `$DSH_HOME`, which
+# is a different directory entirely, and nothing under this root ever produces
+# them. Leaving them in would suppress a real file of that name if one ever
+# appeared here, and would imply this tree holds session state it does not.
+
 # Node
 node_modules/
 npm-debug.log*
@@ -11,14 +20,7 @@ Thumbs.db
 .vscode/
 *.swp
 
-# Local harness state that must never be committed
-.dsh/
-sessions/
-storages/
-.credentials.yaml
-settings.yaml
-
-# Secrets
+# Secrets — kept because a stray key must never be committed, whatever the layout
 .env
 .env.*
 *.pem
