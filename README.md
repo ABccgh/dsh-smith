@@ -268,6 +268,8 @@ failed to apply loader entry tool-cordis: Host Cordis inspect provider "Service"
 1. **`expert_verifier` 的 `write`/`edit` 过滤从未被真正强制过一次。** 该行确实挂载、它的工具确实在表里、人格契约确实合规——但"被过滤的工具调用会被拒"这句只有源码支持，没有一次实际尝试。
 2. **加强后的验证者证据标准尚未被检验。** 它在 persona 里已写明（逐字引用、重跑命令、声明版本），但**下一次真正调用之前，无法知道它是否真的改变了发现的可靠性**。这是唯一一条"改进本身也待验证"的条目。
 
+> 这两条**结构上无法在本仓库的 `cordis` 会话里关闭**：专家工具由预设自己的行按会话作用域注册，所以 `expert_verifier` 根本不在 `cordis` 会话的工具表里。可执行的委托 brief 与三条判据写在 `docs/agent-notes/BOARD.md` 的开放问题 4。
+
 ### 关于 `list_subagent_models`：不是缺陷，是你没开的 opt-in
 
 这一条我先前记错了**两次**——先断言"该设置很可能静默无效"，理由是"本部署的基础组合里没有 `model-selection-settings` 行"。**两点都错**：
