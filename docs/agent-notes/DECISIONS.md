@@ -877,3 +877,57 @@
   rule taken from this one. Also reversed by a future PowerShell where a function does see its
   enclosing script's switch parameter, which would make (d) obsolete.
 
+## D-33: Where does the balance plugin's source live, and what does an API push do to an EMPTY repository?
+
+- **Decided:** The plugin is a **standalone public repository** —
+  `https://github.com/ABccgh/dsh-account-balance`, root commit `e3d9a98`, topics including
+  `deepseek-harness-plugins`. Its **working tree is the same directory the deployment loads**
+  (`$DSH_HOME/plugins/dsh-account-balance`), so source and runtime are one copy rather than two that
+  can drift. `bin/push-api-ref.ps1` gained an initialization path (`-Init`, `-Force`) for a target
+  repository that has no commits.
+
+- **Because:** four facts were measured, and the first two are properties of GitHub's API that no
+  amount of reading this repository would have produced.
+
+  **(a) A repository with NO commits cannot accept git objects.** `POST /git/blobs` answers
+  **`409 Git Repository is empty.`** The git database endpoints are unusable until the repository
+  owns at least one commit, so the only way in is the Contents API, which creates the first commit
+  and the default branch in one call. This is the single reason the init path has a bootstrap step at
+  all. The local history is then moved onto the now-non-empty repository.
+
+  **(b) Two cheaper-looking escapes from the bootstrap are both refused.** `POST /git/trees` with an
+  empty `tree` array answers **`422 Invalid tree info`** (so an empty tree cannot be created directly
+  to reset the branch), and `PUT /contents` with empty content answers
+  **`422 content is not valid Base64`** (so a zero-byte placeholder cannot stand in for a delete).
+  Recorded because both look like they should work, and the second one would have been tidier.
+
+  **(c) An absent ref does not answer 404.** `GET /git/refs/heads/<branch>` on an empty repository
+  answers **`409`**, not `404` — so an "is the branch absent?" test that keys on 404 is wrong. The
+  script now treats any failure of that GET as "no ref" and keeps the two guards that actually
+  matter: the repository must be reachable at all, and an `-Init` run refuses once a ref exists.
+
+  **(d) `parents = @()` is DROPPED by `ConvertTo-Json`, which changes the commit.** The API call is
+  built as a PowerShell hashtable, and an empty array member serializes to nothing — so a root commit
+  silently came out with a parent. The fix is to **omit the key** for a root commit and add it only
+  when a parent exists, which is also what the API wants. The same run then reproduced the local
+  commit's SHA **exactly** (`e3d9a98` both sides): when the message, tree, author, committer and
+  parent list all survive the round trip, re-encoding is identity, and the "API commits get different
+  SHAs" rule in `AGENTS.md` is a consequence of the metadata differing rather than of the transport.
+
+- **Rejected:** (1) **A separate copy of the plugin inside `dsh-smith`.** The reason the package was
+  kept out of that repository in the first place (its rule 7) has not changed, and two copies of a
+  400-line plugin will drift. (2) **Deleting the target repository and recreating it to retry the
+  bootstrap.** GitHub refuses to delete the default branch, and a recreated repository would have
+  been a second public artefact for no gain; a force-move onto the local history leaves the
+  half-bootstrapped commit unreferenced instead. (3) **Publishing to npm.** `"private"` was removed so
+  that publishing is *possible*, and nothing was published. (4) **Inventing a `-Base` value to satisfy
+  the required-parameter check** when the force path needs no range. The guard was relaxed to accept
+  `-Init` or `-Force` in its place, because a caller inventing a SHA is how a wrong parent gets sent.
+
+- **Reversed by:** **(i)** the plugin being moved into a preset distribution, at which point the
+  "one directory is both source and runtime" property ends and this record's central claim no longer
+  holds; **(ii)** a GitHub API change that lets objects be created in an empty repository, which would
+  delete the bootstrap branch of the init path; **(iii)** the repository being renamed or transferred,
+  which would orphan the `origin` remote configured in the working tree and the `repository.url` in
+  `package.json`.
+
