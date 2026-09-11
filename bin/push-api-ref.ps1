@@ -49,6 +49,13 @@ param(
   # the bootstrap file this script deletes anyway, so nothing a reader wants is lost — and the
   # flag is explicit rather than implied, because a force move is not a safe default.
   [switch]$Force,
+  # Push onto a remote whose first-parent chain does not reach the local tip even though the
+  # caller's -Base/-RemoteBase pair is correct. This is the normal state of a repository whose
+  # commits were all created by API pushes: the remote commit corresponding to the local base
+  # exists, but an earlier push may have left it off the tip's first-parent chain. Only the
+  # caller can tell that apart from genuinely unrelated histories, so it is a flag and not a
+  # guess — and it still leaves in place the length check and the explicit -RemoteBase reach.
+  [switch]$AllowUnrelated,
   # The throwaway path a -Init run writes through the Contents API to bootstrap an empty
   # repository, and deletes again once the real commit has been pushed.
   [string]$BootstrapFile = '.dsh-bootstrap',
@@ -190,24 +197,38 @@ if ($null -ne $tip) {
   # then the branch's only content). Requiring -Force makes that explicit, because the move
   # discards commits that exist only on the remote.
   #
-  # Reachability is answered by walking the remote first-parent chain, NOT by /compare: a
-  # compare against a SHA it does not hold answers `identical` rather than an error, which
+  # Reachability is answered by walking the remote FIRST-PARENT chain, not by /compare: a compare
+  # against a SHA the repository does not hold answers `identical` rather than an error, which
   # reads exactly like success. Measured on this repository.
+  #
+  # This walk is best-effort, and -AllowUnrelated skips it. It is not decorative: in a range
+  # built by API pushes, the remote commit that corresponds to the local base is reachable and
+  # the check passes. But the walk only follows first parents, and an earlier push can leave the
+  # remote with a commit that is a SIBLING of the tip rather than its ancestor — measured here,
+  # where 447eb32 is in the object graph but not on the tip's first-parent chain. A -Base and
+  # -RemoteBase pair that the caller named explicitly, and that the length check below accepts,
+  # is stronger evidence than a bounded chain walk, so a failure here is reported and then
+  # overridden by that flag rather than being treated as proof of divergence.
   $localTip = (git -C $PWD rev-parse HEAD).Trim()
-  $remoteTipReachable = New-Object System.Collections.Generic.List[string]
+  $chain = New-Object System.Collections.Generic.List[string]
   $probe = $tip
   for ($hop = 0; $hop -lt 200 -and $null -ne $probe; $hop++) {
-    $remoteTipReachable.Add($probe)
+    $chain.Add($probe)
     if ($probe -eq $localTip) { break }
     try { $probe = (Api "$api/git/commits/$probe").parents[0].sha } catch { $probe = $null }
   }
-  $remoteContainsLocalTip = $remoteTipReachable.Contains($localTip)
-
-  if (-not $remoteContainsLocalTip) {
-    if (-not $Force) {
-      throw "the remote tip $($tip.Substring(0,7)) shares no history with this push (typically a previous -Init run's bootstrap commit) — pass -Force to move the branch onto the local history"
+  if ($chain.Contains($localTip)) {
+    "remote first-parent chain reaches the local tip"
+  } else {
+    "remote first-parent chain does NOT reach the local tip ($($localTip.Substring(0,7)))"
+    if (-not $AllowUnrelated) {
+      throw "the remote tip $($tip.Substring(0,7)) does not reach this push's history by first parents — if the pairing is right (API-created commits have no local counterpart), pass -AllowUnrelated; if the histories really are unrelated, pass -Force"
     }
-    "remote history is unrelated to this push — moving the branch onto the local history (-Force)"
+    "  overridden by -AllowUnrelated: the caller's base pair is taken as authoritative"
+  }
+
+  if ($Force -and -not $AllowUnrelated) {
+    "moving the branch onto the whole local history (-Force)"
     $script:moveOntoLocalHistory = $true
   } else {
     $cursor = $tip
@@ -220,7 +241,6 @@ if ($null -ne $tip) {
     if ($cursor -ne $RemoteBase) { throw "remote history does not contain -RemoteBase $RemoteBase" }
     "remote range: $RemoteBase..$tip  ($($remoteShas.Count) commit(s))"
     foreach ($s in $remoteShas) { "  $($s.Substring(0,7))" }
-    "remote contains the local history: (compare succeeded)"
   }
 } else {
   # An absent ref is zero remote commits, so the local range must be exactly the commits
