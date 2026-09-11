@@ -810,3 +810,70 @@
   it is what "unmounted" would mean here; **(iv)** an upgrade that overwrites the plugin package,
   which lives outside this repository and is therefore not covered by any of its scripts.
 
+## D-32: What parents a new commit on the API push route, and why did `bin/push-api.ps1` diverge?
+
+- **Decided:** The parent of the first new commit is **the current remote tip**, never the remote
+  commit that the local commit's parent maps to. `bin/push-api-ref.ps1` is added to the repository as
+  the tool that embodies this, and `bin/push-api.ps1` is **left in place, not repaired** — the
+  rationale for that split is below.
+
+- **Because:** the observable failure was a 422 with no useful message and a repo left in a
+  two-headed state, and every step of it was measured.
+
+  **(a) The trap is a content mapping read as an ancestry relation.** An API-created commit is
+  re-encoded, so the remote tip is never equal to a local SHA; two bases express that, and pairing
+  them position by position is a statement about **content**: `local commit i` carries the same tree
+  and message as `remote commit i`. It says nothing about which commit may parent a new one. Measured
+  here with a one-commit range: pairing said `a820fa7 -> 3d83f37`, and `3d83f37` is the remote tip
+  itself, so parenting there was right *by accident*. Parenting at the mapped **base**
+  (`731776a3…`) instead produced a commit whose parent was `731776a3…` — the same parent the current
+  remote tip has — i.e. a **sibling**, not a descendant.
+
+  **(b) The diagnosis was the `compare` endpoint, not the error text.** After the failed ref update,
+  the created commit existed and was readable with a correct parent and tree, yet was an orphan;
+  `GET /repos/…/compare/main...<new>` answered **`status=diverged ahead=1 behind=1`**. That single
+  line says "siblings", which no amount of reading the 422 text would. Re-run with the parent at the
+  tip, the same compare answered `status=ahead ahead=2 behind=0` and the ref moved.
+
+  **(c) The ref update is the only step that fails, so each failed attempt leaves an orphan commit.**
+  Three orphan commits were created on the remote by these attempts (`5018d9bc`, `c71084de`, and the
+  first script's commit reported as `d7e3ab5`). They are unreachable and harmless on GitHub, but they
+  are the residue of "the push looked like it ran". The run is safe to repeat because blob and tree
+  objects are content-addressed and were already present — the successful run uploaded **0 blobs and
+  0 trees**.
+
+  **(d) `bin/push-api.ps1`'s `-Trace` switch is not in scope where it prints.** `Invoke-Api` reads
+  `$Trace`, but `-File` runs the script as a child process, and a function does not see a switch
+  parameter of its enclosing *script* scope. Measured in isolation: a function reading an enclosing
+  script's `param([switch]$Trace)` prints nothing, while the same switch declared in the function's
+  own `param()` block prints. This does not cause the 422 — `-RemoteBase` binds correctly, verified
+  with a throwaway script — but it is why the trace printed **zero** `[TRACE]` lines across three
+  `-Trace` runs, and why the body that would have answered the question in one shot was never
+  printed. The flag's entire stated purpose is to print the body.
+
+  **(e) Why the fix is a second script rather than an edit.** `bin/push-api.ps1` is the tool that has
+  pushed this repository successfully in earlier sessions; its parent logic and its scope defect are
+  real but **not reproduced by me on the path that succeeded then** — I only ever saw the divergent
+  outcome, three times, on a one-commit range whose previous commit had itself been API-created. The
+  difference may be a multi-commit batch, or an invocation through `&` rather than `-File`. Editing a
+  working tool on the strength of a path I could not reproduce is exactly the trade this repository's
+  rules refuse; adding a tool that verifies its own inputs and refuses to run on a wrong pairing is
+  not. The new script also checks the id of every blob, tree, and commit it sends against `git`'s own
+  value, which turns each of the three documented API-push defect classes into a named throw instead
+  of a silent wrong result.
+
+- **Rejected:** (1) **Repairing `push-api.ps1`'s parent assignment in place.** Not reproducible on the
+  path that matters, so the edit would be a guess dressed as a fix. (2) **Re-parenting the divergent
+  commit by rewriting the remote ref to it with `-Force`.** It would have "worked" — the tree was
+  already correct — but it would have dropped `3d83f37` (a commit on the remote and not local, so its
+  loss would be unrecoverable from this clone) to avoid understanding why the push was rejected.
+  (3) **Trusting the script's exit code or its `ref updated` line.** The ref update is one of three
+  writes, and the earlier recorded defect in this same script was an API success with a wrong tree.
+  The new script re-reads the ref and re-reads the commit, and fails when either disagrees.
+
+- **Reversed by:** a successful multi-commit push through `bin/push-api.ps1` with `-RemoteBase` set,
+  recorded with the `compare` output showing `status=ahead behind=0`. That would establish the
+  one-commit case as the only broken shape, and the two scripts could then be merged with the parent
+  rule taken from this one. Also reversed by a future PowerShell where a function does see its
+  enclosing script's switch parameter, which would make (d) obsolete.
+

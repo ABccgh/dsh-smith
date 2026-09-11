@@ -72,6 +72,27 @@ and the identical command then succeeded twice. Treat it as transient and un- re
 latent bug: an unverified diagnosis is worse than a recorded unknown. `bin/push-api.ps1 -Trace`
 prints each request body and is the instrument to reach for if it returns.
 
+> **Addendum (added this session): it returned, and it is not transient.** The same script, run three
+> times on a **one-commit** range, created a commit each time and then failed the ref update with a
+> **different** 422: `Update is not a fast forward`. The cause was found rather than guessed, and it
+> is a *shape* the previous note could not see because it only ever described the multi-commit batch:
+> **the parent of the first new commit must be the current remote tip.** Pairing the two bases
+> position by position maps *content*, not *ancestry*, and the mapped base is already in the remote
+> history — so parenting there makes the new commit a **sibling** of the tip. `GET
+> /repos/…/compare/main...<new>` said it in one line: `status=diverged ahead=1 behind=1`. With the
+> parent set to the tip the same compare answered `status=ahead ahead=2 behind=0` and the ref moved.
+>
+> Two further measurements from the same session: `bin/push-api.ps1 -Trace` printed **zero** trace
+> lines because a function does not see its enclosing *script* scope's switch parameter under
+> `-File` (verified in isolation) — so the instrument this note recommends was silently inert, which
+> is why the diagnosis took the compare endpoint instead of the request body. And each failed attempt
+> leaves the commit it created as an orphan on the remote: three exist from these attempts
+> (`5018d9bc`, `c71084de`, and the first run's). The push itself is idempotent — the successful run
+> uploaded **0 blobs and 0 trees**, because every object was already content-addressed on the remote.
+> **`bin/push-api-ref.ps1`** is added for this shape: it walks both ranges, refuses to run when their
+> lengths disagree, parents the new commit at the tip, and verifies every blob/tree/commit id it
+> sends against `git`'s own value. See **D-32**.
+
 ## Architecture (verified)
 
 Every line names how it was established. Session date of record: 2026-09-10.
