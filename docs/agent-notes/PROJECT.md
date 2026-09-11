@@ -17,6 +17,56 @@ The npm package root, the git root, and this memory root are the **same director
 directory of a session in this tree is spelled `--D-DeepSeek~0020Harness--` in the sessions
 store; that is a path encoding, not a second project.)
 
+### How a push actually gets out of this machine (measured, end to end)
+
+`git push` cannot work here, and the reason was narrowed this session: **it is not the sandbox and
+not a credentials problem — the certificate-revocation endpoints are unreachable from this network**,
+so schannel fails the handshake (`CRYPT_E_NO_REVOCATION_CHECK`) before git ever asks for a
+credential. Confirmed from **two** shells, this session's and the user's own `PowerShell 7.7.0`:
+identical error, and in the user's terminal **no GCM prompt ever appeared**, which is the tell that
+authentication is not reached. Two workarounds were tested and both fail, so do not spend time
+re-deriving them: `-c http.schannelCheckRevoke=false` is ignored (git for Windows does not expose
+that switch to the schannel backend — upstream still open, [libgit2#6724](https://github.com/libgit2/libgit2/issues/6724)),
+and `-c http.sslBackend=openssl` dies on `unable to get local issuer certificate` because no CA
+bundle ships with it.
+
+**The route that works is two steps, and the first one is the step previously unrecorded:**
+
+1. **Get a live credential into GCM without git's transport.**
+   `git-credential-manager github login --username <acct> --device --force`. It uses GCM's own
+   HTTPS stack plus a browser, so the broken schannel path is bypassed entirely. Measured: this
+   replaced a dead `ghp_` token with a working `gho_` OAuth token (scopes `gist, repo, workflow`).
+   **`--force` matters** — without it GCM may hand back the expired record, since an account
+   already exists. This is the step an earlier pass missed: it read the stored token, found it
+   40 chars and well formed, and still got `401 Bad credentials`; the shape of a token says
+   nothing about whether it is alive. **Always prove a token with `GET /user` before pushing.**
+2. **Push through the API**, with **both** bases given explicitly:
+   `pwsh -File bin/push-api.ps1 -Base <local base> -RemoteBase <remote tip>`. Reading the current
+   remote tip needs no credential for this public repo:
+   `GET /repos/<owner>/<repo>/git/ref/heads/main`.
+
+**The trap in step 2, worth more than the rest of this note.** `-RemoteBase` is *not* your local
+base. API-created commits are re-encoded, so the remote's copy of your base has a **different SHA
+that does not exist locally**, and the default (`$RemoteBase = $Base`) then sends a parent the API
+rejects with `Each SHA in the 'parents' parameter must be exactly 40 characters` — an error that
+names neither the flag nor the reason. Measured this session: local `b94c904` is remote `b9059b0`,
+same message, different SHA. **If you do not fetch the real remote tip first, you will hit this.**
+
+**What the push costs and what it proves.** 12 commits, 59 blobs, 43 trees, exit 0. Local SHAs are
+untouched; only the remote's tip identity differs. Both runs this session produced the *same*
+mapping, so the operation is idempotent. Verify with the check `bin/push-api.ps1`'s header demands —
+compare the pushed **tree SHA** against `git rev-parse HEAD^{tree}` (they matched exactly,
+`536be942…`), then diff the remote path list against `git ls-files` for doubled segments. A matching
+tree hash is the strong form: identical content at identical paths.
+
+**One failure that was never explained, recorded so a later session does not trust it.** The first
+API push of that batch died with the `parents` 422 above even though `-RemoteBase` was passed as a
+full 40-char hex SHA; every component was then measured correct in isolation (the binding, the
+`ConvertTo-Json` shape — it *does* emit `["sha"]`, not a bare string — and the parent's existence),
+and the identical command then succeeded twice. Treat it as transient and un- reproduced, not as a
+latent bug: an unverified diagnosis is worse than a recorded unknown. `bin/push-api.ps1 -Trace`
+prints each request body and is the instrument to reach for if it returns.
+
 ## Architecture (verified)
 
 Every line names how it was established. Session date of record: 2026-09-10.

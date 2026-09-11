@@ -23,7 +23,12 @@ param(
   [string]$RemoteBase,
   [string]$RepoRoot    = (Get-Location).Path,
   [switch]$DryRun,
-  [switch]$Force
+  [switch]$Force,
+  # Print each request body before it is sent. A 422 from the commits endpoint (`Each SHA in
+  # the 'parents' parameter must be exactly 40 characters`) is a body-shape complaint, and
+  # the value can look perfect in the parameter while the serialized body says otherwise --
+  # so the body itself is the only artifact that settles it.
+  [switch]$Trace
 )
 
 # $Base is the LOCAL commit to start the range from. $RemoteBase is the REMOTE SHA the first
@@ -50,6 +55,7 @@ function Invoke-Api {
   if ($Body) {
     $p.ContentType = 'application/json'
     $p.Body = ($Body | ConvertTo-Json -Depth 12 -Compress)
+    if ($Trace) { "[TRACE] $Method $Uri`n        body: $($p.Body)" }
   }
   return Invoke-RestMethod @p
 }
