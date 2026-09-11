@@ -692,10 +692,12 @@
   (`README.md:69`). Ranked search is installed but switched off: `path: ':memory:'`,
   `openAt: never` at `dsh-base/cordis.patch.yml:129-133`, restated at
   `dsh-web-app/cordis.patch.yml:27-30`, and **not overridden** — the live profile overlay
-  `~/.dsh/profiles/web/cordis.patch.yml` is an empty `[]` after its comment block. The
-  deployment's effective bundle list is two entries (`~/.dsh/profiles/web/package.json`: `dsh-base`,
-  `dsh-web-app`) — it was three until a community bundle was removed at the user's request, which
-  is the removal this same request made to `dsh.profile.bundles`.
+  `~/.dsh/profiles/web/cordis.patch.yml` is a bare `[]` — its stale comment block, which explained
+  a removed bundle's row, was deleted in a later housekeeping pass and the tree still composed
+  **152 named rows** afterwards. The deployment's effective bundle list is two entries
+  (`~/.dsh/profiles/web/package.json`: `dsh-base`, `dsh-web-app`) — it was three until a community
+  bundle was removed at the user's request, which is the removal this same request made to
+  `dsh.profile.bundles`.
 
   **(d) No model-facing consumer exists.** `dsh-tool-session-query`, which
   `dsh-session-query/README.md:128` names as the model-facing consumer, **is not installed** in the
