@@ -92,6 +92,21 @@ id is defined in exactly one place.
    directory (`standard`, `ptc`, `minimal`, `cordis`) are the ones that must never be
    written at all.
 
+7. **This repo ships presets and nothing else.** Two directories — `dsh-smith/` and `dsh-forge/` —
+   are the whole owned surface, and each is written to its install target only through
+   `bin/install.mjs --preset <id>` (rule 6). A **Cordis plugin is a different kind of thing** and
+   would not belong here: it is mounted by a *host-composition row* in a profile's
+   `cordis.patch.yml`, and the sanctioned writer for a profile's dependency graph is
+   `dsh plugin --profile <profile> add <path|tarball>` (pnpm underneath). Never hand-edit a
+   `package.json` in `~/.dsh/profiles/**`. If a plugin is ever vendored here again, it must also
+   be listed in the root `package.json`'s `files` allowlist, or it is silently absent from the
+   published tarball while every local command still works — the one failure this repo cannot
+   detect by running itself. *(History: a forked balance plugin lived at `dsh-balance/` under
+   exactly those rules until the user had it removed outright, source and records together. Do
+   not look for it, and do not restore it from a tarball or a session log. A *community* balance
+   package that a profile also loaded was removed from the deployment in the same request and
+   belongs to the same history: nothing balance-shaped ships from here or is mounted there.)*
+
 ## Boundaries
 
 - Do not modify, migrate, or delete anything under `~/.dsh/**` — profiles, sessions, or other

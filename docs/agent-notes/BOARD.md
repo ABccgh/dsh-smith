@@ -2,9 +2,9 @@
 
 ## Objective
 
-Two presets now ship from this repository: `dsh-smith` (builds harness agents and Cordis
-plugins, unchanged) and `dsh-forge` (software delivery, new). Both are installed, and
-`dsh-forge` is now **mount-validated**. What is open, and nothing else:
+Two presets ship from this repository — `dsh-smith` (builds harness agents and Cordis plugins)
+and `dsh-forge` (software delivery) — and those two directories are the whole owned surface
+(`AGENTS.md` rule 7). What is open, and nothing else:
 
 1. **`dsh-forge`'s tool surface is VERIFIED — closed this session.** All three checklist items
    in `docs/dsh-forge.md` were measured in a real `dsh-forge` session and are recorded there:
@@ -32,7 +32,7 @@ plugins, unchanged) and `dsh-forge` (software delivery, new). Both are installed
 
 | Role | Child id | Question |
 | --- | --- | --- |
-| — | — | No verification of `dsh-forge` is in flight. A snapshot; date it if it stops being true. |
+| — | — | No verification is in flight. A snapshot; date it if it stops being true. |
 
 ## Settled this session
 
@@ -52,6 +52,7 @@ plugins, unchanged) and `dsh-forge` (software delivery, new). Both are installed
 | 12 | Do `run_code` and the `tools:sdk` section reach a model? | **Yes — both, measured** | This session's own table has `run_code` and executes it; a delegated child's prompt carried the `Program-only SDK bindings:` block and its `await tools.glob(...)` returned 15 paths. The SDK section is not merely rendered — it is **callable**. Sibling of `wireSchemas`'s `both` branch (`dsh-tools/lib/index.js:2739-2742`). |
 | 13 | Does `deny: [write, edit]` hold under `mode: both`? | **Yes — and it is absence, not rejection** | Filtered `expert_debugger`: 30 names, `write`/`edit` absent from table *and* SDK section, forced calls → `TypeError: tools.write is not a function` (`instanceof ToolCallError === false`), `glob` control succeeded. Control at same depth/provider without `toolFilter`: 32 names, both present, `edit` really dispatched. D-26. |
 | 14 | Is the workspace's installed preset what this repo says it is? | **Yes — byte-identical** | `Get-FileHash` on `~/.dsh/.agent-presets/dsh-forge/agent.cordis.yml` and `dsh-forge/agent.cordis.yml` agree: `C8353AF1D7B05193AF88D5DDC085D2B4B79B422DFDEA93C0D2AF70C0414A86A1`. So no measurement here is contaminated by hand-edit drift — the failure mode `AGENTS.md` rule 6 exists to prevent. |
+| 15 | Should this repository carry anything other than presets, and should the profile's balance bundle stay? | **No to both — everything balance-shaped is gone, repo and deployment.** | The user's call, taken in two steps. First the repo's fork: deleted with its records, after it turned out to have been never mounted (its own route still answered 404). Then the community bundle the profile actually loaded, removed with the sanctioned writer — `dsh plugin --profile web remove dsh-deepseek-balance`, exit 0 — which reconciles `dsh.profile.bundles` itself (`dsh/lib/plugin-Ddi42qoW.js:46-78`), so the layer list is not left pointing at an unresolvable package (a boot failure per `dsh-app-boot/lib/index.js:831`). Verified after: bundle list `dsh-base` + `dsh-web-app`, no `node_modules` entry, lockfile importer `{}`, and `dsh --profile web --dump-config` composes no balance row. `AGENTS.md` rule 7 states the two-directory surface and the general plugin rule. |
 
 ## Open questions
 
@@ -87,6 +88,17 @@ plugins, unchanged) and `dsh-forge` (software delivery, new). Both are installed
    an unmeasured claim, and the cheap check is enumerating from a child whose row is *known* to be
    depth-sensitive. Recorded rather than dismissed because the same round trip that closed items 1
    and 2 raised it.
+6. **OPEN, new — does a session served by `dsh-smith` have `run_code` and the `tools:sdk` section?**
+   Three artifacts were read this session and they disagree, so no cause is asserted here.
+   `docs/dsh-smith.md` contains no `run_code` mention; both preset compositions declare **no**
+   `code-runtime` row (`dsh-smith/agent.cordis.yml`, `dsh-forge/agent.cordis.yml` — the latter only
+   *recommends* adding one, in a comment); yet the session that wrote D-30 had `run_code` in its own
+   tool catalog and a `Program-only SDK bindings:` block in its own prompt. Both **installed** preset
+   copies are byte-identical to this repo (`77E34CB76EF2B41D`, `C8353AF1D7B05193`), so this is **not**
+   hand-edit drift under rule 6. The probe is a runtime read of the mounted preset — `agentPresets`'
+   projection, per rule 2 — and it is **not runnable from this session**. Until it runs, the honest
+   statement is "these three artifacts disagree", never "a different preset served the session": that
+   inference is exactly the trap D-4 records.
 
 ## Next
 
@@ -94,9 +106,10 @@ plugins, unchanged) and `dsh-forge` (software delivery, new). Both are installed
    **done.** All three closed in `session-8b8072a6`, at a preset whose file hash matched the repo
    copy. `docs/dsh-forge.md` now records the measurements under 三项的实测结果, and its checklist
    is kept as the source of the criteria rather than as pending work.
-2. Keep `AGENTS.md` rules 5, 6 and the boundaries current: the mount check needs the shipped
-   `cordis` preset, `verify.mjs` is a diagnostic, and the two owned preset directories are written
-   only through `bin/install.mjs --preset <id>`.
+2. Keep `AGENTS.md` rules 5, 6, 7 and the boundaries current: the mount check needs the shipped
+   `cordis` preset, `verify.mjs` is a diagnostic, the two owned preset directories are written
+   only through `bin/install.mjs --preset <id>`, and those two directories are the whole owned
+   surface — a plugin is a different kind of thing and is never installed with `bin/install.mjs`.
 3. **Count with the tool's own semantics before publishing a breakdown.** Two counting paths in
    `dsh-agent-presets` skip group containers; this session published three wrong numbers from
    grepping the file directly (D-22, D-25). When a document states a decomposition, parse it or
@@ -106,3 +119,9 @@ plugins, unchanged) and `dsh-forge` (software delivery, new). Both are installed
    the runtime print the array and compare against that.
 5. **When a report is captured, record the revision it was taken at, and re-measure before
    restating any number from it** (D-14, D-16).
+6. **A test that passes is a claim about what it asserted, not about what it named.** This session
+   produced three examples in one file: the empty-state assertion used `/\d/` and tripped on the
+   clock in the same tree; a "stored layout" case seeded `localStorage` *before* the browser
+   globals were reinstalled and was silently discarded; and the first version of the client suite
+   rendered the *loading* state while claiming to test the empty state. All three were caught only
+   by reading the failure output, not by the suite going green.

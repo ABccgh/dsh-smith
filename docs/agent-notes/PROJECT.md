@@ -35,8 +35,8 @@ Every line names how it was established. Session date of record: 2026-09-10.
 - **Deployment version 0.1.5-rc.1**, from
   `${DSH_HOME}/profiles/node_modules/@deepseek-ai/dsh-base/package.json`.
 - **Host composition** = profile `web`: bundles `@deepseek-ai/dsh-base` +
-  `@deepseek-ai/dsh-web-app`, then `profiles/web/cordis.patch.yml` (which inserts one
-  community row, `deepseek-balance`, and nothing else).
+  `@deepseek-ai/dsh-web-app`, then `profiles/web/cordis.patch.yml`. That overlay is an empty
+  `[]`: it inserts no row of its own, so the two bundles above are the whole composition.
 - **`cordisInspect` is a host-plane service of the web-app bundle**, not of `dsh-base`: row
   `cordis-host-runner` / `@deepseek-ai/dsh-cordis-host-runner` is at
   `@deepseek-ai/dsh-web-app/cordis.patch.yml` lines 122-123; `dsh-base` does not depend on
@@ -140,6 +140,37 @@ Every line names how it was established. Session date of record: 2026-09-10.
   > and a 40,032-byte file size where it is now 43,211. Same lesson as D-14: quote, do not cite
   > a line number, and re-measure before restating a size.
 
+### Knowledge and retrieval — one gate, not one missing layer (added this session)
+
+The question "does dsh need a knowledge base or a database" resolves to **neither**; the missing
+piece is a **model-facing retrieval tool**. Verified this session (`file:line` per line):
+
+| Piece | State | Where it was read |
+| --- | --- | --- |
+| Durable KV storage | mounted and in use | `dsh-base/cordis.patch.yml:145-156`; one JSON record per session under `~/.dsh/storages/session_projcache/sessions/`, plus `~/.dsh/storages/workspace.json` |
+| Session logs | durable JSONL/Zstd | `dsh-base/cordis.patch.yml:110-113`; one log per session under `~/.dsh/sessions` |
+| Ranked full-text index | installed, **switched off** | `dsh-base/cordis.patch.yml:129-133` (`path: ':memory:'`, `openAt: never`), restated `dsh-web-app/cordis.patch.yml:27-30`; **no `.db`/`.sqlite` under `~/.dsh`** |
+| Effective bundle list | three bundles, overlay empty | `~/.dsh/profiles/web/package.json:9-13`; `~/.dsh/profiles/web/cordis.patch.yml` = `[]` |
+| Cross-session injection | mounted, **user-initiated only** | `dsh-web-app/cordis.patch.yml:78-79`; fires on `agent/pre-step` at `dsh-session-reference/lib/index.js:467`; framing `lib/index.js:394-401` |
+| Injection budget | already implemented | per source `max(65536, floor(contextWindow x 4 x referenceContextFraction))`, fraction `0.2`; **`maxReferences <= 3`** — `dsh-session-reference/README.md:48-53` |
+| Projection scope | conversation text only | tools, reasoning and injected context excluded — `dsh-session-reference/README.md:69` |
+| Model-facing retrieval tool | **does not exist** | `dsh-tool-session-query` not installed; union of `dsh-tool-*` **rows** across this repo's two presets = **16** packages, none session/DB/KB |
+| Vector / embedding capability | **none anywhere** | `embedding`/`vector`/`cosine`/`rerank` appear only in unrelated senses |
+
+**No counts in that table, deliberately.** Both populations grow on every session — the projcache
+went **130 → 137** between two readings taken in the same session — so a figure recorded here is
+stale before it is read, the same trap this file already records for byte sizes (D-14, D-16).
+Re-measure from the paths instead.
+
+Consequences worth keeping: `/resume` does **not** use the search backend — it resolves through
+`observeSession` + `agents.resume` (`dsh-api-session-controller/lib/index.js:373-384`), so exact
+reads are unaffected by the disabled index. `dsh-tool-cordis` lists `sessionQuery` with
+`searchSessions` in its introspection catalog (`dsh-tool-cordis/lib/index.js:2828,2840`), but its own
+tool description forbids treating an Inspect method as callable (`:9116`) — a catalog entry is **not**
+a callable surface. If the model-side tool is ever written, its authorization burden is its own
+(`dsh-session-query/README.md:150`).
+
+Decision recorded as D-30.
 
 ## Component map
 
@@ -177,6 +208,48 @@ Also verified this session: `node bin/lint-skills.mjs` reports **all five skills
 the installed preset was byte-identical to the repo copy at the revision this line was written
 from (`A6D2A9C1…DE051`, 40,032 B — see the supersession note at the top of this section for the
 current figures).
+
+### Every `webServer` route is outside the browser authentication gate
+
+*(This finding was measured while a balance route existed. It is kept because it is not about that
+route — see the supersession note at the end of this subsection.)*
+
+The route answered **200 without any cookie** while `GET /` on the same deployment answered **401**.
+The dispatcher returns on a named route before consulting the fallback that carries the only auth
+(`dsh-host-webserver/lib/index.js:232-243`), so **every `webServer` route is outside the browser
+authentication gate** — reachable by any process that can reach the port. Harmless on this
+deployment's loopback bind, and the concrete price the moment anyone runs `dsh web --host 0.0.0.0`:
+on this profile the route in question served the account balance of whichever provider key was
+configured, over the LAN, with no credential. That route has since been removed (below), so the
+**live** exposure is whatever else a `webServer` route carries — the dispatcher ordering is the
+finding, and it is unchanged.
+
+> **Supersession note.** This subsection replaced a longer one recording a forked balance plugin
+> that this repository used to carry. The fork's source, its tests, its records and the whole
+> provenance assessment were **deleted outright at the user's request** — not reverted, not
+> archived, and deliberately not preserved in a git commit: it had never been committed or pushed,
+> so nothing anywhere retains a copy. Three things that were said in the deleted text and are worth
+> being explicit about, since a later session will otherwise re-derive them:
+>
+> 1. **The fork was never mounted, so its deletion changed nothing in the deployment.** No profile
+>    ever listed *it*, `standingKeyFor` never ran on it, and its own route was still answering
+>    **404** immediately before it was deleted. Its tests passing proved its behaviour against stub
+>    vendors, never that a row mounts in a real composition (rule 5).
+> 2. **The route that demonstrated the finding below was a different package, since removed too.**
+>    That was the community package the profile actually loaded (not this repo's fork). At the
+>    user's request it was then removed from the deployment by the sanctioned writer —
+>    `dsh plugin --profile web remove dsh-deepseek-balance`, exit 0 — which also reconciled
+>    `dsh.profile.bundles` against the installed state
+>    (`dsh/lib/plugin-Ddi42qoW.js:46-78`, so the layer list cannot be left pointing at a package
+>    that no longer resolves, which `dsh-app-boot/lib/index.js:831` would otherwise make a boot
+>    failure). Verified after: the bundle list is down to `dsh-base` + `dsh-web-app`, its
+>    `node_modules` entry is gone, the lockfile importer is `{}`, and `dsh --profile web
+>    --dump-config` composes **no** balance row. Consequence for the finding above: **the probe
+>    that demonstrated it can no longer be repeated** — re-derive it from the cited dispatcher
+>    code, not from a route.
+> 3. **The finding itself still holds and is still unfixed.** It was the one claim in the deleted
+>    text that was never about the plugin, which is why it is restated here rather than dropped
+>    with the rest.
 
 ### `dsh-forge` — the second preset (added this session)
 
@@ -254,9 +327,7 @@ then read the values back:
   **absent** (inherited) on protocol / chronicler, and `toolFilter.deny` equal to `["write","edit"]`
   on verifier and debugger with no `toolFilter` on the other three
 
-## Known gaps
-
-- **CLOSED — the tarball no longer ships the memory layers.** D-7 added
+## Known gaps- **CLOSED — the tarball no longer ships the memory layers.** D-7 added
   `"files": ["bin", "dsh-smith", "README.md", "LICENSE"]` to `package.json`, and it was
   measured: **14 files / 58.1 kB**, with `AGENTS.md`, all three `docs/agent-notes/*.md`,
   `.gitattributes` and `.gitignore` excluded, and nothing the preset needs dropped. Kept here

@@ -655,6 +655,75 @@
   from its prose list while the runtime array held it, and misquoted `type ToolName` as
   `type ToolNames`. Have the runtime print the array and compare against that.
 
+> **D-28 and D-29 are deliberately absent.** They decided the fate of a balance plugin that this
+> repository used to carry; at the user's request that plugin's source *and its records* were
+> deleted outright, so both entries were removed here rather than superseded. The numbers are not
+> reused, so D-27 → D-30 is a gap by design and nothing is missing from the file.
 
+## D-30: Does dsh need a knowledge base or a database built next?
 
+- **Decided:** **Neither.** Build the missing **model-side retrieval tool**, and leave the storage and
+  injection surfaces alone.
+- **Because:** the evidence places every part of this capability except one.
+
+  **(a) Storage exists and is in use.** The KV stack — `dsh-storage` + `dsh-storage-json`
+  (`root: dshHomePath('storages')`) + `dsh-storage-domain` (`backend: json`) — is mounted as three
+  rows at `dsh-base/cordis.patch.yml:145-156`, and session logs are durable JSONL/Zstd under
+  `$DSH_HOME/sessions` (`dsh-base/cordis.patch.yml:110-113`). Measured on disk:
+  `~/.dsh/storages/workspace.json` plus one JSON record per session under
+  `~/.dsh/storages/session_projcache/sessions/`. **No `.db`/`.sqlite`/`.sqlite3` file exists anywhere
+  under `~/.dsh`** — verified with a control that found the `.json` files it would have had to find.
+  *(Deliberately no counts: both populations grow on every session — the projcache went 130 → 137
+  across the two readings this session, so a figure here would be stale before it was read. Re-measure
+  with the paths above; D-16 is the standing rule.)*
+
+  **(b) The corpus and its injection surface exist.** `dsh-session-reference` is mounted at
+  `dsh-web-app/cordis.patch.yml:78-79`; it turns a user's `@[label](dsh-session:<base64url-id>)`
+  mention into a bounded, untrusted, immutable `<referenced-sessions>` snapshot appended as a second
+  user-role message (`dsh-session-reference/README.md:32,36`; framing built at
+  `lib/index.js:394-401`). Trust handling and a context-relative budget are already implemented:
+  per-source `max(65536, floor(contextWindow x 4 x referenceContextFraction))` bytes, default
+  fraction `0.2` (`README.md:48-53`).
+
+  **(c) The gate is initiation, and it is hard.** That injection fires from the `agent/pre-step`
+  listener on a **user-authored** mention (`lib/index.js:467`), so the model cannot start it. Its
+  hard ceiling is `maxReferences <= 3` ("must not exceed 3", `README.md:48`), and its projection
+  keeps user/assistant text only — tools, reasoning and injected context are excluded
+  (`README.md:69`). Ranked search is installed but switched off: `path: ':memory:'`,
+  `openAt: never` at `dsh-base/cordis.patch.yml:129-133`, restated at
+  `dsh-web-app/cordis.patch.yml:27-30`, and **not overridden** — the live profile overlay
+  `~/.dsh/profiles/web/cordis.patch.yml` is an empty `[]` after its comment block. The
+  deployment's effective bundle list is two entries (`~/.dsh/profiles/web/package.json`: `dsh-base`,
+  `dsh-web-app`) — it was three until a community bundle was removed at the user's request, which
+  is the removal this same request made to `dsh.profile.bundles`.
+
+  **(d) No model-facing consumer exists.** `dsh-tool-session-query`, which
+  `dsh-session-query/README.md:128` names as the model-facing consumer, **is not installed** in the
+  tree. The union of `dsh-tool-*` **rows** across this repo's two presets is **16** packages
+  (measured by parsing `- id:` blocks, not by grepping the file — a bare grep returns 17 because it
+  also matches `@deepseek-ai/dsh-tool-pwsh-persistent` in a *comment* at
+  `dsh-forge/agent.cordis.yml:260`, which is exactly the count-vs-cite trap), none of them
+  session/DB/KB. `dsh-session-query`'s own README (`:150`) states a model tool must supply its own
+  authorization, so that burden is real work, not configuration.
+
+  **(e) No vector capability to build on.** `embedding`/`vector`/`cosine`/`rerank` appear **only** in
+  unrelated senses ("argv vector", "embedding a value in a message"), and "semantic" throughout this
+  tree means literal case-insensitive text extraction for FTS, never similarity.
+
+- **Rejected:** (1) **Build a separate knowledge-base engine** — the injection surface, its byte
+  budget and its trust model already exist; a second one would duplicate them and pay the same
+  prompt-budget cost. (2) **Deploy a new database** — the medium, schema-validated domains and
+  atomic publish already exist, and nothing measured suffers from a storage gap. (3) **Generic
+  RAG/embeddings** — no vector capability ships anywhere in the tree, so it is a wholly new
+  dependency; and the 3-source ceiling caps how much retrieved material can be injected anyway, so
+  recall is not the binding constraint. (4) **Leave the question to the next session** — it would
+  re-derive this whole inventory, which is exactly the cost these layers exist to remove.
+- **Reversed by:** any of three observations. **(i)** Enabling the index
+  (`openAt: first-search` + a durable `path`) and then reading a real search result — if full-text
+  recall over the 137-log corpus proves sufficient for the model's real questions, the tool is a thin
+  wrapper and the KB framing was the mistake, not the tool. **(ii)** A measured case where
+  `maxReferences: 3` truncates the knowledge actually needed, which would force a different
+  injection design. **(iii)** The `run_code` question recorded under **Open questions** on
+  `BOARD.md` resolving as "a preset other than these two served the session" — that would invalidate
+  part (d)'s preset-union evidence.
 
