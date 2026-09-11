@@ -105,7 +105,13 @@ id is defined in exactly one place.
    exactly those rules until the user had it removed outright, source and records together. Do
    not look for it, and do not restore it from a tarball or a session log. A *community* balance
    package that a profile also loaded was removed from the deployment in the same request and
-   belongs to the same history: nothing balance-shaped ships from here or is mounted there.)*
+   belongs to the same history.)* **What that history does NOT forbid, measured since:** the user
+   later asked the Web GUI to show the account balance, and a from-scratch plugin was written for
+   it. It lives **outside this repository** — `$DSH_HOME/plugins/dsh-account-balance`, its own git
+   repository at `github.com/ABccgh/dsh-account-balance` — and is mounted by one row in the web
+   profile's `cordis.patch.yml`. So "balance-shaped" is no longer absent from the *deployment*;
+   what remains true is that nothing balance-shaped ships from **this** tree, which is exactly what
+   this rule is about. Do not read the paragraph above as a standing ban on the feature.
 
 ## Boundaries
 
@@ -150,7 +156,26 @@ id is defined in exactly one place.
      to one long subject line. The API accepts that silently. Read messages through a file, and let
      the tree hash be the proof that content survived: the created tree SHA must equal
      `git rev-parse <sha>^{tree}`, and the script refuses to commit when it does not.
-  3. **API-created commits have different SHAs from the local ones**, because the commit object is
-     re-encoded. The trees and every blob keep their SHAs (raw bytes are uploaded base64), so the
-     *content* is identical and only history identity differs. The script prints the local→remote
+  3. **API-created commits usually have different SHAs from the local ones**, because the commit
+     object is re-encoded. The trees and every blob keep their SHAs (raw bytes are uploaded base64),
+     so the *content* is identical and only history identity differs. The script prints the local→remote
      map; the local clone's `main` then diverges from the remote by SHA while agreeing on content.
+     **Measured refinement, so this is not over-read:** when the message, tree, author, committer and
+     parent list all survive the round trip, re-encoding is *identity* and the two SHAs are equal —
+     `ABccgh/dsh-account-balance`'s root commit is `e3d9a98` on both sides. Different SHAs are a
+     consequence of *metadata differing*, not of the transport. Do not conclude from the divergence
+     that the remote's tree is untrustworthy: compare trees, which is what the script's last line does.
+- **`bin/push-api-ref.ps1` is the newer of the two, and the one to reach for on a fresh shape.**
+  It walks **both** ranges (`-Base` local, `-RemoteBase` remote), refuses to run when their lengths
+  disagree, parents the first new commit at the **remote tip** (parenting at the mapped base produces
+  a *sibling* and a `422 Update is not a fast forward`), and verifies every blob/tree/commit id it
+  sends against `git`'s own value. Extra flags: `-AllowUnrelated` when API-created commits have no
+  local counterpart, `-Force` to move the branch onto the whole local history, `-Init` to create a
+  branch in a repository that has commits but no ref, and `-RemoteOwner`/`-RemoteRepo`/`-Branch` so it
+  is not hardcoded to one repository. `bin/push-api.ps1` is left in place unchanged; **why the two
+  exist rather than one** is D-32, and the empty-repository facts are D-33.
+- **A repository with no commits at all cannot be pushed to by either script.** `POST /git/blobs`
+  answers `409 Git Repository is empty.` — the git database endpoints are unusable until the
+  repository owns a commit. Bootstrap it with one Contents-API write, then push with `-Force`, which
+  makes the bootstrap commit unreachable and leaves the real history as the branch's root. Automating
+  that bootstrap was tried and dropped: it roots the branch in two commits that are not the payload.

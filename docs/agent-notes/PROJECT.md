@@ -93,19 +93,24 @@ prints each request body and is the instrument to reach for if it returns.
 > lengths disagree, parents the new commit at the tip, and verifies every blob/tree/commit id it
 > sends against `git`'s own value. See **D-32**.
 
-> **Addendum 2 (added this session): the same script now initializes an EMPTY repository, and two
-> GitHub API facts had to be measured to do it.** `POST /git/blobs` answers
+> **Addendum 2 (added this session): the same script can create a branch, and four GitHub/PowerShell
+> facts had to be measured to get there.** `POST /git/blobs` answers
 > **`409 Git Repository is empty.`** — a repository with no commits cannot accept git objects at all,
 > so the only way in is the Contents API, which creates the first commit and the default branch
-> together. The two tidier escapes both fail: `POST /git/trees` with an empty array is
+> together. The script **refuses** to do that for you: an earlier version automated it (write a
+> throwaway file, delete it) and the branch ends up **rooted in two commits that are not the payload**,
+> measured and then dropped. The route that leaves a clean history is two steps — one Contents-API
+> write, then `-Force`, which parents the real push at the remote tip and makes the bootstrap commit
+> unreachable. Two tidier escapes are refused outright: `POST /git/trees` with an empty array is
 > **`422 Invalid tree info`**, and `PUT /contents` with empty content is
-> **`422 content is not valid Base64`**. A third fact bites a caller rather than the API: an absent
-> ref answers **`409`**, not `404`, so "is the branch absent?" must not key on 404. And a PowerShell
-> detail that changes the object: **`ConvertTo-Json` drops an empty array**, so `parents = @()`
-> vanished and a root commit came out with a parent — the key must be omitted instead, after which
-> the created commit's SHA reproduced the local one **exactly** (`e3d9a98` on both sides), which is
-> the sharpest available statement that "API commits get different SHAs" is about metadata
-> differing, not about the transport. See **D-33**.
+> **`422 content is not valid Base64`**. Two further facts bite a caller rather than the API: an absent
+> ref answers **`409`**, not `404`, so "is the branch absent?" must not key on 404; and `/compare`
+> against a SHA the repository does not hold answers `identical` rather than an error, which reads
+> exactly like success, so reachability must be walked rather than compared. On the PowerShell side,
+> **`ConvertTo-Json` drops an empty array**, so `parents = @()` vanished and a root commit came out
+> with a parent — the key must be omitted instead, after which the created commit's SHA reproduced the
+> local one **exactly** (`e3d9a98` on both sides), which is the sharpest available statement that
+> "API commits get different SHAs" is about metadata differing, not about the transport. See **D-33**.
 
 ### The balance plugin is its own repository now (added this session)
 

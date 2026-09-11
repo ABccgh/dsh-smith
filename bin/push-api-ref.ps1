@@ -38,9 +38,12 @@ param(
   [string]$Branch = 'main',
   [string]$RemoteOwner = 'ABccgh',
   [string]$RemoteRepo = 'dsh-smith',
-  # Create refs/heads/<Branch> for an EMPTY target repository: the first commit is sent as a
-  # root commit (empty parents) and the ref is created with POST /git/refs, because PATCH
-  # cannot move a reference that does not exist. Refuses to run when the ref already exists.
+  # Push into a repository that has no ref yet, creating refs/heads/<Branch> with
+  # POST /git/refs (PATCH cannot move a reference that does not exist) and sending the first
+  # commit as a root commit. Refuses to run when the ref already exists.
+  # REQUIRES the target to own at least one commit already — a repository with no commits
+  # rejects git objects outright, and this script deliberately does not bootstrap it; see the
+  # comment on that branch for the two-step route that works.
   [switch]$Init,
   # Allow the final reference move to discard commits that are on the remote and not in this
   # push. Needed exactly once, when a previous -Init run died after its bootstrap write: that
@@ -56,9 +59,6 @@ param(
   # caller can tell that apart from genuinely unrelated histories, so it is a flag and not a
   # guess — and it still leaves in place the length check and the explicit -RemoteBase reach.
   [switch]$AllowUnrelated,
-  # The throwaway path a -Init run writes through the Contents API to bootstrap an empty
-  # repository, and deletes again once the real commit has been pushed.
-  [string]$BootstrapFile = '.dsh-bootstrap',
   [switch]$Trace,
   [switch]$DryRun
 )
@@ -156,41 +156,35 @@ try {
   }
   if (-not $Init) { throw "refs/heads/$Branch is absent on $RemoteOwner/$RemoteRepo — pass -Init to create it as a root commit" }
   "remote tip  : (none — refs/heads/$Branch does not exist)"
-  # MEASURED: a TRULY empty repository rejects object creation outright —
-  # `POST /git/blobs` answers 409 "Git Repository is empty." The git database endpoints are
-  # unusable until the repository owns at least one commit, so the only way in is the
-  # Contents API, which bootstraps a first commit and the default branch in one call.
+  # A repository with NO commits at all cannot receive these objects: MEASURED,
+  # `POST /git/blobs` answers `409 Git Repository is empty.` The git database endpoints are
+  # unusable until the repository owns at least one commit, and the Contents API is the only
+  # way to give it one.
   #
-  # The bootstrap file is then DELETED through the same API, which leaves the branch with an
-  # empty tree. That second commit is unavoidable and is why this path prints a warning: the
-  # branch's first commit is the bootstrap, not this script's. Two cheaper-looking escapes
-  # were measured and do NOT work — `POST /git/trees` with an empty array answers
-  # `422 Invalid tree info`, and PUT /contents rejects an empty content with
-  # `422 content is not valid Base64`.
-  if (-not $DryRun) {
-    "bootstrapping an empty repository with $BootstrapFile"
-    $seed = Api "$api/contents/$BootstrapFile" 'Put' @{
-      message = 'chore: bootstrap the default branch so the git database endpoints accept objects'
-      content = [Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes("delete me`n"))
-    }
-    "  bootstrap commit: $($seed.commit.sha.Substring(0,7))"
-    $removed = Api "$api/contents/$BootstrapFile" 'Delete' @{
-      message = 'chore: remove the bootstrap file'
-      sha     = $seed.content.sha
-    }
-    "  cleanup commit  : $($removed.commit.sha.Substring(0,7))"
-    $filesAfter = Api "$api/contents?ref=$Branch"
-    if (@($filesAfter).Count -ne 0) { throw "bootstrap cleanup left $(@($filesAfter).Count) file(s) on $Branch" }
-    "  branch $Branch now exists with an empty tree"
-    "  NOTE: those two bootstrap commits are the branch's root; this script's own commit"
-    "        becomes its child, so the repository's first two log entries are not the payload."
-  } else {
-    "  (dry run: an empty repository rejects object creation, so a real run would bootstrap"
-    "   it through the Contents API, delete the bootstrap file, then push the real history)"
-  }
+  # THIS SCRIPT DOES NOT DO THAT, deliberately. An earlier version did — write a throwaway
+  # file, delete it again — and the result is a branch ROOTED in two commits that are not the
+  # payload; the pushed history then sits on top of them. That was measured on the repository
+  # this feature was built for, judged not worth shipping, and abandoned in favour of the
+  # two-step route that does produce a clean history:
+  #   1. bootstrap the repository with a Contents-API write (any file, any commit), then
+  #   2. run THIS script with -Force, which parents the first pushed commit at the remote tip
+  #      and moves the branch onto the real history. The bootstrap commit becomes unreachable,
+  #      which is the correct outcome for a file whose only job was to make the repo non-empty.
+  # Step 2 is verified: that is how ABccgh/dsh-account-balance was created, and its branch now
+  # has a single root commit that IS the payload.
+  #
+  # So this path stops and says what to do rather than doing something worse silently.
+  throw "repository $RemoteOwner/$RemoteRepo has no commits, and its git database endpoints refuse objects (409) — bootstrap it first with one Contents-API write, then re-run this script with -Force"
 }
 $remoteShas = New-Object System.Collections.Generic.List[string]
 if ($null -ne $tip) {
+  # -Init means "the target has no branch yet". If one is there, the flag is simply wrong, and
+  # saying so here is the whole point: without this check the run continued with an empty
+  # -RemoteBase and died several steps later on `history does not contain -RemoteBase `
+  # with nothing after the colon — a message that names neither the flag nor the reason.
+  if ($Init) {
+    throw "refs/heads/$Branch already exists on $RemoteOwner/$RemoteRepo at $($tip.Substring(0,7)) — -Init is for a repository with no branch; use the ordinary path with -Base/-RemoteBase (plus -AllowUnrelated when API-created commits have no local counterpart), or -Force to replace the branch"
+  }
   # Does the remote already contain the local tip at all? If not, there is nothing to pair and
   # no common ancestor to move forward from: the local history is entirely new to this
   # repository, which is what a RETRIED -Init looks like (a previous run's bootstrap commit is

@@ -52,7 +52,7 @@ and `dsh-forge` (software delivery) — and those two directories are the whole 
 | 12 | Do `run_code` and the `tools:sdk` section reach a model? | **Yes — both, measured** | This session's own table has `run_code` and executes it; a delegated child's prompt carried the `Program-only SDK bindings:` block and its `await tools.glob(...)` returned 15 paths. The SDK section is not merely rendered — it is **callable**. Sibling of `wireSchemas`'s `both` branch (`dsh-tools/lib/index.js:2739-2742`). |
 | 13 | Does `deny: [write, edit]` hold under `mode: both`? | **Yes — and it is absence, not rejection** | Filtered `expert_debugger`: 30 names, `write`/`edit` absent from table *and* SDK section, forced calls → `TypeError: tools.write is not a function` (`instanceof ToolCallError === false`), `glob` control succeeded. Control at same depth/provider without `toolFilter`: 32 names, both present, `edit` really dispatched. D-26. |
 | 14 | Is the workspace's installed preset what this repo says it is? | **Yes — byte-identical** | `Get-FileHash` on `~/.dsh/.agent-presets/dsh-forge/agent.cordis.yml` and `dsh-forge/agent.cordis.yml` agree: `C8353AF1D7B05193AF88D5DDC085D2B4B79B422DFDEA93C0D2AF70C0414A86A1`. So no measurement here is contaminated by hand-edit drift — the failure mode `AGENTS.md` rule 6 exists to prevent. |
-| 15 | Should this repository carry anything other than presets, and should the profile's balance bundle stay? | **No to both — everything balance-shaped is gone, repo and deployment.** | The user's call, taken in two steps. First the repo's fork: deleted with its records, after it turned out to have been never mounted (its own route still answered 404). Then the community bundle the profile actually loaded, removed with the sanctioned writer — `dsh plugin --profile web remove dsh-deepseek-balance`, exit 0 — which reconciles `dsh.profile.bundles` itself (`dsh/lib/plugin-Ddi42qoW.js:46-78`), so the layer list is not left pointing at an unresolvable package (a boot failure per `dsh-app-boot/lib/index.js:831`). Verified after: bundle list `dsh-base` + `dsh-web-app`, no `node_modules` entry, lockfile importer `{}`, and `dsh --profile web --dump-config` composes no balance row. `AGENTS.md` rule 7 states the two-directory surface and the general plugin rule. |
+| 15 | Should this repository carry anything other than presets, and should the profile's balance bundle stay? | **No to carrying plugins, and the bundle was removed — then the user asked for a balance badge and got one this session.** | The first two steps were the user's call. The repo's fork was deleted with its records after it turned out never to have been mounted (its own route still answered 404). The community bundle the profile actually loaded was removed with the sanctioned writer — `dsh plugin --profile web remove dsh-deepseek-balance`, exit 0 — which reconciles `dsh.profile.bundles` itself (`dsh/lib/plugin-Ddi42qoW.js:46-78`), so the layer list is not left pointing at an unresolvable package (a boot failure per `dsh-app-boot/lib/index.js:831`). **Then the user asked for the GUI to show the balance**, so a from-scratch plugin was written — not restored from either removed artifact. Current state, re-measured for this row: bundles are still `dsh-base` + `dsh-web-app`; `dsh --profile web --dump-config` composes one balance row, `id: account-balance` / `name: dsh-account-balance`; the profile's dependency is `dsh-account-balance: link:…/.dsh/plugins/dsh-account-balance`; and there is **no** `dsh-deepseek-balance` reference anywhere. The plugin lives **outside** this repository, which is why the two-directory surface in `AGENTS.md` rule 7 is unchanged. |
 
 ## Open questions
 
@@ -99,6 +99,15 @@ and `dsh-forge` (software delivery) — and those two directories are the whole 
    projection, per rule 2 — and it is **not runnable from this session**. Until it runs, the honest
    statement is "these three artifacts disagree", never "a different preset served the session": that
    inference is exactly the trap D-4 records.
+7. **OPEN, new and standing — who pushes the balance plugin now that it has its own repository?**
+   Its working tree is the directory the deployment loads, so a code change there takes effect on the
+   next `dsh web` restart *without* any git action, and the GitHub repository drifts silently until
+   someone pushes. There is **no** CI, no submodule, and no watcher by design (D-33). Pushing means
+   the two-step route in `AGENTS.md`'s boundaries — `git push` does not work on this network — and
+   that route is not reachable from the plugin's own directory, so it has to be driven with
+   `-RemoteRepo dsh-account-balance`. The cheap check that the two agree:
+   `git -C $DSH_HOME/plugins/dsh-account-balance status --porcelain` is clean **and** the remote tip's
+   tree equals `git rev-parse HEAD^{tree}` — the same tree comparison every other push here uses.
 
 ## Next
 
@@ -110,6 +119,9 @@ and `dsh-forge` (software delivery) — and those two directories are the whole 
    `cordis` preset, `verify.mjs` is a diagnostic, the two owned preset directories are written
    only through `bin/install.mjs --preset <id>`, and those two directories are the whole owned
    surface — a plugin is a different kind of thing and is never installed with `bin/install.mjs`.
+   **Added this session:** rule 7's balance parenthetical now says explicitly that the history it
+   records does *not* forbid the feature, because a from-scratch plugin was written and mounted
+   after the removals it describes. Read that paragraph as history, not as a standing ban.
 3. **Count with the tool's own semantics before publishing a breakdown.** Two counting paths in
    `dsh-agent-presets` skip group containers; this session published three wrong numbers from
    grepping the file directly (D-22, D-25). When a document states a decomposition, parse it or

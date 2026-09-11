@@ -892,19 +892,39 @@
   **(a) A repository with NO commits cannot accept git objects.** `POST /git/blobs` answers
   **`409 Git Repository is empty.`** The git database endpoints are unusable until the repository
   owns at least one commit, so the only way in is the Contents API, which creates the first commit
-  and the default branch in one call. This is the single reason the init path has a bootstrap step at
-  all. The local history is then moved onto the now-non-empty repository.
+  and the default branch in one call. **The script does not do this for you, and that is a deliberate
+  refusal rather than a gap.** An earlier version automated it — write a throwaway file through the
+  Contents API, delete it again — and the branch that results is **rooted in two commits that are not
+  the payload**, with the real history sitting on top of them. That was measured on the plugin
+  repository, judged not worth shipping, and removed. The route that does leave a clean history is
+  two steps, and the second one is this script:
 
-  **(b) Two cheaper-looking escapes from the bootstrap are both refused.** `POST /git/trees` with an
-  empty `tree` array answers **`422 Invalid tree info`** (so an empty tree cannot be created directly
-  to reset the branch), and `PUT /contents` with empty content answers
+  ```sh
+  # 1. one Contents-API write, so the repository owns a commit at all
+  # 2. the real push, parented at the remote tip by -Force
+  pwsh -File bin/push-api-ref.ps1 -RemoteRepo <repo> -Force
+  ```
+
+  `-Force` names the remote tip as the first pushed commit's parent and then moves the branch onto
+  the local history, so the bootstrap commit becomes unreachable — the correct outcome for a file
+  whose only job was to make the repository non-empty. This is how `ABccgh/dsh-account-balance` was
+  created, and its branch now has **one root commit that is the payload**.
+
+  **(b) Two cheaper-looking escapes are both refused, and a third one lies.** `POST /git/trees` with
+  an empty `tree` array answers **`422 Invalid tree info`** (so an empty tree cannot be created
+  directly to reset the branch), and `PUT /contents` with empty content answers
   **`422 content is not valid Base64`** (so a zero-byte placeholder cannot stand in for a delete).
-  Recorded because both look like they should work, and the second one would have been tidier.
+  The third is worse than a refusal: `/compare` against a SHA the repository does **not** hold
+  answers `status: identical` rather than an error, which reads exactly like success — so
+  reachability must be decided by walking the remote's first-parent chain, never by `compare`.
 
   **(c) An absent ref does not answer 404.** `GET /git/refs/heads/<branch>` on an empty repository
   answers **`409`**, not `404` — so an "is the branch absent?" test that keys on 404 is wrong. The
-  script now treats any failure of that GET as "no ref" and keeps the two guards that actually
-  matter: the repository must be reachable at all, and an `-Init` run refuses once a ref exists.
+  script treats any failure of that GET as "no ref" and keeps the guards that matter: the repository
+  must be reachable at all, and an `-Init` run against a repository that already has the branch stops
+  with a message naming the flag and both alternatives. That last guard was **added after the fact**:
+  without it, `-Init` ran on with an empty `-RemoteBase` and died several steps later on
+  ``history does not contain -RemoteBase `` — with nothing after the colon.
 
   **(d) `parents = @()` is DROPPED by `ConvertTo-Json`, which changes the commit.** The API call is
   built as a PowerShell hashtable, and an empty array member serializes to nothing — so a root commit
