@@ -44,6 +44,11 @@ bundle ships with it.
    `pwsh -File bin/push-api.ps1 -Base <local base> -RemoteBase <remote tip>`. Reading the current
    remote tip needs no credential for this public repo:
    `GET /repos/<owner>/<repo>/git/ref/heads/main`.
+   **`-RemoteBase` is always the remote's current tip, and it changes on every push** — so no SHA
+   is recorded here as an input. For the record of what this batch did: the first push followed
+   remote tip `b9059b0` (= local `f2f08d3`), the second followed `94a9d4b` (= local `32feca8`), and
+   the tip after it was `731776a` (= local `732b5bd`). Those are history. Query the ref and use
+   what it returns.
 
 **The trap in step 2, worth more than the rest of this note.** `-RemoteBase` is *not* your local
 base. API-created commits are re-encoded, so the remote's copy of your base has a **different SHA
