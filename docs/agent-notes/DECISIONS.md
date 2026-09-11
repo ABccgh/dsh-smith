@@ -729,3 +729,84 @@
   `BOARD.md` resolving as "a preset other than these two served the session" — that would invalidate
   part (d)'s preset-union evidence.
 
+## D-31: How does a self-authored plugin serve an authenticated route to this deployment's Web GUI?
+
+- **Decided:** Author the plugin as a **standalone package outside this repository**
+  (`$DSH_HOME/plugins/dsh-account-balance/`), name it so it cannot be confused with the removed
+  balance work, register it as a **web-profile dependency** through
+  `dsh plugin --profile web add <path>`, and mount it with **one `insert:` row** in
+  `$DSH_HOME/profiles/web/cordis.patch.yml` whose `name` is the **bare package name**.
+  The route is registered through **`ctx.connection.fetch.register()`**, never through
+  `webServer.register()`.
+
+- **Because:** five things were measured on the running deployment, and three of them are
+  general facts this repository did not have.
+
+  **(a) A package-directory row never reaches the client boot graph, and usually fails the boot.**
+  `dsh-client-modules` resolves a row through Node's internal ESM resolver and then walks up from
+  the resolved module's *directory* looking for a manifest
+  (`lib/index.js:679-726`). A directory path yields `ERR_UNSUPPORTED_DIR_IMPORT`, caught at
+  `:705-707` → no graph row, and the row's own `import` throws the same way
+  (`cordis-plugin-loader/lib/index.js:274`). Measured in-process: a **bare package name** resolves,
+  a directory path does not. After the switch the boot manifest carried
+  `dsh-account-balance` as entry 54 of 54, and the served bundle contained `dshBal_badge`.
+
+  **(b) A root-tree row applies before `connection` exists — this was the real bug.** The first
+  version used `ctx.get('connection')` with an absence check and confirmed its own absence by
+  appending to a diagnostic file: inside `apply`, `connection`, `credentials` and the `fetch`
+  registry were all `undefined`, and the suite of context services was only
+  `get,set,provide,accessor,mixin,runtime,effect,inject,plugin,on,once,parallel,emit,serial,bail,
+  waterfall,…`. The row therefore mounted, reached the boot graph, served its badge, and registered
+  **no route** — a 404 that no log line explained. Fixed by declaring the hard dependency that the
+  shipped `/api` route owners declare (`dsh-client-ui-deliverables/lib/index.js` and
+  `dsh-session-log-export/lib/index.js` both carry `inject` with `connection` in it); after that
+  `/api/balance` answered 200.
+
+  **(c) A cache helper that returns its own entry type answers 200 with the amount missing.** The
+  single-flight cache returned `{ok:true, value}` instead of `value`, and because the route spread
+  the result into a hand-built envelope, every field in the envelope still rendered and only the
+  three fields read *through* the value were absent. **A wrong answer, not an error** — the failure
+  mode worth remembering. Both the envelope shape and the values are now asserted.
+
+  **(d) The authentication fence sharpens an existing finding rather than contradicting it.**
+  `PROJECT.md` records that every `webServer` route sits outside the browser gate. Measured here:
+  `GET /api/balance` **without** a cookie is **401**, and the same request **with** the cookie is
+  **200**. The difference is the registration path —
+  `dsh-client-connection/lib/index.js:768-781` applies `requestRejection` (Host/Origin fence, then
+  the browser cookie) before it bridges to the exact-route table, while `webServer.register()`
+  bypasses that handler entirely. So the earlier claim is right about the *escape hatch* and wrong
+  if read as "any route a plugin adds is unauthenticated": the **connection Fetch-route registry is
+  the authenticated way to add one**, and it is what a plugin should use.
+
+  **(e) The route must not carry the credential.** The key is resolved per request through the
+  `credentials` seam from the reference name `DEEPSEEK_API_KEY`, so it never enters the composition
+  file or the served bundle. Asserted, not assumed: the served 11 MB batch was searched for the
+  secret value (35 chars) and contained it **zero** times.
+
+- **Rejected:** (1) **Keeping the package in this repository.** `AGENTS.md` rule 7 says this repo
+  ships presets and nothing else, and a vendored plugin must also join the root `package.json`
+  `files` allowlist or be silently absent from the published tarball. A deployment-local package in
+  `$DSH_HOME/plugins/` needs neither, and it is where a plugin with no preset provenance belongs.
+  (2) **Reusing the `dsh-balance` name.** `AGENTS.md:104-108` records that the user had a plugin of
+  that name removed outright, source and records together. The new package is
+  `dsh-account-balance`, written from scratch in this session, and it is mounted in a profile — the
+  two things the history forbids are looking for the old one and restoring it, neither of which
+  happened. (3) **A dynamic Cordis package** — `dsh-cordis-host-runner/README.md` states definitions
+  live only in process memory and a DSH restart clears them, so it cannot be a durable answer.
+  (4) **`ctx.get('connection')` with an optional guard** — measured wrong in (b).
+  (5) **A `schemastery` `Config`.** pnpm's strict linking means the plugin's own bare specifiers
+  resolve from the link's real path, outside every `node_modules`, so `import '@deepseek-ai/
+  schemastery'` fails with `ERR_MODULE_NOT_FOUND`. Cordis needs exactly one thing from `Config` —
+  `runtime.Config["~standard"].validate(config)` (`@deepseek-ai/cordis/lib/index.js:955-961`) — so
+  the plugin ships a hand-written Standard Schema object. Verified by calling the loader's **own**
+  `resolveConfig` against it: defaults fill, and a bad field throws
+  ``ValidationError: invalid config: - $.refreshSeconds expected an integer from 0 through 86400 but got -1``.
+
+- **Reversed by:** any of **(i)** a DSH release where a plugin's directory-path row resolves and
+  scans (then the bare-name dependency stops being necessary); **(ii)** a release where the root
+  context already provides `connection` at `apply` time (the `inject` becomes harmless but no longer
+  load-bearing); **(iii)** the profile's `cordis.patch.yml` losing the `account-balance` row *and*
+  `dsh plugin --profile web remove dsh-account-balance` being run — that is the whole rollback, and
+  it is what "unmounted" would mean here; **(iv)** an upgrade that overwrites the plugin package,
+  which lives outside this repository and is therefore not covered by any of its scripts.
+

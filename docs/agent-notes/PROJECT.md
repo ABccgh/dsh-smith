@@ -264,6 +264,43 @@ the installed preset was byte-identical to the repo copy at the revision this li
 from (`A6D2A9C1…DE051`, 40,032 B — see the supersession note at the top of this section for the
 current figures).
 
+### A balance badge, mounted at the user's request (added this session)
+
+The user asked for the DSH Web GUI to show the account balance. It now does, and the two facts worth
+carrying forward are **how a self-authored plugin gets mounted here** and **where this plugin lives**.
+
+**The deployment change, measured rather than described.** One package outside this repository —
+`$DSH_HOME/plugins/dsh-account-balance/` (`package.json`, `lib/index.js`, `lib/client.js`) — is
+linked into the web profile by `dsh plugin --profile web add <path>` and mounted by one `insert:` row
+in `$DSH_HOME/profiles/web/cordis.patch.yml` with `name: 'dsh-account-balance'` (bare package name)
+and five config keys. It serves `GET /api/balance` and occupies `sidebar.footer.action` with a
+`Pill` badge beside the Cordis panel. Its host half is a client-only UI package's host half (an empty
+`apply`) plus the route; its browser half is **hand-written**, with no bundler — a classic script that
+calls `window.__ModuleLoader__.load({id, factory})`, which the module system accepts because the only
+thing validated is that the file exists and is readable
+(`dsh-client-modules/lib/index.js:750-764`).
+
+**The three failures this walked through, each caught by a measurement rather than a reading, plus
+one naming decision made before anything was written** — the full reasoning is **D-31**:
+
+| Attempt | Symptom | Cause |
+| --- | --- | --- |
+| `name: 'C:\…\plugins\<package dir>'` | no boot-graph row, and the row's import would fail | directory paths are not resolvable by the ESM loader; the scan walks up from a *module* |
+| `ctx.get('connection')` with an absence guard | `/api/balance` answered **404** with nothing logged | a root-tree row applies **before** `connection` is provided |
+| single-flight cache returning its own entry | `/api/balance` answered **200** with the amount **absent** | only the fields read *through* the value were missing — a wrong answer, not an error |
+| the package's name | none — nothing was ever written under the first name chosen | `AGENTS.md:104-108` records a `dsh-balance` plugin the user had removed; renamed to `dsh-account-balance` and written from scratch |
+
+**Verified end to end on a second instance, never on the user's session.** A `dsh --profile web
+--port 3081 --no-open` instance: `GET /api/balance` **401** without the cookie, **200** with it,
+`cache-control: no-store`, body
+`{"ok":true,"source":"https://api.deepseek.com/user/balance","fetchedAt":…,"ttlMs":30000,
+"refreshSeconds":60,"isAvailable":true,"balances":[{"currency":"CNY","total":"10.17","granted":"0.00",
+"toppedUp":"10.17"}]}`, and a second call reusing the same `fetchedAt` (the cache). The boot manifest
+carried the entry and the served batch contained the plugin's own CSS class. The credential value
+(35 chars) appears **zero** times in the served bundle. The user's own `dsh web` on 3080 was never
+restarted or killed — `patchReload: live` picked the row up, but the host half needs a restart, which
+is the one step left to the user.
+
 ### Every `webServer` route is outside the browser authentication gate
 
 *(This finding was measured while a balance route existed. It is kept because it is not about that
@@ -305,6 +342,17 @@ finding, and it is unchanged.
 > 3. **The finding itself still holds and is still unfixed.** It was the one claim in the deleted
 >    text that was never about the plugin, which is why it is restated here rather than dropped
 >    with the rest.
+>
+> **Addendum (added this session).** The claim above is about the `webServer.register()` escape
+> hatch, and it is right about that — but it must not be read as "any route a plugin adds is
+> unauthenticated", because that reading is **false and was measured false**. A route registered in
+> the connection shell's Fetch-route registry is authenticated: on the 3081 instance,
+> `GET /api/balance` answered **401** with no cookie and **200** with one, because
+> `dsh-client-connection/lib/index.js:768-781` applies `requestRejection` before it bridges to that
+> table. So there are two paths, and a plugin serving account data must use the second one. The
+> earlier note that "the probe can no longer be repeated" is also superseded: the authenticated
+> path now has a live probe on this deployment, and the unauthenticated path can be re-derived from
+> the cited dispatcher code.
 
 ### `dsh-forge` — the second preset (added this session)
 
