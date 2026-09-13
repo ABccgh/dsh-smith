@@ -76,7 +76,11 @@ function GitBytes {
   $err = $proc.StandardError.ReadToEnd()
   $proc.WaitForExit()
   if ($proc.ExitCode -ne 0) { throw "git $($GitArgs -join ' ') failed: $err" }
-  return $ms.ToArray()
+  # The leading comma is load-bearing for an EMPTY range: without it PowerShell's pipeline
+  # flattens a zero-length byte array to $null on the way out of this function, and the
+  # caller then feeds $null to a decoder. This repository already records the same rule for
+  # `@()` in a value position; it applies to `ToArray()`'s result for the same reason.
+  return ,$ms.ToArray()
 }
 
 function GitText { param([string[]]$GitArgs) [System.Text.Encoding]::UTF8.GetString((GitBytes -GitArgs $GitArgs)) }
@@ -164,13 +168,32 @@ function Push-Tree {
 }
 
 # ── main ────────────────────────────────────────────────────────────────────
-$logLines = (GitText -GitArgs @('log', '--reverse', '--format=%H|%T|%an|%ae|%aI|%cn|%ce|%cI', "$Base..HEAD")) -split "`n" |
-  Where-Object { $_.Trim() -ne '' }
+# An EMPTY range is the one input that makes the range walk return no bytes at all, and
+# PowerShell's pipeline flattens an empty array to $null on the way out of GitBytes — so
+# `GitText` then called `[Encoding]::UTF8.GetString($null)` and died with
+#   `MethodInvocationException: … "Value cannot be null. (Parameter 'bytes')"`
+# a message that names neither the base nor the reason. Measured in this repository: the
+# replica of `GitBytes` + `GitText` against `HEAD..HEAD` returns $null and throws exactly
+# that, while a genuinely empty `[byte[]]@()` passed to the same call returns length 0
+# WITHOUT throwing. So the null comes from the flattening, not from the method.
+#
+# Both halves are fixed, because they protect different callers. The `,$` in `git() `keeps a
+# genuinely empty byte array an ARRAY across the return (this repo's own recorded rule:
+# write `,@()` rather than `@()` when an array must survive a value position). The try/catch
+# here is the last point before the bytes reach the decoder, which is where the guard belongs.
+$localRange = "$Base..HEAD"
+$rawLog = try { GitText -GitArgs @('log', '--reverse', '--format=%H|%T|%an|%ae|%aI|%cn|%ce|%cI', $localRange) } catch { '' }
+if ($rawLog -isnot [string]) { $rawLog = '' }
+$logLines = @($rawLog -split "`n" | Where-Object { $_.Trim() -ne '' })
+
+if ($logLines.Count -eq 0) {
+  throw "no commits in $localRange — -Base resolves to HEAD (or to a commit ahead of it), so there is nothing to push. Pass the commit BEFORE the range you want, or use bin/push-api-ref.ps1 with -RemoteOnlyParent when the parent exists only on the remote."
+}
 
 "-"
 "target      : $RemoteOwner/$RemoteRepo  branch=$Branch"
 "base        : $($Base.Substring(0,7))"
-"commits     : $($logLines.Count)"
+"range       : $localRange  ($($logLines.Count) commit(s))"
 if ($DryRun) { "mode        : DRY RUN — nothing is written" }
 ""
 

@@ -59,6 +59,23 @@ param(
   # caller can tell that apart from genuinely unrelated histories, so it is a flag and not a
   # guess — and it still leaves in place the length check and the explicit -RemoteBase reach.
   [switch]$AllowUnrelated,
+  # Push a local range whose FIRST commit's parent exists only on the REMOTE.
+  #
+  # This is the case neither -Base/-RemoteBase nor -AllowUnrelated can express, and it is the
+  # normal state of any repository whose remote history starts with a server-side commit
+  # (`auto_init`, a README bootstrap, or a Contents-API write) while the local clone — e.g. a
+  # fresh `git clone` made on a network where git's own transport works, or a CI checkout —
+  # starts from its own root. There is then NO local commit that corresponds to the remote
+  # base, so the range walk over local objects cannot reach it, and the position-by-position
+  # pairing has nothing to pair: the remote range is always 0 against the payload's n, which
+  # the length check below rejects.
+  #
+  # In this mode the remote range is NOT walked (there is no named -RemoteBase to walk back to)
+  # and the pairing check is SKIPPED, because the caller has stated the one fact that matters:
+  # the first uploaded commit parents at the CURRENT REMOTE TIP. The ref move is therefore still
+  # a fast-forward and never needs -Force. -AllowUnrelated does NOT do this — it governs only the
+  # first-parent ancestry walk, and the pairing refusal is a separate test that never consults it.
+  [switch]$RemoteOnlyParent,
   [switch]$Trace,
   [switch]$DryRun
 )
@@ -66,6 +83,16 @@ param(
 $ErrorActionPreference = 'Stop'
 if (-not $Init -and -not $Force -and [string]::IsNullOrWhiteSpace($Base)) {
   throw '-Base is required unless -Init or -Force is given (-Init seeds an empty repository; -Force moves the branch onto the whole local history).'
+}
+# Argument compatibility is checked HERE rather than where the mode is set up, because the -Init
+# branch runs first and would otherwise report its own, less specific failure. Measured: an
+# earlier version of this check sat below that branch and `-RemoteOnlyParent -Init` died on
+# '-Init requires an absent ref' instead of naming the real problem.
+if ($RemoteOnlyParent -and $Init) {
+  throw '-RemoteOnlyParent and -Init are mutually exclusive: -Init creates a root commit in an empty repository, while -RemoteOnlyParent parents the first commit at an existing remote tip'
+}
+if ($RemoteOnlyParent -and $Force) {
+  throw '-RemoteOnlyParent and -Force are mutually exclusive: -RemoteOnlyParent parents the first commit at the current remote tip, which is a fast-forward and never needs a force move'
 }
 $token = $env:GH_TOKEN
 if (-not $token) { throw 'GH_TOKEN is not set.' }
@@ -204,27 +231,40 @@ if ($null -ne $tip) {
   # is stronger evidence than a bounded chain walk, so a failure here is reported and then
   # overridden by that flag rather than being treated as proof of divergence.
   $localTip = (git -C $PWD rev-parse HEAD).Trim()
-  $chain = New-Object System.Collections.Generic.List[string]
-  $probe = $tip
-  for ($hop = 0; $hop -lt 200 -and $null -ne $probe; $hop++) {
-    $chain.Add($probe)
-    if ($probe -eq $localTip) { break }
-    try { $probe = (Api "$api/git/commits/$probe").parents[0].sha } catch { $probe = $null }
-  }
-  if ($chain.Contains($localTip)) {
-    "remote first-parent chain reaches the local tip"
+  if ($RemoteOnlyParent) {
+    # Both the ancestry walk and the range walk are skipped here, and the reason is structural
+    # rather than a convenience. The caller has stated that this range has NO local counterpart
+    # for the remote ancestry; the remote tip therefore cannot be an ancestor of the local tip
+    # either, so the walk could only ever report a divergence that -RemoteOnlyParent already
+    # asserts. Skipping it removes a misleading failure, and nothing is lost: the ref move below
+    # is still a fast-forward check by the API itself, which answers `422 Update is not a fast
+    # forward` for a parent that is genuinely off-tip. That is a stronger guard than a bounded
+    # 200-hop chain walk, and it is enforced by the server rather than by this script.
+    "remote ancestry: not walked (-RemoteOnlyParent: remote range treated as empty; the API's own fast-forward check guards the ref move)"
+    $remoteShas.Clear()
   } else {
-    "remote first-parent chain does NOT reach the local tip ($($localTip.Substring(0,7)))"
-    if (-not $AllowUnrelated) {
-      throw "the remote tip $($tip.Substring(0,7)) does not reach this push's history by first parents — if the pairing is right (API-created commits have no local counterpart), pass -AllowUnrelated; if the histories really are unrelated, pass -Force"
+    $chain = New-Object System.Collections.Generic.List[string]
+    $probe = $tip
+    for ($hop = 0; $hop -lt 200 -and $null -ne $probe; $hop++) {
+      $chain.Add($probe)
+      if ($probe -eq $localTip) { break }
+      try { $probe = (Api "$api/git/commits/$probe").parents[0].sha } catch { $probe = $null }
     }
-    "  overridden by -AllowUnrelated: the caller's base pair is taken as authoritative"
+    if ($chain.Contains($localTip)) {
+      "remote first-parent chain reaches the local tip"
+    } else {
+      "remote first-parent chain does NOT reach the local tip ($($localTip.Substring(0,7)))"
+      if (-not $AllowUnrelated) {
+        throw "the remote tip $($tip.Substring(0,7)) does not reach this push's history by first parents — if the pairing is right (API-created commits have no local counterpart), pass -AllowUnrelated; if the histories really are unrelated, pass -Force"
+      }
+      "  overridden by -AllowUnrelated: the caller's base pair is taken as authoritative"
+    }
   }
 
   if ($Force -and -not $AllowUnrelated) {
     "moving the branch onto the whole local history (-Force)"
     $script:moveOntoLocalHistory = $true
-  } else {
+  } elseif (-not $RemoteOnlyParent) {
     $cursor = $tip
     while ($cursor -and $cursor -ne $RemoteBase) {
       $remoteShas.Insert(0, $cursor)
@@ -245,7 +285,16 @@ if ($null -ne $tip) {
 if ($Init -and $remoteShas.Count -ne 0) {
   throw "refs/heads/$Branch already has $($remoteShas.Count) commit(s) — -Init is for an empty repository; drop it and pass -RemoteBase"
 }
-if (-not $Init -and -not $script:moveOntoLocalHistory -and $localShas.Count -ne $remoteShas.Count) {
+# -RemoteOnlyParent is the one mode where the two ranges are ALLOWED to differ in length: there
+# is no local counterpart for the remote tip's ancestry, which is the whole reason the mode
+# exists. The length check stays exactly as it is everywhere else — it is still the guard that
+# catches a mistyped base pair in an ordinary push.
+if ($RemoteOnlyParent) {
+  if ($null -eq $tip) { throw '-RemoteOnlyParent needs an existing remote ref: there is no tip to parent the first commit at' }
+  $script:skipPairing = $true
+  "mode        : REMOTE-ONLY PARENT (pairing skipped; first commit parents at $($tip.Substring(0,7)))"
+}
+if (-not $Init -and -not $script:moveOntoLocalHistory -and -not $script:skipPairing -and $localShas.Count -ne $remoteShas.Count) {
   throw "range length mismatch: $($localShas.Count) local vs $($remoteShas.Count) remote — the bases do not pair, refusing to run"
 }
 if ($script:moveOntoLocalHistory) {
