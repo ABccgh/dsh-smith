@@ -3,9 +3,11 @@
 This tree is the **`dsh-smith` npm package** and the presets it ships. Source of truth for each
 composition is that preset's own directory: `dsh-smith/agent.cordis.yml` (builds harness agents
 and Cordis plugins) and `dsh-forge/agent.cordis.yml` (software delivery). `bin/presets.mjs` is
-the single registry of which presets exist, which directory each lives in, and which shipped
-preset each one was copied from — the four tool scripts read their paths from it, so a preset
-id is defined in exactly one place.
+the registry of which presets exist, which directory each lives in, and which shipped
+preset each one was copied from — the five scripts that install, verify, lint, drift-check and
+preflight a preset read their paths from it. The ids are mirrored in `package.json`'s
+`dsh.presets`, which `bin/check-pack.mjs` reads for the packed surface and the CI inventory
+step reconciles against disk, so **a new preset is an edit in both files**.
 
 ## Evidence rules
 
@@ -132,6 +134,13 @@ id is defined in exactly one place.
    `brandString(value) { return value }`), so a plugin with no imports can still satisfy a branded
    contract with plain literals. **Do not rebuild it without reading D-47–D-50 first**; they hold the
    measured contracts, and with the plugin deleted they are now the only copy of that reasoning.
+   **One tracked directory here is neither a preset nor a plugin — `tools/ck3wiki/`, the source-only
+   tooling for the cancelled CK3 Wiki → ima mirror (D-57) — and it is deliberately tracked.** Its
+   generated `data/` is gitignored **and deleted**, and the directory is absent from
+   `package.json`'s `files`, so it never enters the tarball and `bin/install.mjs` knows nothing
+   about it. Do not "finish the cleanup" by deleting it: `lib/http.mjs` is the only copy of that
+   site's Fastly-gate bypass conditions, and `falsify.mjs` is the only regression test for the four
+   silent converter defects D-53 records.
 
 ## Boundaries
 
@@ -279,8 +288,9 @@ id is defined in exactly one place.
   re-created, and its `auto_init` commit is in the new history's ancestry **not at all** (the
   re-created root has `parents: 0`), so the caveat above is now a property of *bootstrap-by-Contents-API*
   in general and no longer of that repository.
-- **The remote-only-parent limitation is CLOSED IN CODE (`-RemoteOnlyParent`), and the crash is
-  fixed — but the mode is UNPROVEN in a real push.** This bullet previously read "neither script can
+- **The remote-only-parent limitation is CLOSED IN CODE (`-RemoteOnlyParent`), the crash is fixed,
+  and the mode is now MEASURED (D-56) — the "UNPROVEN in a real push" reading this bullet used to
+  open with is superseded at its own end, below.** This bullet previously read "neither script can
   push a commit whose parent exists only on the remote"; that is no longer true of
   `bin/push-api-ref.ps1`. The original gap, kept because it is the reason the flag exists: **the
   topology of any remote history rooted in a server-side commit (`auto_init`, a README bootstrap, a

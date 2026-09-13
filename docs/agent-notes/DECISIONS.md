@@ -2155,3 +2155,90 @@ only its text is missing.)*
   the existing `ingest.mjs:90` and `README.md:105` describe it as
   `weburl_<前缀>_<md5>_<目录 id>`, i.e. with an underscore that is not there, and both should be
   corrected before anyone parses that id again.
+
+## D-58: D-57's own counts, after the deletion it ordered — nine files or eight, and how many importers?
+
+- **Decided:** Correct two counts that D-57 carries, by **appending** rather than editing (this file
+  is append-only): after the cleanup **`tools/ck3wiki/` holds 8 tracked files, not 9**, and
+  **`lib/http.mjs` has two importers, not three** — the third, `probe-html.mjs:3`, was deleted by
+  D-57 itself. Nothing about the decision changes: the enumerated files are exactly the ones kept,
+  `lib/http.mjs` is still the only copy of that site's Fastly-gate bypass conditions, and
+  `falsify.mjs` is still the only regression test for the four silent converter defects D-53 records.
+  **`AGENTS.md` gains no corpus statistics from this** — only the rule-level fact that
+  `tools/ck3wiki/` is tracked *on purpose* and is not a cleanup target; the join key and the
+  duplicate-title arithmetic stay in D-57 and the `PROJECT.md` banner, where a reader arrives with
+  that question.
+- **Because:** measured on the committed tree, not re-read. `git ls-files tools` returns exactly
+  eight paths — `README.md`, `extract.mjs`, `falsify.mjs`, `ingest.mjs`, `lib/convert.mjs`,
+  `lib/http.mjs`, `package.json`, `verify-convert.mjs` — and `git show --stat 0016c18` lists the
+  same eight. D-57's own enumeration is eight items under the label "9", so only the number was
+  wrong; that same wrong nine had been copied into `BOARD.md` and `PROJECT.md`'s cancellation
+  banner, and all three are now corrected. (An older **11 files** reading, still in `PROJECT.md`,
+  describes the pre-cleanup directory — it is kept as history with the current count beside it.)
+  A grep for `lib/http.mjs` across the surviving tree returns `extract.mjs:31` and
+  `verify-convert.mjs:14` only. One more census has drifted the same way and is left where it is,
+  because this file is append-only: the `## Note, not an entry: the D-46 gap` above reads that the
+  entries run `1–27, 30–50`, which was accurate when it was written — the inventory now runs to
+  **57**, and that is the figure `BOARD.md` carries. (Its other citation, "explained at line 658",
+  still points at the D-28/D-29 note, re-checked.)
+- **And one consequence of the deletion that belongs with these, because it changes what a reversal
+  check costs:** D-52, D-53 and D-54 stand as decisions — the cancellation changed their *status*,
+  not their reasoning — but their reversal conditions are no longer all runnable offline.
+  `falsify.mjs` runs with **no corpus at all**: its five cases are inline HTML and its only import
+  is `lib/convert.mjs`, so D-53's pinned regression test survives the deletion intact.
+  `node verify-convert.mjs --checkall` does not: it reads `data/_raw`, and **no surviving script
+  writes that directory** — `extract.mjs` produces `data/out/**` and `data/manifest.json`, while
+  only `verify-convert.mjs --fetch` (network, through the gate bypass) creates `data/_raw`. So
+  re-opening the converter means fetching pages first, and D-52's "import one URL twice and compare
+  `media_id`" re-check needs live URLs rather than the deleted local mirror.
+- **A number the record does not close, flagged rather than reconciled.** D-57 names two causes for
+  the `922 → 913` difference — one redirect and three titles duplicated across partitions — which
+  is four of the nine; the same record corrects ns10 from **254** to **248**, and `BOARD.md`'s
+  extraction note explains **six** Template titles returned twice by `allpages` pagination (`922`
+  manifest entries for `916` files), which reads like a third cause and would make the submitted
+  list 916 rather than 922. The corpus and the coverage script are both deleted, so this cannot be
+  settled from the tree; it is recorded as an open question on the board instead.
+- **Rejected:** editing D-57's text, which append-only forbids even for a digit — and the digit is
+  the argument for the rule rather than against it, because any reader can count. Also rejected:
+  treating the importer count as still three because it was true when D-57 was written — the
+  sentence reads as present tense about the surviving files, and one of the files it names is the
+  one the same decision deletes, so it is the kind of claim that misleads precisely the reader who
+  goes to check it.
+- **Reversed by:** a measurement showing nine tracked paths under `tools/ck3wiki/`, or a third
+  importer of `lib/http.mjs`. Both are one command: `git ls-files tools`, and a grep for
+  `lib/http.mjs`.
+
+## D-59: Does the CK3 `922 → 913` reconciliation close, or is it unanswerable now?
+
+- **Decided:** It **closes**, and the answer is reading **(ii)**:
+  **`922 − 6 = 916 − 3 = 913`**. The **6** is the Template titles `list=allpages` pagination returned
+  twice; the **3** is the distinct URLs that are also duplicated across partitions; the **922 was a
+  fetch/listing count, never a submission count**. Recorded because D-58 filed this as an open board
+  question and asserted the check "cannot be settled from the tree" — that verdict was wrong, and a
+  wrong "unanswerable" is worse than an open question, because it stops the next reader from looking.
+- **Because:** the settling evidence is **a comparison already in the record**, not a new
+  experiment. At planning time the knowledge base was enumerated **live, per partition, in 22 paged
+  calls**: **`428 / 4 / 12 / 20 / 248 / 201`**. The manifest's partitions are
+  **`430 / 4 / 12 / 20 / 248 / 202`**. **Four of the six partitions agree exactly** — including
+  `ns10 = 248` on both sides — and that agreement is the load-bearing part: because `ns10` already
+  reads **248** in the manifest, the six Template dedupes happened **before** manifest time, which
+  is precisely what rules out reading (i) (that 922 was submitted verbatim). The only two partitions
+  that differ are exactly the two that hold the duplicates: `00_Articles` **−2** and
+  `50_Categories` **−1**, summing to **3** — the three duplicate-URL keys this file already names
+  (`Crusader Kings III Wiki:Style`, `Crusader Kings III Wiki:Versioning`, each in
+  `00_Articles`+`10_Project`, and `Dragon Age: Thedas at War` in `00_Articles`+`50_Categories`).
+  So the gap of nine is **6 + 3**, both terms accounted for, with no remainder — and the earlier
+  note that the two named causes "account for four of the nine" was comparing submissions against a
+  number that was never a submission count.
+- **Rejected:** **calling it unanswerable** (D-58's conclusion) — the needed measurement is a
+  per-partition enumeration of the knowledge base, and that had already been run and written down
+  *before* `data/` was deleted, so the deletion never destroyed the evidence. Also rejected:
+  **regenerating the corpus to re-establish it** — unnecessary, since the manifest's partition counts
+  are the weaker half of the comparison and are recoverable from the notes alone.
+  Also rejected: **editing D-58's text**, which append-only forbids; D-58's pointer to a board open
+  question is superseded by this entry and by the board item now marked CLOSED.
+- **Reversed by:** a per-partition enumeration of the knowledge base disagreeing with
+  `428 / 4 / 12 / 20 / 248 / 201`, or a manifest whose `counts.duplicateTitlesDropped` is not **6**.
+  The first is still re-runnable **only while the knowledge base exists** — the user is deleting it
+  by hand, since ima's OpenAPI has no delete endpoint — and it needs the corpus regenerated for the
+  manifest half; after the KB is gone, this entry stands as the terminal record.

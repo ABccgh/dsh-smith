@@ -6,7 +6,8 @@
 交付物 `tools/ck3wiki/`（工具 + `falsify.mjs` + README）与知识库 `Crusader Kings III Wiki`
 （`iYD6qed-…`，913 条）**两者都已交付**；本次按用户要求取消项目并做全面清理：删掉 934 个
 生成物文件（19.41 MB，可重建）、5 个一次性/探针脚本与 `$DSH_HOME\profiles\web\` 的四个 CK3
-脚本，**保留 9 个可重建语料与跑回归测试所必需的文件**（理由与全部实测计数见 `PROJECT.md`
+脚本，**保留 8 个可重建语料与跑回归测试所必需的文件**（`git ls-files tools` 实测 8 条，**D-58**
+订正了 D-57 的「9」；理由与全部实测计数见 `PROJECT.md`
 该节的取消订正块与 **D-57**）。
 **一处必须由用户手工完成、API 做不到的事**：ima 服务端那 913 条无法删除（该接口没有删除
 端点），只能在 ima 客户端里手工删库。设计决策 **D-52**（URL 导入而非 Markdown 上传）、
@@ -19,7 +20,7 @@ State, as of this writing:
 | --- | --- |
 | Converter | **sound** — 8 pilot pages pass every audit; 4 independent defects found by review and fixed; `falsify.mjs` pins all 4 and was validated in the negative |
 | Extraction | **DONE** — 922 pages fetched, 0 fetch failures, 15.9 MiB, 482 s, 0 gate challenges in 980 requests; all 430 articles pass the audit at a median text recall of 0.99. **916 distinct files, all 916 verified against the manifest by digest** |
-| Ingest | **DONE** — knowledge base `Crusader Kings III Wiki` (`iYD6qed-…`), 6 folders, 922 URLs submitted, **913 unique entries with the gap explained**: the wiki's main page resolved to `CK3 Wiki`, so duplicate URLs collapsed. Coverage by URL slug: **429/430 articles, 100 % of the other five partitions** |
+| Ingest | **DONE** — knowledge base `Crusader Kings III Wiki` (`iYD6qed-…`), 6 folders, 922 URLs submitted, **913 unique entries**, with the two causes D-57 records: the wiki's main page resolved to `CK3 Wiki`, **and 3 titles were duplicated across partitions** (`430−2=428`, `202−1=201`, i.e. ima kept one copy of each). *(The two causes do not arithmetically close the gap of 9 — open question 12.)* Coverage by URL slug: **429/430 articles, 100 % of the other five partitions** |
 | Plugin | `dsh-ima-kb` gained **4** tools (`ima_import_urls`, `ima_upload_dir`, `ima_kb_create`, `ima_kb_mkdir`); 13 tools, 10 config keys, verified by `profiles/web/check-ima-kb.mjs` (stubbed services; **not** a Cordis-injection proof). Changes committed locally as `e300cca` |
 
 **A defect found after "done", recorded because the check that finds it did not exist.** The corpus
@@ -38,7 +39,8 @@ distinctly written.**
 1. **Title backfill: COMPLETE.** The two readings above (**85 → 104** of 913) were early
    samples. Measured at cancellation: **all 913 titles carry `<wiki title> - CK3 Wiki`**, including
    namespaced pages. The old number is a superseded reading, not an outstanding risk —
-   `data/coverage.json`'s `backfilled: 220` is stale and must not be quoted.
+   `data/coverage.json`'s `backfilled: 220` is stale, must not be quoted — and the file itself is
+   gone with `data/`, so it cannot be re-read at all.
 2. **Two permanent leftovers in `曦曦的知识库` remain, and still no API can remove them:**
    `this-page-does-not-exist.md` and the 12 CK3 probe entries the architecture review wrote there
    (11 URLs + that file). Deleting the local mirror does **not** touch these — they are the user's
@@ -107,13 +109,16 @@ and `dsh-forge` (software delivery) — and those two directories are the whole 
    inheritance. D-26 records the correction this forced on D-17's wording.
 2. **`bin/verify.mjs` cannot reach the roster from any session** (D-24). Corrected in its text;
    making it a real check would need it to attach to a live runtime instead of booting a bare one.
-3. **The local commits are unpushed** whenever no remote is configured. A workspace fact, not a
-   preset defect. **Related and now partly closed this session:** the push *tooling* could not
-   express a range whose first parent exists only on the remote, which is exactly this
-   repository's shape — `bin/push-api-ref.ps1` now has `-RemoteOnlyParent` for it and
-   `bin/push-api.ps1` errors cleanly instead of crashing on an empty range (**D-48**). The mode
-   itself is **unproven in a real push**: no `GH_TOKEN` was available this session, so every
-   attempt stopped at the script's own reachability guard.
+3. **The local commits are unpushed.** A workspace fact, not a preset defect. **This repo right
+   now:** `origin` is configured (`github.com/ABccgh/dsh-smith`) and `main` has **no upstream**
+   (`git rev-parse main@{upstream}` → *no upstream configured*), so the four commits this session
+   made — `e3ec4a4`, `a980f67`, `0016c18`, `b6ecb19` — are local-only; the remote's state was
+   **not** queried, because git's transport is dead from this machine (below). **The push-tooling
+   gap is CLOSED *and now measured*:** `bin/push-api-ref.ps1` gained `-RemoteOnlyParent` for a
+   range whose first parent exists only on the remote and `bin/push-api.ps1` errors cleanly instead
+   of crashing on an empty range (**D-48**), and the flag's happy path was then pushed for real,
+   with five checks taken **against the API** (**D-56**) — the "unproven in a real push" reading
+   this item used to carry is superseded.
 4. **Outside the repository — the `dsh-ima-kb` mount check is DONE** (open question 8, D-40): six
    presets `MOUNT OK`, `dsh-ima-kb` in none of the 160 preset rows, and `ima_kb_list` present in a
    live session's tool table. **Question 9 is closed too, for `ima_kb_list`'s live path** (D-44): a real
@@ -121,11 +126,14 @@ and `dsh-forge` (software delivery) — and those two directories are the whole 
    is narrower and is recorded in `PROJECT.md` — eight of the nine tools are not production-verified,
    including the other three read tools. Nothing under `D:\DeepSeek Harness` is blocked by it: the plugin
    is not in this tree.
-5. **The D-46 gap — still a gap, but its record defect is fixed.** `AGENTS.md:233,251` and
-   `PROJECT.md:426` all cite **D-46**, and `DECISIONS.md` has no such entry: its `## D-<number>`
-   headings run 1–27 and 30–50, skipping **28/29** (deliberately absent, explained in-file) and
-   **46**. Those citations are **pre-existing**; the session that recorded this did not delete the
-   entry and could not see what happened to it, so **D-46 stays unassigned rather than invented**.
+5. **The D-46 gap — still a gap, but its record defect is fixed.** The two `push-api` bullets in
+   `AGENTS.md` (the `parents`/`if` bullet and the `auto_init` bullet) and `PROJECT.md:426` all cite
+   **D-46**, and `DECISIONS.md` has no such entry: its `## D-<number>` headings run 1–27 and
+   30–**57** (55 entries plus the note), skipping **28/29** (deliberately absent, explained
+   in-file) and **46**. Those citations are **pre-existing**; the session that recorded this did not
+   delete the entry and could not see what happened to it, so **D-46 stays unassigned rather than
+   invented**. The line numbers this item used to name — `AGENTS.md:233,251` — rotted, and moved
+   again during this very pass, which is why it now names the two bullets instead of their lines.
    **What was fixed:** the explanatory note had been headed `## D-46 is cited elsewhere but is NOT
    in this file`, which **matched the `## D-<number>` entry pattern** — so a search for entries
    reported D-46 as present when only the note was. It is now headed `## Note, not an entry: the
@@ -324,18 +332,40 @@ and `dsh-forge` (software delivery) — and those two directories are the whole 
 > `https://github.com/deepseek-ai/deepseek-harness` into the same knowledge base. The user has been
 > told. The note count was first reported as 3 and the measured figure is 5.
 
+12. **CLOSED — the `922 → 913` reconciliation DOES close, and the check was already run (D-59).**
+    Reading **(ii)** is the right one, and it is now proved rather than inferred:
+    **`922 (listings) − 6 (Template titles `list=allpages` returned twice) = 916 (manifest rows);
+    916 − 3 (distinct URLs duplicated across partitions) = 913 (knowledge base).**
+    The proof is a comparison already in the record, not a new experiment: at planning time the KB
+    was enumerated **live, per partition, with 22 paged calls** — `428 / 4 / 12 / 20 / 248 / 201` —
+    and the manifest's partitions are `430 / 4 / 12 / 20 / 248 / 202`. **Four of the six partitions
+    agree EXACTLY**, including `ns10 = 248` on both sides, which is what places the six Template
+    dedupes *before* manifest time and therefore rules out reading (i). The two that differ are
+    exactly `00_Articles` (−2) and `50_Categories` (−1) — sum **3**, precisely the three
+    duplicate-URL keys D-57 names (`Crusader Kings III Wiki:Style`, `…:Versioning`,
+    `Dragon Age: Thedas at War`), each of which sits in one of those two partitions.
+    So the gap of nine decomposes **6 + 3**, both terms accounted for, and **922 was a
+    fetch/listing count, never a submission count**. The earlier "possibly unanswerable
+    from now on" verdict was wrong: the evidence needed was a live per-partition enumeration,
+    and that had already been performed and written down before the corpus was deleted.
+
 ## Next
 
-0. **CK3 milestone — DONE end to end, including the upload.** Extraction, ingest, the plugin
-   push and the repository topics are all finished and verified. What remains is only:
-   (a) **re-run `node coverage-ck3.mjs` later** to confirm ima finished the asynchronous title
-   backfill (85 → 104 of 913 at the two readings; the COUNT is settled at 913, which reconciles
-   with 922 submitted because the wiki's main page resolved to `CK3 Wiki` and duplicate URLs
-   collapsed);
+0. **CK3 milestone — CANCELLED, cleaned up and CLOSED (D-57); nothing of it is pending work
+   here.** Extraction, ingest, the plugin push and the repository topics were all finished and
+   verified, and the cancellation has since removed the generated corpus. What is left is not work
+   in this workspace:
+   (a) the **title backfill is COMPLETE** — the `85 → 104 of 913` readings are superseded (all 913
+   titles carry `<wiki title> - CK3 Wiki`, measured before the deletion; item 1 above), and the
+   re-run instruction is dead with its tool: `coverage-ck3.mjs` was one of the four `profiles/web`
+   CK3 scripts deleted, and the `data/` it read no longer exists. The COUNT stays settled at
+   **913** — see open question 12 on how the causes for it add up;
    (b) the 13 leftover items in `曦曦的知识库` are the user's to delete in the ima client — no API
    can remove them;
-   (c) `tools/ck3wiki/` in this workspace is **untracked and deliberately left so**: the generated
-   corpus is gitignored, and this repository was not asked to carry it.
+   (c) `tools/ck3wiki/` is **tracked, not untracked** (`0016c18`, **8** files — D-58 corrects
+   D-57's "9"): the generated `data/` is gitignored **and deleted** (`node tools/ck3wiki/extract.mjs`
+   rebuilds it), and the directory stays out of the tarball because it is not in `package.json`'s
+   `files`.
    **Two lessons worth keeping from this milestone.** *On the ima API:* a **403 is the rate
    limiter, not a dead credential** — proven by an authenticated read succeeding immediately
    after, and by the knowledge base reporting exactly the count the local run had recorded. Add

@@ -808,9 +808,10 @@ tarball** rather than the tree, so it catches the one defect every other check i
 a preset directory missing from `package.json`'s `files` allowlist. It is **falsified and repaired**:
 dropping `dsh-smith` from `files` produces 4 findings, restoring it passes, and dropping `bin`
 correctly does **not** fail because npm force-includes whatever the `bin` map names. And the D-45
-push-script limitation is **closed in code, unproven in a real push** — `-RemoteOnlyParent` exists and
-its argument validation is measured, but the happy path needs a live `GH_TOKEN` this session did not
-have. Full reasoning in **D-48**.
+push-script limitation was **closed in code, unproven in a real push** at the time — `-RemoteOnlyParent`
+exists and its argument validation was measured, but the happy path needed a live `GH_TOKEN` that
+session did not have. **Superseded: the flag's happy path has since been pushed for real and
+verified against the API (D-56).** Full reasoning in **D-48**.
 
 ### Every `webServer` route is outside the browser authentication gate
 
@@ -1074,7 +1075,8 @@ then read the values back:
 >
 > **一、订正（本节下文与 `tools/ck3wiki/README.md` 里的数字有两处是过期的）**
 >
-> - `data/coverage.json` 的 `backfilled: 220` **已过期**。取消前实测：**库内 913 条标题
+> - `data/coverage.json` 的 `backfilled: 220` **已过期**（该文件已随 `data/` 一起删除，见下「二」，
+>   所以这个数现在只能在记录里复核，不能在树里）。取消前实测：**库内 913 条标题
 >   已全部回填**为 `<wiki 标题> - CK3 Wiki`，含命名空间页（如 `Module:Yesno - CK3 Wiki`）。
 >   该字段是在更早的时间点读的。
 > - **实际计数**（取消前实测，全库 22 页枚举）：`00_Articles` **428**、`10_Project` 4、
@@ -1098,10 +1100,16 @@ then read the values back:
 >   `node tools/ck3wiki/extract.mjs` 可重建）、`probe-join.mjs`/`probe-join2.mjs`（本会话
 >   规划阶段的探针）、`probe-html.mjs`/`repair-manifest.mjs`/`triage.mjs`（零入站引用的一次性
 >   HTML 侦察、已失效的 manifest 修复、一次性 triage）。
-> - **保留 9 个文件**：`extract.mjs`、`ingest.mjs`、`verify-convert.mjs`、`falsify.mjs`、
->   `lib/convert.mjs`、`lib/http.mjs`、`package.json`、`README.md`。其中 **`lib/http.mjs` 有
->   三个导入者**（`extract.mjs:31`、`probe-html.mjs:3`、`verify-convert.mjs:14`），它同时是
->   本站 Fastly 门绕过条件的唯一副本；`falsify.mjs` 是 D-53 那四个静默缺陷的唯一回归测试。
+> - **保留 8 个文件**（原写「9」，实测 `git ls-files tools` 为 8 条，**D-58** 订正）：
+>   `extract.mjs`、`ingest.mjs`、`verify-convert.mjs`、`falsify.mjs`、
+>   `lib/convert.mjs`、`lib/http.mjs`、`package.json`、`README.md`。其中 **`lib/http.mjs` 删除后
+>   有两个导入者**（`extract.mjs:31`、`verify-convert.mjs:14`；第三个 `probe-html.mjs:3` 已随
+>   一次性脚本删除），它同时是本站 Fastly 门绕过条件的唯一副本；`falsify.mjs` 是 D-53 那四个
+>   静默缺陷的唯一回归测试，且**不依赖 `data/`**（用例是内联 HTML，只 import `lib/convert.mjs`）。
+> - **删除之后，D-53 的复核路径分两半**：`falsify.mjs` 现在就能跑；`verify-convert.mjs
+>   --checkall` 读的是 `data/_raw`，而**没有任何保留的脚本会写它**——`extract.mjs` 产出的是
+>   `data/out/**` 与 `data/manifest.json`，只有 `verify-convert.mjs --fetch`（联网、走门绕过）
+>   才生成 `data/_raw`。所以重新拾起转换器时要先抓页，这一步不能省。
 > - `$DSH_HOME\profiles\web\` 的四个 CK3 脚本（`create-ck3-kb` / `import-ck3` /
 >   `reconcile-ck3` / `coverage-ck3`）一并删除；`check-ima-kb.mjs` 与 `cordis.yml` **保留**
 >   （后者实测是 loader 的 root 配置，其注释原文即「Edit cordis.patch.yml, not this file」）。
@@ -1222,7 +1230,7 @@ config 过插件自身 schema、13 个工具的预编译 `parameters` 全被 `ds
 却能得到完整的请求契约。`create_folder` 的 `{knowledge_base_id, name}` 与
 `create_knowledge_base` 的 `{name, type}` 都是这样确定的。
 
-### 尚未完成 / 未验证
+### 当时的「尚未完成 / 未验证」清单（**订正见本节顶部订正块与 D-57**；下面是历史读数）
 
 - **922 页抓取已完成**（后台作业 exit 0）：**922 页写入、0 抓取失败、15.9 MiB、482 秒**，
   980 个请求里**0 次被门拦**。430 篇条目页**全部通过**审计，中位文本召回率 **0.99**。
@@ -1233,9 +1241,10 @@ config 过插件自身 schema、13 个工具的预编译 `parameters` 全被 `ds
   6 个文件夹、**922 条 URL 全部提交**。库内 **913 个唯一条目**，差 9 条**不是缺口**：
   URL 导入**跟随重定向**且 ima 按抓取到的页面去重，所以 `Crusader_Kings_III_Wiki` 落成 `CK3 Wiki`
   （与探测阶段的 `Religion`→`Faith` 同一现象）。按 **URL slug 逐条对撞**的覆盖率：
-  **429/430 条目页 + 其余 5 个分区 100%**（`data/coverage.json`）。
-- **标题回填未完成**：核对时 913 条里只有 **85** 条回填成 `X - CK3 Wiki`，**828** 条仍是原始 URL。
-  这是 ima 的**异步**行为，不是失败；回填全部完成后库内标题才准确。
+  **429/430 条目页 + 其余 5 个分区 100%**（`data/coverage.json`，该文件已随 `data/` 删除）。
+- **标题回填 —— 已订正：取消时已全部完成**（见本节顶部订正块；下面这条是写下时的读数，
+  不是当前状态）。核对时 913 条里只有 **85** 条回填成 `X - CK3 Wiki`，**828** 条仍是原始 URL。
+  这是 ima 的**异步**行为，不是失败。
 - **节流是真的，而且像凭证失败**：前 484 条之后 ima 开始回 **HTTP 403**（约 0.3–0.7 秒/批
   ≈ 50 请求/秒）。**403 在这里不是凭证问题**——立刻做一次已认证读取即成功，且库内条目数正好
   等于本地已记录的 484。改成 1 并发 + 1.2 秒间隔 + 403 指数退避后，其余全部通过，**失败 0**。
@@ -1273,10 +1282,13 @@ config 过插件自身 schema、13 个工具的预编译 `parameters` 全被 `ds
 **四个仓库现在都带 `DeepSeek Harness Plugins` 标签**，且**原有标签一个没丢**：
 `dsh-smith` 9 个、`dsh-account-balance` 7 个、`dsh-desktop` 1 个、`dsh-ima-kb` 1 个。
 
-**工作区整理**：`tools/ck3wiki/` 留下 **11 个文件**（工具 + `falsify.mjs` 回归测试 + README +
+**工作区整理**：`tools/ck3wiki/` 当时留下 **11 个文件**（工具 + `falsify.mjs` 回归测试 + README +
 `package.json`），**11 个调试副本（每个约 22 KB）已删除**；`data/`（916 个语料文件 + manifest +
-日志，共 934 个文件）由 `.gitignore` 排除，工具与回归测试保持可入库。该目录**仍未 `git add`**：
-本仓库只有 preset 的 surface，语料不该进来，而本次也没有要求提交它。
+日志，共 934 个文件）由 `.gitignore` 排除。**取消当次清理之后的状态（本次实测）**：该目录的 5 个
+一次性/探针脚本与整个 `data/` 已删除，剩下 **8 个文件由提交 `0016c18` 入库**
+（`git ls-files tools` 实测 8 条；D-57、D-58），所以「仍未 `git add`」只描述当时；
+`data/` 仍在 `.gitignore` 里，重建后不会误入库。本仓库仍只有两个 preset 是「已安装面」，
+`tools/` 不在 `package.json` 的 `files` 白名单里，因此不进已发布的 tarball。
 `D:\DeepSeek Harness` **有** `origin`（指向 `dsh-smith`），但**本次没有推送它**——不在要求范围内。
 
 ### `%TEMP%` 的累积，与委派子代理越界写盘（本次会话实测）
