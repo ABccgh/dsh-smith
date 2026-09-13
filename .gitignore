@@ -20,8 +20,23 @@ Thumbs.db
 .vscode/
 *.swp
 
+# The `github-worktrees/` rule that stood here was removed with the rest of the
+# dsh-github teardown (D-51, D-57). It guarded checkouts of other repositories
+# fetched by that project's `workspaceRoot`; the directory is gone from disk and
+# the rule could no longer match anything. Nothing in this repo replaces it.
+
 # Secrets — kept because a stray key must never be committed, whatever the layout
 .env
 .env.*
 *.pem
 *.key
+
+# CK3 Wiki mirror (`tools/ck3wiki`) — generated data, regenerable from the wiki.
+#
+# `data/out/**` is the corpus itself: hundreds of files, megabytes, and a copy of
+# CC BY-SA user-contributed wiki text that belongs to the wiki rather than to this
+# repo. `data/_raw/**` is cached parse HTML and is far larger again. Neither is
+# source — `node tools/ck3wiki/extract.mjs` rebuilds both. The tooling, its README
+# and `falsify.mjs` ARE tracked, deliberately: the regression test is the artifact
+# that must not be lost when the generated data is discarded.
+tools/ck3wiki/data/
