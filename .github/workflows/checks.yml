@@ -1,0 +1,102 @@
+# Checks for the `dsh-smith` package: the two presets, the shipped scripts, and the
+# published tarball's shape.
+#
+# WHY THIS EXISTS. Every other check in this repository runs against the WORKING TREE, so a
+# whole class of defect is invisible to all of them: a file or directory that ships locally
+# but not in the npm tarball, because `package.json`'s `files` allowlist omitted it. The
+# repository's own boundary note records that consequence exactly — "a new preset directory
+# that is not listed in `files` is silently absent from the published tarball while every
+# local script still works, which is the one failure this repo cannot detect by running
+# itself." `bin/check-pack.mjs` reads the tarball instead of the tree, which is the only place
+# that failure is visible.
+#
+# SKIPPING A RUNNING CHECK IS NOT SUCCESS. If a step here starts failing, the fix belongs in
+# the repository, not in a `continue-on-error`.
+#
+# WHAT IS DELIBERATELY NOT RUN HERE, and why — because a red-on-first-run workflow that
+# nobody can make green is worse than none:
+#
+#   * `bin/verify.mjs` — it builds its own bare Cordis context, so `agentPresets` is absent by
+#     construction and it prints INCONCLUSIVE from anywhere. Its exit code is not a mount
+#     verdict. It is excluded rather than tolerated.
+#   * `bin/install.mjs` — its writer target is `${DSH_HOME}/.agent-presets/<id>`, which does
+#     not exist on a runner and must not be created by CI.
+#   * anything requiring the live deployment — `bin/drift-check.mjs` diffs a preset against
+#     the SHIPPED preset it was copied from, which resolves out of an installed harness.
+#   * `agentPresets.standingKeyFor(<id>)` — the real mount check. It needs a live harness
+#     process reached through the `cordis_*` tools, which exist only in a session on the
+#     shipped `cordis` preset. CI has no harness, so this workflow CANNOT and DOES NOT prove
+#     that either preset mounts. Do not read a green run as that claim.
+#
+# NO SECRETS. Both jobs are read-only and need no token: `permissions: contents: read` and no
+# `secrets.*` reference anywhere below, so this workflow is safe to run on a fork's pull
+# request.
+
+name: checks
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    # windows-latest rather than ubuntu-latest: this package targets Windows (the two owned
+    # presets mount `dsh-tool-pwsh`, and `bin/*.ps1` are PowerShell), so CI matches the
+    # platform it actually ships for instead of testing a configuration nobody runs.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Matches package.json's `engines.node` (>=20). Node 20+ is also required by
+          # `bin/check-pack.mjs`, which relies on the built-in `fetch`/JSON tooling era.
+          node-version: '20'
+
+      # The repository ships presets and five launchers with NO runtime dependencies, so there
+      # is nothing to install. A missing dependency would itself be the bug, and `--dry-run`
+      # would report it rather than hide it behind a lockfile download.
+      - name: dependency audit (expects no runtime dependencies)
+        run: npm install --ignore-scripts --no-audit --no-fund
+        continue-on-error: true
+
+      - name: lint skills (dsh-smith)
+        run: node bin/lint-skills.mjs
+
+      - name: lint skills (dsh-forge)
+        run: node bin/lint-skills.mjs --preset dsh-forge
+
+      - name: preflight — resolve every row's package and validate every config
+        run: node bin/preflight.mjs
+
+      - name: preflight (dsh-forge)
+        run: node bin/preflight.mjs --preset dsh-forge
+
+      # The step this workflow exists for: read the PACKED artifact, not the tree.
+      - name: published tarball carries every declared preset
+        run: node bin/check-pack.mjs
+
+      - name: preset inventory must match the packed tarball
+        # A cheap cross-check that the two preset directories on disk are the ones the
+        # manifest declares, so a third preset added without a manifest entry is caught here
+        # rather than at publish time.
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $manifest = Get-Content package.json -Raw | ConvertFrom-Json
+          $declared = @($manifest.dsh.presets | ForEach-Object { $_.repoDir })
+          $onDisk = @(Get-ChildItem -Directory | Where-Object {
+            Test-Path (Join-Path $_.FullName 'agent.cordis.yml')
+          } | ForEach-Object { $_.Name })
+          Write-Host "declared: $($declared -join ', ')"
+          Write-Host "on disk : $($onDisk -join ', ')"
+          $missing = @($onDisk | Where-Object { $_ -notin $declared })
+          $absent = @($declared | Where-Object { $_ -notin $onDisk })
+          if ($missing.Count -gt 0) { throw "preset directories on disk missing from package.json dsh.presets: $($missing -join ', ')" }
+          if ($absent.Count -gt 0) { throw "package.json declares presets with no directory: $($absent -join ', ')" }
+          Write-Host 'inventory matches'

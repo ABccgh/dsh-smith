@@ -43,6 +43,7 @@
     "preflight-forge": "node bin/preflight.mjs --preset dsh-forge",
     "drift": "node bin/drift-check.mjs",
     "drift-forge": "node bin/drift-check.mjs --preset dsh-forge",
+    "pack-check": "node bin/check-pack.mjs",
     "check": "node bin/lint-skills.mjs && node bin/preflight.mjs && node bin/verify.mjs",
     "check:all": "node bin/lint-skills.mjs && node bin/preflight.mjs && node bin/lint-skills.mjs --preset dsh-forge && node bin/preflight.mjs --preset dsh-forge"
   },
