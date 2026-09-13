@@ -112,6 +112,26 @@ id is defined in exactly one place.
    profile's `cordis.patch.yml`. So "balance-shaped" is no longer absent from the *deployment*;
    what remains true is that nothing balance-shaped ships from **this** tree, which is exactly what
    this rule is about. Do not read the paragraph above as a standing ban on the feature.
+   **A second out-of-repo plugin now exists** — `$DSH_HOME/plugins/dsh-ima-kb`, mounted the same way
+   by one row in the same `cordis.patch.yml` — so "a plugin lives outside this tree" is the
+   established pattern here, not a one-off. One consequence of that sanctioned writer is worth
+   knowing before writing the next one: it **symlinks** the package, so the plugin's own **bare**
+   specifiers fail to resolve from the link's real path (`ERR_MODULE_NOT_FOUND`), while relative
+   imports among its own files are unaffected (D-35).
+   **A THIRD existed and has been REMOVED — `$DSH_HOME/plugins/dsh-github` (D-47, removed by D-51).**
+   The user cancelled that project and it was fully torn down: the plugin, its `link:` dependency,
+   the three profile rows, and its two credential refs are all gone. It is kept in this rule as the
+   **worked example of a plugin that consumes a service another profile-patch row publishes** —
+   `@deepseek-ai/dsh-webhook` provided `ctx.webhookRuntime` from its own row and the plugin merely
+   injected it — because that shape recurs and is worth copying. Two facts from it generalize and
+   survive the removal: a plugin may hand-implement the helpers a bare import would have supplied
+   (it carried a parameter-spec → JSON Schema compiler and a `defineTool` stand-in, because
+   **`output.schema` and the compiled `parameters` are both consumed at registration** and their
+   omission is a tool that registers and shows the model nothing), and compile-time brands are
+   **identity functions with no runtime trace** (`dsh-brand/lib/index.js` —
+   `brandString(value) { return value }`), so a plugin with no imports can still satisfy a branded
+   contract with plain literals. **Do not rebuild it without reading D-47–D-50 first**; they hold the
+   measured contracts, and with the plugin deleted they are now the only copy of that reasoning.
 
 ## Boundaries
 
@@ -120,12 +140,26 @@ id is defined in exactly one place.
   repo owns (`~/.dsh/.agent-presets/dsh-smith` and `.../dsh-forge`), and only through
   `bin/install.mjs`, which is the sanctioned writer for exactly those two paths. A hand edit
   under `~/.dsh` is still a violation even for an owned preset.
+- **A desktop application for DSH exists and it is NOT in this tree** — `D:\dsh-desktop`, its own
+  project, the same out-of-repo pattern rule 7 already records for `dsh-account-balance` and
+  `dsh-ima-kb`. It is a *shell*: Electron owns one window and one child process, and the harness runs
+  in that child on the **system Node**, booted from the user's own `web` profile — so it reads
+  `$DSH_HOME/profiles/web` and writes nothing under `~/.dsh`. Its records live in
+  `D:\dsh-desktop\docs\agent-notes\`; do not look for it here, and do not "move it in". Two measured
+  facts from that work are worth having here because both are non-obvious: **Windows never delivers a
+  signal to that child** (`child.kill('SIGTERM'|'SIGINT'|'SIGBREAK')` reports the signal back while no
+  handler runs), so it is terminated with `taskkill /T /F`; and **in a packaged Electron app an
+  unguarded `process.stdout.write` is fatal to the JavaScript context** when a supervisor closes the
+  pipe, which is how that build produced a window stuck on an error page while `npm start` worked.
 - `bin/verify.mjs` **boots its own bare runtime and cannot reach the roster** — treat its output as
   a diagnostic, never as a mount verdict (rule 5). `bin/preflight.mjs` is the static half: it
   resolves every row's package and validates each config against the plugin's own schema, and it
   prints which failure classes it cannot see. A row that mounts and contributes nothing is the
-  failure mode both of them miss, so only `standingKeyFor` answers it. Never present a preflight
-  pass, or a verify exit code, as "the preset works".
+  failure mode both of them miss — **and `standingKeyFor` does not close it either.** Measured by
+  the user from a shipped-`cordis` session, it proves **"it did not throw"** — the composition is
+  usable and the standing mount key was ensured — **not** that any individual row contributes. So
+  never present a preflight pass, a verify exit code, **or a clean `MOUNT OK`**, as "the preset
+  works"; per-row contribution is a separate question with no standing procedure yet (D-40).
 - `.gitignore` and `files` both matter when adding a preset directory: a new preset that is not
   listed in `package.json`'s `files` is silently absent from the published tarball while every
   local script still works, which is the one failure this repo cannot detect by running itself.
@@ -142,11 +176,48 @@ id is defined in exactly one place.
   `unable to get local issuer certificate`. When that happens, commit locally and hand the push to a
   normal terminal rather than reaching for a token — switching to token auth does not fix a TLS
   verification failure, and it puts a credential into the command history.
+- **`bin/check-pack.mjs` is the only check that reads the PACKED tarball, and it is the only one
+  that can see a `files`-allowlist omission.** Every other script in `bin/` reads the working tree,
+  so all of them pass whether or not `package.json`'s `files` list is right — which is the failure
+  the bullet above calls undetectable by running this repo. Run it as `node bin/check-pack.mjs`, or
+  through CI (`.github/workflows/checks.yml`, which also runs the lint and preflight steps for both
+  presets). Two things to keep straight: a **falsification must mutate a COPY**, never this tree,
+  and **dropping `bin` from `files` is not a defect** because npm force-includes whatever the `bin`
+  map names — the case that must fail is a dropped **preset directory**. The workflow deliberately
+  does **not** run `verify.mjs`, `install.mjs`, or `drift-check.mjs`, and its header says why; a
+  green run there is not a mount verdict (rule 5). See D-48.
+- **Every `webServer` route sits OUTSIDE the browser authentication gate — that is a routing
+  property, not a defect in any one row.** *(Recorded while the now-removed `/github` adapter row
+  existed; the property itself is unchanged and is the reason this bullet survives D-51.)* The
+  dispatcher returns on a named route before consulting the fallback that carries the only auth, so
+  **any** route registered on `ctx.webServer` is reachable by anything that can reach the port, with
+  no credential at the HTTP layer. Consequences to hold for the next such row: on this deployment's
+  loopback bind that is invisible, but `dsh web --host 0.0.0.0` would publish every such route over
+  the LAN — so a tunnel should forward to the loopback port rather than motivating a bind change;
+  and a route must bring its own authentication (the removed adapter used an HMAC over the raw body,
+  with `maxBodyBytes` as its only size bound).
+- **A `405` from a `webServer` path is NOT evidence that a route is mounted.** The fallback seat
+  answers an *unmatched* path with the same `405` a registered handler's own method guard returns, so
+  `POST /some-route` and `POST /definitely-not-a-route` are indistinguishable that way — measured
+  directly, both answering identically. The discriminating observation is whatever the **handler**
+  answers once it is reached: for the removed adapter that was `503` (reached it, credential
+  unresolvable) versus `401` (credential present, signature invalid), and the credential was resolved
+  *before* the signature was verified. **Generalize the lesson, not the codes:** when checking
+  whether a route is registered, find a response that only the handler can produce. See D-47.
+- **`git` itself does not work against GitHub from this machine — not just `git push`.** Measured:
+  `git clone https://github.com/...` fails with `CRYPT_E_NO_REVOCATION_CHECK (0x80092012)`, the
+  same revocation-endpoint defect recorded above, while the GitHub **HTTPS API and codeload are
+  reachable**. Anything that needs GitHub repository content should fetch it over `fetch`
+  (the API, or a `codeload` tarball) rather than shelling out to `git clone`. Note this is a
+  *different* defect from the one that blocks Node's `fetch` to `api.github.com`
+  (`UNABLE_TO_VERIFY_LEAF_SIGNATURE`, fixable with `NODE_OPTIONS=--use-system-ca`); do not conflate
+  them.
 - **`bin/push-api.ps1` is the fallback when git's TLS layer is blocked but the HTTPS API is not.**
   It reproduces `git push` over REST: blobs → trees (bottom-up) → commits → ref, with
   `-DryRun` to inspect and `-Force` to rewrite the ref. Run it as
   `$env:GH_TOKEN='…'; pwsh -File bin/push-api.ps1 -Base <sha>`.
-  **Three things it exists to get right, each of which it first got wrong:**
+  **Four things it exists to get right, each of which it first got wrong — and all four are failures
+  of the *serialized body*, not of the call:**
   1. **`POST /git/trees` takes a BARE entry name in `path`, never a path.** Passing
      `bin/preflight.mjs` makes the API build a *subtree* named `bin/`, so the result lands as
      `bin/bin/preflight.mjs` and **every directory in the repository doubles**. That was pushed
@@ -165,17 +236,81 @@ id is defined in exactly one place.
      `ABccgh/dsh-account-balance`'s root commit is `e3d9a98` on both sides. Different SHAs are a
      consequence of *metadata differing*, not of the transport. Do not conclude from the divergence
      that the remote's tree is untrustworthy: compare trees, which is what the script's last line does.
+  4. **An array that arrives from an `if` expression has lost its array-ness, and the JSON body is
+     where that shows.** Same family as the two above — the value looks right in a parameter and is
+     wrong in the **serialized body**, and the API's error names neither the flag nor the cause.
+     Measured on this deployment's `pwsh 7.7.0-preview.4`, isolating the two branches of
+     `$x = if (…) { @() } else { @($sha) }` and serializing each with
+     `@{ parents = $x } | ConvertTo-Json`:
+
+     | how the value was produced | `-is [array]` | emitted as |
+     | --- | --- | --- |
+     | inline literal `parents = @()` | `True` | `{"parents":[]}` |
+     | a variable holding `@()` | `True` | `{"parents":[]}` |
+     | from `if`, branch `@()` | **`False` (`$null`)** | `{"parents":null}` |
+     | from `if`, branch `@($sha)` | **`False` (bare String)** | `{"parents":"<sha>"}` |
+     | from `if` with a leading comma on **both** branches | `True` | `[]` / `["<sha>"]` |
+
+     So **`@()` and `@($sha)` do not survive assignment from an `if`** unless written `,@()` and
+     `,@($sha)`; the fix is the comma, on both branches, and it restores the array in both. Each
+     wrong spelling is a different `422` naming neither git nor PowerShell:
+     `422 For 'properties/parents', nil is not an array` for the null, and (reported, not re-measured
+     here) `422 "<sha>" is not an array` for a double-wrapped `[["<sha>"]]`. **Guard the value where
+     it is used, not where it is assigned** — `if ($parents -isnot [array]) { throw … }` — because
+     that is the last point before it becomes a request body. (D-46.)
 - **`bin/push-api-ref.ps1` is the newer of the two, and the one to reach for on a fresh shape.**
   It walks **both** ranges (`-Base` local, `-RemoteBase` remote), refuses to run when their lengths
   disagree, parents the first new commit at the **remote tip** (parenting at the mapped base produces
   a *sibling* and a `422 Update is not a fast forward`), and verifies every blob/tree/commit id it
   sends against `git`'s own value. Extra flags: `-AllowUnrelated` when API-created commits have no
   local counterpart, `-Force` to move the branch onto the whole local history, `-Init` to create a
-  branch in a repository that has commits but no ref, and `-RemoteOwner`/`-RemoteRepo`/`-Branch` so it
+  branch in a repository that has commits but no ref, **`-RemoteOnlyParent`** when the first commit's
+  parent exists only on the remote (below), and `-RemoteOwner`/`-RemoteRepo`/`-Branch` so it
   is not hardcoded to one repository. `bin/push-api.ps1` is left in place unchanged; **why the two
   exist rather than one** is D-32, and the empty-repository facts are D-33.
 - **A repository with no commits at all cannot be pushed to by either script.** `POST /git/blobs`
   answers `409 Git Repository is empty.` — the git database endpoints are unusable until the
-  repository owns a commit. Bootstrap it with one Contents-API write, then push with `-Force`, which
-  makes the bootstrap commit unreachable and leaves the real history as the branch's root. Automating
-  that bootstrap was tried and dropped: it roots the branch in two commits that are not the payload.
+  repository owns a commit. Bootstrap it with one Contents-API write, then push with `-Force`. Its
+  commit survives as the pushed history's **ancestor** rather than becoming an unreachable object
+  whenever the payload's own first commit is a **root** — measured on `dsh-ima-kb`, where it then had
+  to be dropped by re-creating that commit with no parent. Automating the bootstrap was tried and
+  dropped: it roots the branch in two commits that are not the payload. (D-33, D-45.) **No
+  ancestor-of-that-kind remains in `dsh-ima-kb` as of D-46** — the repository was deleted and
+  re-created, and its `auto_init` commit is in the new history's ancestry **not at all** (the
+  re-created root has `parents: 0`), so the caveat above is now a property of *bootstrap-by-Contents-API*
+  in general and no longer of that repository.
+- **The remote-only-parent limitation is CLOSED IN CODE (`-RemoteOnlyParent`), and the crash is
+  fixed — but the mode is UNPROVEN in a real push.** This bullet previously read "neither script can
+  push a commit whose parent exists only on the remote"; that is no longer true of
+  `bin/push-api-ref.ps1`. The original gap, kept because it is the reason the flag exists: **the
+  topology of any remote history rooted in a server-side commit (`auto_init`, a README bootstrap, a
+  Contents-API write).** Both scripts derived parent identity from a range walk over **local**
+  objects, so there was no local base under a remote-only parent, and the API rejects a commit whose
+  parent it does not hold. The two failure shapes differed and both were reproduced:
+  `push-api.ps1` **crashed rather than erroring** when its range was empty (`$Base..HEAD` with
+  `$Base` = `HEAD`) — `GitBytes` returned an empty array, PowerShell flattened it to `$null`, and the
+  caller fed that to `[System.Text.Encoding]::UTF8.GetString` — while `push-api-ref.ps1` **refused**
+  at the pairing check (`range length mismatch … refusing to run`). **`-AllowUnrelated` did not
+  help:** it governs only the first-parent ancestry walk, not the pairing check. **The gap was in the
+  scripts, not the API** — `POST /git/commits` accepts a remote-only parent.
+  **What changed (D-48):** `-RemoteOnlyParent` skips the pairing check and the remote-range walk and
+  parents the first uploaded commit at the **current remote tip**, so the ref move stays a
+  fast-forward and needs no `-Force`; the ancestry walk is skipped too, because the caller has
+  asserted there is no local counterpart for it and the **API's own `422 Update is not a fast
+  forward`** guards the move server-side, which is stronger than a bounded chain walk.
+  `push-api.ps1` now throws `no commits in <base>..HEAD …` with a pointer to that flag instead of
+  crashing. **Measured:** both scripts parse; the empty-range guard fires on `-Base <HEAD>` and
+  **not** on a real range; `-RemoteOnlyParent` with `-Init` or `-Force` is rejected with its own
+  message while `-Init` alone is unaffected.
+  **THE HAPPY PATH IS NOW MEASURED (D-56) — the earlier "NOT measured" note is superseded.** With a
+  live token the flag pushed `ABccgh/dsh-ima-kb`: `refs/heads/main` moved `4e2d9cc` → `53a3f66`,
+  the new commit **parents at the remote tip** so the move was a **fast-forward** and `-Force` was
+  never needed, and five checks pass **against the API rather than the script's own report** —
+  remote tree `ebdd375` equals the local tree, one parent, 9 blobs identical to `git ls-files`, no
+  doubled path segment, 18-line message intact. **Two operational facts learned on the way, both
+  worth knowing before the next push:** the script runs git as `git -C $PWD`, so it operates on the
+  **caller's** repository — invoke it **from the repo being pushed** and pass a **full SHA** in
+  `-Base`, or it reports `no local commits in <sha>..HEAD` for a range that plainly exists. And
+  `git push` remains dead **independently of credentials**: retested with a valid token in the URL
+  it still fails with `schannel: CRYPT_E_NO_REVOCATION_CHECK`, while **git's OpenSSL backend is not
+  an escape either** — no CA bundle exists anywhere on this machine for it to verify against.

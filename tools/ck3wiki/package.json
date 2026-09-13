@@ -1,0 +1,6 @@
+{
+  "name": "ck3wiki-mirror",
+  "private": true,
+  "type": "module",
+  "description": "Fetch the CK3 Paradox wiki and mirror it into a Tencent ima knowledge base. No dependencies: the HTTP transport is curl.exe, because the wiki's Fastly gate rejects undici's fingerprint and accepts curl's when the request carries a browser-like User-Agent plus Accept-Language."
+}

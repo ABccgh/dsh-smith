@@ -352,7 +352,465 @@ one naming decision made before anything was written** — the full reasoning is
 carried the entry and the served batch contained the plugin's own CSS class. The credential value
 (35 chars) appears **zero** times in the served bundle. The user's own `dsh web` on 3080 was never
 restarted or killed — `patchReload: live` picked the row up, but the host half needs a restart, which
-is the one step left to the user.
+is the one step left to the user. **SUPERSEDED — the clause "the host half needs a restart" is not
+current advice and must not be repeated; see the measurement below (D-43).**
+
+> **Supersession (added this session), and it is measured rather than argued.** The clause above was
+> tested with three readings, all of which I reproduced independently while writing this note:
+> **(1)** the process serving 3080 — PID **15116**, `node`, `StartTime` **2026-09-12 10:17:17**, still
+> live, and it **owns the listener on `127.0.0.1:3080`**, which is what ties that PID to the GUI rather
+> than merely to *some* process; **(2)** `profiles/web/cordis.patch.yml` `LastWriteTime`
+> **2026-09-12 10:12:46** — **4 minutes 31 seconds before** that process started — and that one file
+> carries **both** the `account-balance` row and the `ima-kb` row, so the process came up with both
+> already present; **(3)** `GET http://127.0.0.1:3080/api/balance` answers **HTTP 401** without the
+> cookie, so the route is **registered and live in that process**. The balance case therefore rests on
+> the **same evidence shape as the ima case (D-42)**: a running process that came up with the row
+> already present.
+>
+> **Three levels, kept distinct.** *Certainly false:* "the host half needs a restart" as a requirement
+> for composing a new host-plane row in this profile — measured false twice, by the `ima-kb` tool-table
+> reading and by the readings here. *Actually measured:* exactly the three readings above, nothing more
+> — in particular, **401 is the documented unauthenticated answer, so it proves the route is
+> reachable, not that it answers correctly**; the 200-with-cookie case was verified on the **3081**
+> instance and is not re-measured here. *Inferred, and labelled:* that `patchReload: "live"` in
+> `profiles/web/package.json` is the operative mechanism — plausible, **not isolated**, so not recorded
+> as a measured cause.
+>
+> **And a caution about the history:** the original clause **may simply have been wrong when written** —
+> there is no evidence about what the balance author observed at the time, and no process history
+> before 10:17:17. These readings establish the *current* state, not what was true then, so the clause
+> is superseded as **current advice** without being rewritten as a mistake with a known cause. **The
+> sharper statement, now that it is measured:** showing a row is composed and live does **not** show it
+> does anything semantically. That is what `ima_kb_list`'s live call settled — see **D-44**.
+
+### A Tencent `ima` knowledge-base plugin, mounted outside this repository (added this session)
+
+> **Scope, first line, because it is the fact most likely to be misread: this plugin is NOT in this
+> repository.** It lives at `$DSH_HOME/plugins/dsh-ima-kb` (`C:\Users\曦曦\.dsh\plugins\dsh-ima-kb`),
+> the same convention `dsh-account-balance` established (D-31, D-33). `AGENTS.md` rule 7 is untouched
+> by it: six files plus its own `node_modules/` — `package.json`, `package-lock.json`, `lib/index.js`,
+> `lib/client.js`, `lib/fanout.js`, `README.md` (617 B / 28,365 B / 35,350 B / 26,138 B / 8,589 B /
+> 10,390 B, sizes as read here) — none of them under `D:\DeepSeek Harness`. The private `node_modules/`
+> is a deliberate addition, not an accident: it carries `cos-nodejs-sdk-v5` for the upload path (D-38).
+> Re-measured while writing this record: `git status --short` at the repo root is **clean**, so nothing
+> ima-shaped has leaked into the tree.
+
+**It has its own public repository now, and the history was REWRITTEN CLEAN (state re-measured here
+after the rewrite).** `https://github.com/ABccgh/dsh-ima-kb` — public, branch `main`, **two commits —
+a true root plus its child, with no bootstrap ancestor at all.** The repository was **deleted and
+re-created** (`auto_init: true`) and the two local commits uploaded as a **root + child**, then the
+ref force-moved, so the `auto_init` commit is **not an ancestor**: the root is
+**`28d22d13fc63cddf618bea8d3673003f9b81ad3e`** ("feat: 腾讯 ima 知识库接入 DSH（9 个工具）", **0 parents**,
+tree `9eb29b2`), and the tip is **`4e2d9cc68a6e8f8a4f41ca2de1a203293b45e6b4`** ("docs(readme):
+开头那句工具数从 5 改成 9", **1 parent** = that root). The tip's tree is
+**`9df69b5b633be520aa89ffa0200e222d1dc4b04c`**, **equal to `git rev-parse HEAD^{tree}` in the plugin's
+working tree**, which is the strong form the push tooling itself demands; the recursive remote path
+list is **9 blobs** (plus the `lib` tree object) and matches the local `git ls-files` **exactly**, so
+**no path segment is doubled**, with `node_modules/` untracked. `git status --porcelain` in that
+working tree is **empty** as of this reading, so the local and remote copies agree on content and on
+cleanliness. The **local** history is a *different* pair again — `6c1324a` then `8b9719b`, whose SHAs
+are **not** the remote's, while `8b9719b`'s tree equals the remote tip's tree: the recorded "API-created
+commits are re-encoded" divergence, not a defect. One correction the second commit carries: the README's
+opening line said **5** host-plane tools while the plugin ships **9**, found and fixed during this
+pass — *the plugin's own tool table had been updated earlier and the prose sentence was missed, the
+same drift this file records between a count in prose and the table it describes.*
+
+> **Supersession, and the three levels of it kept apart.** The paragraph above previously recorded the
+> remote tip as `208e9d0c5066e48507b2e66b795588ca362bc104` with tree
+> `9df69b5b633be520aa89ffa0200e222d1dc4b04c`, and the subsection's caveat was that a Contents-API
+> bootstrap commit had **survived as the pushed history's ancestor** and had to be dropped by
+> re-creating the root. **That pair is superseded and is history, not current state** — it is the
+> *remote* pair the rewrite replaced; note that the tree SHA is the same string in both records,
+> because the rewrite uploaded the same content and only the history around it changed, so the tree
+> SHA alone does not date this record. **D-45 is the one place that still carries `208e9d0…` as
+> current**; `DECISIONS.md` is append-only, so it is superseded by **D-46** rather than edited.
+> *Measured here:* the SHAs above, the 1-parent/0-parent counts, the tree equality and the 9-path list,
+> all re-queried from the GitHub API rather than restated from the pushing session's report; also
+> re-measured, the workspace scan re-confirming that **zero** ima-shaped files are tracked in
+> `D:\DeepSeek Harness`. *Reported, not re-measured here:* that the re-creation was done with a
+> user-supplied token carrying `delete_repo`. *A preference, and labelled as one:* that the rewritten
+> history is **cleaner** — it is one commit shorter and holds no bootstrap commit, which is what the
+> rewrite was for, but "cleaner is better" is a judgement, not a measurement.
+
+**What it does, and what it deliberately does not.** **Nine** host-plane tools reach `ctx.tools`:
+`ima_kb_list`, `ima_kb_search`, `ima_kb_browse`, `ima_media_info`, `ima_import_url`, `ima_upload_file`,
+`ima_note_create`, `ima_note_get`, `ima_note_list` (declared at
+`lib/index.js:437,470,508,543,562,594,674,700,728`, re-read here). The capability split is honest and
+unusual: **finding works well; reading is nearly absent; writing works but is irreversible.**
+`get_media_info` yields a URL only for `media_type: 2` (网页) inside an **owned** knowledge base, so
+for the readable case the tool returns the **source URL** and DSH's own `web_fetch` fetches the body —
+this integration supplies a pointer, never the text. And **nothing it creates can be deleted through
+the API** (D-39), which is why every write tool's description says so.
+
+| Item | Outcome |
+| --- | --- |
+| Integration target | Tencent `ima` (ima.copilot) **v2.6.9.5083**, `D:\ima.copilot`. A **Chromium shell** (`chrome.dll`, `.pak` files, **no Electron runtime**). Knowledge base is **cloud-side and account-bound**; a recursive scan of `%LOCALAPPDATA%\ima.copilot\User Data\` found **no local index and no vector store**, only IM SDK sqlite files and browser caches — so local files are not an integration path and the network API is the only route. See D-34. |
+| Control surface | **No CDP / remote-debugging surface.** Re-measured here with the app **actually running**: 12 `ima.copilot` processes, one listening socket (`127.0.0.1:5283`, internal IPC), no `DevToolsActivePort` file, no `remote-debugging` token in any command line, nothing on ports 9222–9230. Five surveyed community implementations are plain HTTPS clients with zero CDP usage. |
+| The API | `https://ima.qq.com`, base path `/openapi/wiki/v1`, POST JSON, headers `ima-openapi-clientid` / `ima-openapi-apikey` (`lib/client.js:18,21,179-180`). **Liveness re-measured here:** `search_knowledge_base` with unset credentials answers **HTTP 401** — real and auth-gated. Credentials are minted at `https://ima.qq.com/agent-interface` and are **separate from the desktop app's login**. |
+| Credential storage | Reference **names** only in the composition — `IMA_OPENAPI_CLIENTID`, `IMA_OPENAPI_APIKEY` — resolving to `$DSH_HOME/.credentials.yaml` under `version: 1` → `refs:`, which `dsh-credentials-local` watches with chokidar (`watch: true`), so an external edit is picked up **without a restart**. Both names re-confirmed present here; **no value is reproduced in this record**. |
+| Credential-overwrite risk | **CLOSED — measured harmless, and it was carried as an open question until it was.** The worry was that the running harness holds an in-memory credential snapshot and could rewrite the file on an unrelated write, dropping the two new `refs:` keys. Measured after all the plugin work: `.credentials.yaml` still holds **all three** refs intact — `DEEPSEEK_API_KEY`, `IMA_OPENAPI_APIKEY`, `IMA_OPENAPI_CLIENTID` (names read here; values not transcribed). No guard is needed, and this is no longer an open item. |
+| Mount row | One `insert:` row in `$DSH_HOME/profiles/web/cordis.patch.yml`: `id: ima-kb`, `name: 'dsh-ima-kb'`, seven config keys (`clientIdRef`, `apiKeyRef`, `requestTimeoutMs`, `maxRetries`, `searchConcurrency`, `maxRows`, `preferOwned`). Installed with `dsh plugin --profile web add <path>` (exit 0). Host plane because a knowledge base is account-level and shared across sessions; the plugin **publishes no Cordis service**, so it needs no `isolate` realm and cannot collide on a service name. |
+| Composed tree | **Verified here:** `dsh --profile web --dump-config` → **exit 0**, the `ima-kb` row present as `id: ima-kb` / `name: dsh-ima-kb`, and **zero patch warnings** (the only `patch` matches are `# ==` provenance banners, not `patch: entry "…" not found` lines). |
+
+**The load-bearing engineering constraint, and the version of it that is actually true.** The
+sanctioned install **symlinks** the package into `profiles/web/node_modules/`, and Node resolves a
+symlinked module's own bare specifiers from the link's **real path** (`$DSH_HOME/plugins/dsh-ima-kb`),
+which has no `node_modules` above it. Measured both ways: importing the package **by name from the
+profile directory** fails with `ERR_MODULE_NOT_FOUND: Cannot find package '@deepseek-ai/schemastery'
+imported from C:\Users\…\.dsh\plugins\dsh-ima-kb\lib\index.js`, while the **identical two imports from
+a file inside the profile directory succeed** (control). Re-verified here: the link is real
+(`profiles/web/node_modules/dsh-ima-kb` → `..\..\..\plugins\dsh-ima-kb`), and a scan for
+**bare-specifier** imports across all three `lib/*.js` files returns **zero**.
+
+> **The constraint is on BARE SPECIFIERS, not on imports as such — and the plugin's own header states
+> it wrongly.** `lib/index.js:4-6` says "There is no `import` statement below", which is **false as
+> written**: `lib/index.js:45-46` and `fanout.js:13` are **relative** imports, and a scan for
+> `^\s*import ` returns 2 lines in `index.js` and 1 in `fanout.js`. Relative imports resolve against
+> the module's own real path and are safe; only package specifiers break. So `lib/index.js` carries
+> **no bare-specifier static imports**, and the parameter-spec → JSON-Schema compiler, a `defineTool`
+> equivalent, and the `Config` Standard-Schema validator are **implemented in-package** against the
+> contracts read from `@deepseek-ai/dsh-tools` and `cordis`. **A future session must not "fix" this by
+> adding imports** — that reintroduces the measured failure. Note also that
+> `profiles/node_modules/@deepseek-ai/*` are **junctions into the npx checkout** (`cordis` and
+> `dsh-tools` both re-read here as junctions), so they are **one physical install** and cannot produce
+> a duplicate module instance. See D-35.
+
+**A trap the design avoided, with its mechanism re-read from source here.** `defineTool`
+**precompiles** `options.parameters` into JSON Schema —
+`dsh-tools/lib/index.js:846`, `const parameters = parameterSchemaSpecToJsonSchema(options.parameters)`
+— and that compiled value is what lands on the tool object (`:852`) and what `validate` closes over
+(`:848`). A definition implementing the rest of the contract but omitting that field **still registers
+successfully** and presents the model **no parameters at all**: a silent failure, not an error.
+
+**The API contradicts its widely-copied third-party documentation in ten measured places, three of
+them limit facts that would ship a broken call.** They are enumerated in full under **D-36**; the two
+worth naming here are that `search_knowledge` returns **only `info_list`** (no `is_end`, no
+`next_cursor` — the documented pagination does not exist) and that `search_knowledge_base`'s `limit`
+ceiling is **20, not the documented 50** (`code 51, … value must be inside range (0, 20]`). The second
+is not hypothetical: the first version of the plugin sent 50, **the live run caught it**, and the fix
+was to cap at 20 and walk the cursor. A third is qualitative but load-bearing — the 100-hit cap is
+**real and silent**, so `HIT_CAP = 100` (`fanout.js:16`) is surfaced as a rendered caveat
+(`:175`) rather than hidden.
+
+**Verification, and the boundary of it, stated honestly.** A check script was run **from the profile
+directory**, importing the package **by the name the loader uses**, running the real `apply()` with
+stubs for the two injected services and executing every tool against **live credentials**. Results
+(reported by the building session): config validated; **all nine tools registered**; the parameter
+schemas compiled **and every compiled schema accepted by the package's own
+`assertSupportedJsonSchema`** — run as a control precisely because the compiler is hand-written inside
+the plugin, so "it produced a schema" and "it produced a schema DSH will accept" are two claims;
+`ima_kb_list` returned all **7** knowledge bases with metadata; `ima_kb_search` fanned out across all 7
+and returned **80 deduped ranked hits** with the caveats rendered; `ima_kb_browse` listed items;
+`ima_media_info` returned the source URL for a web item; a missing-required-argument call was rejected
+with `invalid arguments: (root).query is required`; with credentials absent the tool returned a
+**readable refusal naming the exact missing reference** instead of faking success; and a bad config was
+rejected with three path-qualified issues. The upload path was verified **past the success string**:
+a real Markdown file uploaded and then appeared in `get_knowledge_list` (`type=7`,
+`dsh-ima-upload-probe.md`) — see D-38.
+
+> **VERIFIED (this was the open item, and it is now closed) — the standing mount check RAN and PASSED,
+> and it reached a live tool table.** The user drove the dynamic-plugin probe themselves from a session
+> on the shipped `cordis` preset and pasted the **raw runtime output** (contract query →
+> `cordis_define` → `cordis_run` → call → values); every figure here is **measured by the user, pasted
+> raw**, not a child's transcription. **Six presets `MOUNT OK`, zero failures** — `standard`, `ptc`,
+> `minimal`, `cordis`, `dsh-forge`, `dsh-smith` — each returning `{"agentPreset":"<id>"}` with the right
+> `trust` (`system` ×4 shipped, `user` ×2 local), and **none** of the four documented failure shapes
+> (`Cannot find package`, `invalid config:`, `did not activate`, `published process-global service`).
+> `compositionInventory` answered from **live Loader entries rather than files**: 6 presets, **160 rows**
+> (28/29/6/29/35/33), every `broken` **null**, with `fiberState === 2` on every enabled row and
+> `undefined` on every disabled one — and that independently reproduces the `dsh-forge` **leaf-row count
+> of 35** from D-23/D-25 by an entirely different route. **`dsh-ima-kb` appears in none of the 160
+> rows**, which is the direct confirmation of the host-plane choice in D-34; the control is that passing
+> `dsh-ima-kb` as a **preset id** answers `agent-preset/not-found`. The other half is the user's own
+> live reading: a fresh session's tool table **contains `ima_kb_list`**. See **D-40**.
+
+> **The boundary, stated by the user and not to be softened.** `standingKeyFor` proves **"it did not
+> throw"** — the composition is usable and the standing mount key was ensured. It does **not** prove that
+> any individual row **contributes**, and a row can mount and do nothing. **That gap is now closed for
+> `ima_kb_list`'s live path by a live call, and only there — see the block below in this same
+> subsection.** Two
+> corrections this forces: (a) `AGENTS.md`'s Boundaries section previously implied
+> `standingKeyFor` was what answered the mounted-but-contributes-nothing case — it is not; and (b) **the
+> earlier phrasing in this very subsection that a `web` profile restart was needed to get the tools into
+> a session's table is SUPERSEDED and false** — no restart was needed (`patchReload: "live"` in
+> `profiles/web/package.json` plus the reconciled `.package-map.json`), and a restart would have
+> **terminated the session serving the user**. See **D-42**. `bin/verify.mjs` was **not** run, and
+> declining it was correct rather than a gap: it builds a bare Context, so `agentPresets` is absent by
+> construction and it could only print INCONCLUSIVE (D-24).
+
+> **VERIFIED-CONTRIBUTING for `ima_kb_list`'s live path — a real session's call, and the only check that
+> can see this class of failure.** The user asked an agent in an **ordinary session** (not a probe, and not the
+> building session's own check script) to call `ima_kb_list`, and reported the tool's actual output:
+> **7 knowledge bases** — owned/创建者 **3** (`曦曦的知识库` 4 entries, `Crusader Kings III Wiki` 416,
+> `明日方舟 Wiki` 18500) and subscribed/普通成员 **4** (`我超爱看中国历史` 619,
+> `崩坏星穹铁道剧情文案` 578, `小说写作知识库` 795, `明日方舟` 2457). That matches, **exactly in set and in
+> membership counts**, the independent measurement the building session took earlier — so the two routes
+> agree rather than one reading being restated. **Why this is stronger than every check above it: none
+> of them could have caught the failure that mattered.** The check script stubbed the `credentials`
+> service **by hand**, so it never exercised **Cordis service injection** — a tool that registers but
+> cannot resolve `ctx.credentials` passes the mount check, `preflight` and `verify.mjs` alike and is
+> still inert. This live call is the first and only evidence that in the real runtime the row's `apply`
+> ran, Cordis resolved the injected `credentials` and `tools` services to real host instances, the
+> reference resolved from `$DSH_HOME/.credentials.yaml` **through the seam**
+> (`ImaClient.fromCredentials(ctx.credentials, …)`, `lib/index.js:422` → `lib/client.js:140-143`), the
+> HTTP request to `ima.qq.com` was made and answered, and the response was normalised and projected as
+> text. **The boundary is per-tool, not per-row — and "the read path" is *not* the boundary.** Only
+> `ima_kb_list` was exercised live. `ima_kb_search`, `ima_kb_browse` and `ima_media_info` are read tools
+> too and are **not** covered by this call, and `ima_import_url`, `ima_upload_file` and
+> `ima_note_create` / `get` / `list` rest on the **stubbed** check script or on nothing in a real
+> session. All nine share the credential seam; each one's own endpoint, parameters and write path are
+> unmeasured live. See **D-44**, which also records the lesson: **a registration is not evidence that a
+> tool works.**
+
+> **A contract correction worth carrying, because guessing cost real time here.** The live
+> `agentPresets` surface is `list()`, `standingKeyFor(id?)` and `compositionInventory()`, and the row and
+> composition types are `{ entryId, moduleName, enabled, condition?, fiberState? }` and
+> `{ id, trust, name?, isDefault, broken?, rows }`. **There is no `r.id`, `r.name` or `r.disabled`.**
+> A fallback branch in this session's probe code read those guessed names and rendered every row as
+> `undefined=undefined` **with no exception** — a silent empty read, strictly worse than an error; the
+> user fixed it against the real names by **updating the same dynamic Plugin** rather than defining a
+> second one. That probe code is **not durable** — it lives in a dynamic definition that is stopped but
+> retained, and a DSH restart clears it. See **D-41**.
+
+**A side effect on the user's own account, recorded because it is not reversible from here.** Both
+probes of the write path left artifacts in the user's ima account, and **the API has no delete
+endpoint** (D-39), so only the ima client can remove them: **5 notes titled 「DSH × ima 联调记录」** —
+one per check-script run, before note creation was removed from that script — and **1 file,
+`dsh-ima-upload-probe.md`**, in the knowledge base `曦曦的知识库`. An earlier URL import into the same
+knowledge base, `https://github.com/deepseek-ai/deepseek-harness`, is the third artifact. The user has
+been told. *One correction for the record: the note count was **first reported to the user as 3** and
+the measured figure is **5** — the estimate was made before the notes were enumerated, which is the
+same "count, do not estimate" lesson this file records elsewhere.*
+
+**A minor open observation, recorded as unexplained rather than as a defect.** For the subscribed library
+`我超爱看中国历史`, the two routes agree on **619 entries** — but the building session observed
+`member_count` as **27406** in one reading and **27407** in a later one. The **entry** counts agree; the
+**member** count moved between readings. No cause is asserted: membership of a large subscribed library
+changes as people join, and **nothing in this record depends on that number**. It is carried as an open
+observation, not as a discrepancy in the tool.
+
+### GitHub events, tools and checks (added this session) — **REMOVED, see D-51**
+
+> # ⛔ THIS WHOLE SECTION DESCRIBES SOMETHING THAT NO LONGER EXISTS
+>
+> **The user cancelled the GitHub integration project, and it was fully torn down.** There are no
+> `webhook-runtime` / `webhook-github` / `github` rows, no `$DSH_HOME/plugins/dsh-github`, no
+> `GITHUB_WEBHOOK_SECRET` or `GITHUB_TOKEN` ref, and `/github` is not routed. **D-51 records the
+> removal**; D-47–D-50 are superseded by it but deliberately not deleted.
+>
+> **Do not read the paragraphs below as current state, and do not "restore" what they describe.**
+> They are kept for one reason: a **large part of what they measure is not about the GitHub feature
+> at all**, and would otherwise have to be re-derived at real cost. Specifically, all of these remain
+> true and useful regardless of the cancellation:
+>
+> - **`405` is a false positive** — the web-app's fallback seat answers an unmatched path with the
+>   same `405` as a registered adapter's method guard, so "the route responded" proves nothing. The
+>   discriminating ladder is `503` before `401`.
+> - **`git clone` does not work from this machine** — `CRYPT_E_NO_REVOCATION_CHECK` — while the GitHub
+>   HTTPS API and `codeload` are reachable. This is a fact about the machine, not about the plugin.
+> - **`NODE_OPTIONS=--use-system-ca`** was needed because Node's bundled CA store lacks an
+>   intermediate that GitHub's hosts need; measured, and recorded below with the propagation trap
+>   (a "new process" still inherits its launcher's environment, not the registry).
+> - **A quick tunnel's hostname changes on every restart**, which is why it cannot host a fixed
+>   webhook Payload URL.
+> - **`winget` succeeded** where a direct download of the same GitHub release asset timed out — the
+>   working route for GitHub-hosted binaries on this machine.
+>
+> Two rows in the table below are **stale as written, for a reason unrelated to the teardown**: the
+> `github_*` tools were never called successfully against the live API (the Node TLS failure below is
+> why, and it was diagnosed *after* those rows were written), and the tunnel is now down. Everything
+> else in the section was measured when it says it was measured.
+>
+> *(Original scope note, kept: the plugin lived at `$DSH_HOME/plugins/dsh-github` and was **not** in
+> `D:\DeepSeek Harness`; rule 7's two-directory surface was never affected. What this repository
+> gained from the same work — `bin/check-pack.mjs`, `.github/workflows/checks.yml`, and the D-45
+> push-script fixes — **survives the teardown** and is covered in its own paragraphs below, because
+> none of it is GitHub-API-specific.)*
+
+**What was composed.** Three `insert:` rows in `$DSH_HOME/profiles/web/cordis.patch.yml`, all
+host-plane: `webhook-runtime` (`@deepseek-ai/dsh-webhook`, publishes `ctx.webhookRuntime`),
+`webhook-github` (`@deepseek-ai/dsh-webhook-github`, the signed adapter, on the **existing** 3080
+`webServer` at the exact path `/github`), and `github` (`dsh-github`, the new out-of-repo plugin,
+mounted as two sibling rows — one registering the `kind: "github"` rule, one registering 11
+`github_*` tools).
+
+**Both shipped packages were already resolvable as row names, so neither needed installing.** The
+loader imports a row's `name` by bare specifier with `baseUrl` anchored at the profile directory, and
+`$DSH_HOME/profiles/node_modules/@deepseek-ai/` is maintained as a mirror of the installation's
+dependency closure — 244 packages, with `dsh-webhook` and `dsh-webhook-github` among them. Verified by
+the only test that settles it: importing both **by name from the profile directory** returned their
+full export lists. Only the new plugin needed the sanctioned writer
+(`dsh plugin --profile web add <path>`, exit 0), which `link:`ed it and printed the expected
+`declares no dsh.bundle` warning — a plugin is not a profile layer, and the bundle list is
+correspondingly still just `dsh-base` + `dsh-web-app`.
+
+**The route, verified in a minimal real Cordis context before anything was deployed.** `dsh-webhook`
+exports `WebhookRuntime` **as its default**; the adapter exports `{Config, apply, inject, name}` with
+**no default**. The loader's `unwrapExports` (`cordis-plugin-loader/lib/index.js:745-751`) takes
+`except.default ?? exports`, so `default` wins when present and the namespace is used when it is not —
+which is exactly how these two differently-shaped packages both load. Mounting both in one scratch
+context (with `ctx.provide` + `ctx.set` for the eight injected services) produced
+`ctx.get('webhookRuntime') = object` and `routes: ["/github"]`.
+
+**The ladder, measured live on `127.0.0.1:3081`** — a second instance; the user's 3080 was never
+restarted or killed, and `GET /api/balance` on it answered 401 before and after every step:
+
+| request | code | what it proves |
+| --- | --- | --- |
+| `GET /github` | `405` | **nothing** — see the trap below |
+| `POST /github`, non-JSON | `415` | content-type gate reached |
+| `POST /github`, JSON, no headers | `400` | header gate reached (runs before the secret) |
+| `POST /github`, headers, secret absent | `503` | **the row mounted** — the adapter resolves the secret before verifying the HMAC |
+| `POST /github`, bad signature | `401` | the secret is readable and HMAC is enforced |
+| `POST /github`, **valid HMAC** | `202` | dispatched |
+
+**The trap worth carrying: `405` is a false positive.** The web-app's fallback seat answers an
+*unmatched* path with the same `405`, so `POST /github` and `POST /definitely-not-a-route-xyz` are
+indistinguishable while the route is absent. The discriminator is **`503` versus `401`**, and it needs
+no valid signature.
+
+> **One stale reading was produced and then corrected, and the correction is the useful part.** A
+> first instance on 3081 answered **`404`** for `GET /github` — *not* the fallback's `405`. That
+> instance had booted without the rows in its composition; a fresh instance mounted them with no
+> config change at all. So the difference between `404` and `405` was a **staleness artifact, not a
+> routing fact**, and the ladder above was re-measured on the clean boot. **If a route looks
+> unregistered, restart before concluding anything** — `--dump-config` reads the file, while a
+> running process holds whatever it composed at boot.
+
+**The end-to-end proof, and why the session log was not enough.** A correctly signed POST answered
+`202`, and the store then held
+`webhook-a627e8f0-2b95-48a7-9032-42b35d375102` with header `cwd:
+D:\DeepSeek Harness\github-worktrees\ABccgh-dsh-smith`, `agentPreset: dsh-forge`,
+`delegationDepth: 0`. **The session log is header-only**, so it cannot show the prompt; the
+**projection** can, and it showed `permissions.preset: workspace-write`, `modelSelection`
+`deepseek-flash` / `reasoningEffort: max`, `sessionStats.turns: 1`, and **non-zero `tokenUsage`**.
+A non-zero token count is the strong form of "the prompt was admitted and processed" and is better
+than a text search over guessed rows.
+
+**A measurement that changed the design: `git clone` does not work on this machine.** The rule's first
+checkout route was `git clone`, and it failed —
+`schannel: next InitializeSecurityContext failed: CRYPT_E_NO_REVOCATION_CHECK (0x80092012)` — the
+same certificate-revocation defect this file records for `git push`. The **GitHub HTTPS API and
+codeload are reachable where git's transport is not**, so the checkout now fetches a **tarball over
+`fetch`** and extracts it in-process (hand-written tar reader, `isSafeArchivePath` rejecting absolute
+paths, `..`, and backslashes), with `git clone` kept only as a fallback. Measured on a real
+repository: 9 files fetched into the target in 755 ms, a second call **reused** the checkout instead
+of refetching, and `package.json` inside it parsed as the expected package. The tree is a directory
+without history — enough for review, which is what the rule asks for.
+
+**The precondition that a README gets wrong, and that the rule therefore owns.**
+`workspaceRegistry.create(path)` **rejects a relative, nonexistent, or non-directory path**
+(`dsh-workspace/lib/types/index.d.ts:68-79`). The `dsh-webhook` README's "resolves or creates the
+canonical Workspace" means the workspace **record**, never the directory — so a rule that handed over
+a path derived from a repository's `clone_url` would fail *after* the `202`, leaving only a warning
+log. `dsh-github` therefore refuses instead, with the repository named.
+
+**What is measured versus what is not.**
+
+> **BLOCKER FOUND AFTER THE ABOVE, and it stops every `github_*` tool: Node cannot reach
+> `api.github.com` on this machine without a flag.** Measured: Node's `fetch` — which is what the
+> plugin's tools and rule use — fails with **`UNABLE_TO_VERIFY_LEAF_SIGNATURE`**, stably, across
+> repeated attempts, **while the same token through PowerShell (schannel, system trust store)
+> returns HTTP 200**. `codeload.github.com`, `registry.npmjs.org` and `ima.qq.com` all verify fine
+> from Node, so it is GitHub's `api.github.com` / `github.com` / `uploads.github.com` /
+> `objects.githubusercontent.com` hosts specifically. **This is a different defect from `git`'s**:
+> git reports `CRYPT_E_NO_REVOCATION_CHECK` (revocation endpoints), this is a missing intermediate
+> (`UNABLE_TO_VERIFY_LEAF_SIGNATURE`) in Node's **bundled** CA store.
+>
+> **The fix is one environment variable and was verified:** `NODE_OPTIONS=--use-system-ca` turns the
+> failure into `HTTP 200` (`login=ABccgh`), so Node uses the system store where the intermediate
+> exists. The flag needs **Node ≥ 22**; the host here runs **v26.8.1**, read from the process
+> (`D:\Program Files\nodejs\node.exe`) rather than assumed. **It requires restarting the `dsh`
+> process**, so it is the human's step.
+>
+> **What does NOT fix it, so a later session does not try:** `NODE_EXTRA_CA_CERTS` is read at Node's
+> startup and has no effect when set from inside a plugin, and `rejectUnauthorized: false` would
+> replace a loud transport failure with a silent loss of server authentication. Neither is used.
+>
+> **How the fix was actually landed, and the propagation trap that cost a round.** Setting the user
+> variable (`[Environment]::SetEnvironmentVariable('NODE_OPTIONS','--use-system-ca','User')`) writes
+> the registry correctly — `HKCU:\Environment\NODE_OPTIONS` reads back with the flag — **but a
+> "new process" started from an existing process still does not see it.** Measured: a `pwsh`
+> launched from this session reported `$env:NODE_OPTIONS` as empty and its `node fetch` still failed
+> with `UNABLE_TO_VERIFY_LEAF_SIGNATURE`, because a child inherits its **launcher's** environment,
+> not the registry. The same reasoning means a `dsh` started before the variable was set keeps
+> failing after it is set. **The fix is therefore only in effect for a process whose launcher was
+> already fresh** (Explorer, a brand-new terminal). The launcher used here sidesteps that entirely by
+> setting the flag **on its own line** (`set "NODE_OPTIONS=--use-system-ca"`) instead of trusting
+> inheritance, which is why `C:\Users\曦曦\Desktop\restart-dsh-web.cmd` exists and why the desktop
+> `dsh-web-ca.ps1` was replaced by it. Its port detection was verified **without running the kill**:
+> `netstat -ano | findstr /r /c:"127.0.0.1:3080 .*LISTENING"`, token 5, yields the same PID that
+> PowerShell reports — and the tunnel's own metrics port does not match that filter.
+>
+> **Consequence for this record's earlier claims:** the ingress half is unaffected — it runs
+> **inside** the host over plain HTTP on loopback, and only the *outbound* tool calls are blocked.
+> But **"11 tools register"** and **"a token is valid"** were never the same claim as **"the tools
+> can call GitHub"**, and this is the gap between them.
+
+| Item | State |
+| --- | --- |
+| Plugin loads **by row name** from the profile dir | **Measured** |
+| 11 tools register, every compiled schema accepted by `dsh-tools`' own `assertSupportedJsonSchema` | **Measured** (28 assertions, registration check) |
+| Rule registers with `kind: "github"`, asserted **against the adapter's own source** | **Measured** |
+| A missing `GITHUB_TOKEN` produces a named refusal, not a fake success | **Measured** (both a write tool and a read tool) |
+| Malformed config rejected (bad ref, empty map, relative root, missing `agentPreset`) | **Measured** |
+| Fetched checkout usable, path-escape guards hold | **Measured** |
+| Full ingress ladder `415/400/503/401/202` and a live session | **Measured on 3081** |
+| Any `github_*` tool called against the real GitHub API | **NOT measured — no `GITHUB_TOKEN` exists on this deployment** |
+| `CRYPT_E_NO_REVOCATION_CHECK` on real inbound GitHub traffic | **Now reachable — a quick tunnel is up and the public path is verified; see the addendum below.** Before the addendum this read "not reachable here: the deployment is loopback-only and no tunnel is installed" |
+
+> **Addendum, same session: the PUBLIC path is verified, and the tunnel has a shelf life.**
+> `cloudflared` 2026.9.1 was installed with **`winget install --id Cloudflare.cloudflared`** — which
+> succeeded where a **direct download of the same release asset did not**: a plain
+> `Invoke-WebRequest` of `github.com/cloudflare/cloudflared/releases/download/…` hung to a 40 s
+> timeout, and the first, longer attempt left a **24.3 MB partial file**, so that host is slow or
+> filtered rather than refusing. winget fetched the same MSI successfully, which makes **winget the
+> working route for GitHub-hosted binaries on this machine** — a useful sibling of the
+> `git`-blocked/API-reachable split recorded below. It landed at
+> `C:\Program Files (x86)\cloudflared\cloudflared.exe` and added that directory to the **machine**
+> PATH; the install ran from an already-elevated shell.
+>
+> A quick tunnel was then started with
+> `cloudflared tunnel --url http://127.0.0.1:3080 --no-autoupdate`, and **a correctly signed delivery
+> sent to the PUBLIC `https://<random>.trycloudflare.com/github` answered `202`** — so the whole chain
+> (public internet → Cloudflare edge → tunnel → loopback `webServer` → adapter → HMAC verification →
+> `webhookRuntime.dispatch`) is live, not merely reachable locally.
+>
+> **"The edge is transparent for `/github`" was measured separately from "the edge blocked it".**
+> Through the public URL, an unsigned POST answers **`400`** and a wrong content-type answers
+> **`415`** — the **adapter's own** codes, not an edge error page. So Cloudflare is not intercepting
+> that route, which is the failure that would have silently broken real GitHub deliveries while every
+> local test still passed.
+>
+> **The public fence holds, and it is stronger than the local one.** Over the tunnel `GET /` →
+> **401**, while `GET /api/balance` → **403** (locally the same request is 401). The `403` is the
+> deployment's **browser-trust fence** rejecting the tunnel's authority over plain HTTP, and it is
+> **not** User-Agent dependent — measured identically with a PowerShell and a Firefox UA. The
+> consequence to state plainly: **the only publicly reachable endpoint is `/github`, protected solely
+> by HMAC**, which is exactly the intended boundary. `GET /github` still answers the
+> fallback-indistinguishable `405` and proves nothing (D-47).
+>
+> **Shelf life, and why this is not the production answer.** A quick tunnel's hostname is **random and
+> changes on every restart**, while GitHub's Payload URL is a fixed field — so every restart means
+> editing the webhook. A durable ingress needs a **named tunnel** with a domain, which needs a
+> Cloudflare account. The tunnel is also a foreground process, so it lives only as long as its job.
+
+
+**The security boundary, which follows from a finding already in this file** (see the next
+subsection): `/github` is registered directly on `ctx.webServer`, so it sits **outside** the `/api`
+browser-authentication fence and is protected **only by HMAC**, with `maxBodyBytes` as the only bound
+on body size. The consequence for anyone wiring a tunnel: **expose `/github` and nothing else**, and
+do **not** widen `webserver.config.host` to `0.0.0.0` — a tunnel client that forwards to the loopback
+port needs no bind change at all.
+
+**The two repository-side changes from the same work.** `bin/check-pack.mjs` reads the **packed
+tarball** rather than the tree, so it catches the one defect every other check in `bin/` is blind to —
+a preset directory missing from `package.json`'s `files` allowlist. It is **falsified and repaired**:
+dropping `dsh-smith` from `files` produces 4 findings, restoring it passes, and dropping `bin`
+correctly does **not** fail because npm force-includes whatever the `bin` map names. And the D-45
+push-script limitation is **closed in code, unproven in a real push** — `-RemoteOnlyParent` exists and
+its argument validation is measured, but the happy path needs a live `GH_TOKEN` this session did not
+have. Full reasoning in **D-48**.
 
 ### Every `webServer` route is outside the browser authentication gate
 
@@ -428,7 +886,7 @@ running the mount check, so it is the freshest evidence in this file.
 | The old scripts still behave as before | **Yes, byte-for-byte in behaviour** — with no `--preset`: lint reports the same five skills clean, drift reports `36 rows` local / `32` upstream with the same six drifted rows, install refuses to overwrite with the same message |
 | `dsh-smith/agent.cordis.yml` was not touched | **Yes** — `git status --short dsh-smith` is empty |
 | The tarball still excludes the memory layers, now with both presets | **Yes** — `npm pack --dry-run`: **22 files, 94.2 kB packed / 270.7 kB unpacked**, measured at the final revision of this change (earlier measurements this session: 92.9/266.7, then 93.1/267.2, then 93.7/269.0 — same 22-file set every time, sizes moving with each edit, which is the point: a byte figure is a fact about a revision, never a standing fact). Both preset directories are present and complete; `AGENTS.md`, `docs/**`, `.gitignore` and `.gitattributes` are all excluded. Supersedes the earlier `14 files / 58.1 kB` figure, which predates `dsh-forge/`, `bin/preflight.mjs` and `bin/presets.mjs`; that one in turn superseded a `19 files / 65.5 kB` figure from before the `files` allowlist existed. |
-| **`standingKeyFor('dsh-forge')`** | **RUN, AND IT PASSED — `MOUNTED OK`.** Via the dynamic-plugin probe from a session on the **shipped `cordis` preset**, where `tool-cordis` is `enabled=true` and `cordis_*` therefore exists. `compositionInventory()` from the resulting standing mount lists **35 leaf rows** (the 3 group containers are skipped by the same `flattenRows`/`mountedCompositionRows` rule): **31 active**, **2 `conditional`** (`tool-bash` / `tool-pwsh` platform gates), **2 `false`** (`tool-subagent-codex`, `tool-subagent-claude-code`), `broken=none`. It also settles what the static pass could not: **no row is "mounted but contributing nothing"** — the `compaction`/`toolResultPruner` realm pairing and `tool-presentation`'s wait on the host `codeRuntime` both came up active. |
+| **`standingKeyFor('dsh-forge')`** | **RUN, AND IT PASSED — `MOUNTED OK`.** Via the dynamic-plugin probe from a session on the **shipped `cordis` preset**, where `tool-cordis` is `enabled=true` and `cordis_*` therefore exists. `compositionInventory()` from the resulting standing mount lists **35 leaf rows** (the 3 group containers are skipped by the same `flattenRows`/`mountedCompositionRows` rule): **31 active**, **2 `conditional`** (`tool-bash` / `tool-pwsh` platform gates), **2 `false`** (`tool-subagent-codex`, `tool-subagent-claude-code`), `broken=none`. It also settles what the static pass could not: the `compaction`/`toolResultPruner` realm pairing and `tool-presentation`'s wait on the host `codeRuntime` both came up active, so no row is stalled waiting on a service that never arrives. **CORRECTED (D-44): this row previously read "no row is \`mounted but contributing nothing\`", and that is an overclaim** — a green `fiberState` after the `apply`/`ready` steps is evidence of **activation**, not of contribution, and D-44 is the entry that had to measure contribution with a live call because no mount reading could settle it. Read this row as "no row is stalled", never as "every row does something". |
 | **Row-count reconciliation** | **CLOSED — 38 = 3 groups + 35 leaves; 31 active, 2 `conditional`, 2 disabled.** Both counting paths skip group containers (`flattenRows`, `dsh-agent-presets/lib/index.js:991`; `mountedCompositionRows`, `:1038`), so the inventory's 35 is the **leaf** count and agrees with an independent YAML-parse of the file. **Both numbers this record published were wrong**: "35 active" mislabelled the total as the active count, and "34 enabled" was `38 − 4`, an arithmetic error because 38 includes the 3 containers that never appear in a row list. The one correct equation is **35 leaves − 4 disabled = 31 active** (on Windows `tool-bash` is off by its `!!js` gate and `tool-pwsh` is on, so exactly one of the two platform-gated rows runs). |
 | **`bin/verify.mjs` is not the mount check, and no session fixes it** | **Defect found and corrected.** The script builds its own bare runtime (`new cordis.Context()`, `bin/verify.mjs:204`), so `agentPresets` is absent **by construction** and it prints `INCONCLUSIVE — this runtime publishes no agentPresets service` **from every session** — measured twice, byte-identical, once in an ordinary shell and once inside a shipped-`cordis` session with `tool-cordis` active. This complements D-20 rather than contradicting it: D-20 says the *probe route* is closed in locally authored presets, and this adds that the *script route* is closed everywhere. Its header comment and its INCONCLUSIVE advice have been rewritten; it now says it is a diagnostic and points at the probe route. |
 
@@ -607,3 +1065,236 @@ then read the values back:
 - A persona's **interim** message is not evidence of its final shape: the expert call's interim
   summary opened `# 1. DECISION` with a condensed core, while its final report was exactly the
   five contracted blocks. Judge a persona's contract on the final report only.
+
+## CK3 Wiki → ima 知识库 —— **项目已取消，镜像与知识库均已交付**（本节为历史记录）
+
+> **状态：CANCELLED（D-57）。** 下面全部内容是该项目的原始记录，保留是因为其中的实测
+> 结论会被将来重新拾起的人直接用到；但**它描述的那次工作已经收尾**。取消时做的清理与
+> 订正如下。
+>
+> **一、订正（本节下文与 `tools/ck3wiki/README.md` 里的数字有两处是过期的）**
+>
+> - `data/coverage.json` 的 `backfilled: 220` **已过期**。取消前实测：**库内 913 条标题
+>   已全部回填**为 `<wiki 标题> - CK3 Wiki`，含命名空间页（如 `Module:Yesno - CK3 Wiki`）。
+>   该字段是在更早的时间点读的。
+> - **实际计数**（取消前实测，全库 22 页枚举）：`00_Articles` **428**、`10_Project` 4、
+>   `20_Modules` 12、`30_MediaWiki` 20、`40_Templates` **248**、`50_Categories` **201**，
+>   合计 **913** —— 与 `reconcile.json` 的 `found: 913` 吻合。
+>   `manifest.json` 是 **916 行**，但只有 **913 个不同 URL / 913 个不同标题**：3 个标题
+>   跨分区重复（`Crusader Kings III Wiki:Style`、`Crusader Kings III Wiki:Versioning`
+>   各在 `00_Articles`+`10_Project`，`Dragon Age: Thedas at War` 在 `00_Articles`+`50_Categories`）。
+>   分区差 **430−2=428**、**202−1=201** 正好落在这些重复上，**所以 ima 侧对重复标题只保留了一份**
+>   —— 这才是 922 个 URL 落成 913 条条目的完整原因（重定向是另一半）。
+>   **`README.md:62` 的 `254` 个模板数不对**（此处 248）。要复核这个数需要
+>   `repair-manifest.mjs`（取消时已随一次性脚本删除），所以这个数在**当前树内无法再复核**，
+>   这一点必须明说。
+>
+> **二、取消当次的清理（实测）**
+>
+> - **先固化，再删除。** `dsh-smith` 仓库当时有 **2253 行未提交的已记录成果**（D-48/D-56 的
+>   `bin/push-api*.ps1` 修复、`bin/check-pack.mjs` + `.github/workflows/checks.yml`、
+>   `AGENTS.md` 与 agent-notes 的累积）。按用户决定**全部提交入库**，然后才执行删除。
+> - **删掉的是生成物与一次性脚本**：`data/`（**934 文件 / 19.41 MB**，已 gitignore，
+>   `node tools/ck3wiki/extract.mjs` 可重建）、`probe-join.mjs`/`probe-join2.mjs`（本会话
+>   规划阶段的探针）、`probe-html.mjs`/`repair-manifest.mjs`/`triage.mjs`（零入站引用的一次性
+>   HTML 侦察、已失效的 manifest 修复、一次性 triage）。
+> - **保留 9 个文件**：`extract.mjs`、`ingest.mjs`、`verify-convert.mjs`、`falsify.mjs`、
+>   `lib/convert.mjs`、`lib/http.mjs`、`package.json`、`README.md`。其中 **`lib/http.mjs` 有
+>   三个导入者**（`extract.mjs:31`、`probe-html.mjs:3`、`verify-convert.mjs:14`），它同时是
+>   本站 Fastly 门绕过条件的唯一副本；`falsify.mjs` 是 D-53 那四个静默缺陷的唯一回归测试。
+> - `$DSH_HOME\profiles\web\` 的四个 CK3 脚本（`create-ck3-kb` / `import-ck3` /
+>   `reconcile-ck3` / `coverage-ck3`）一并删除；`check-ima-kb.mjs` 与 `cordis.yml` **保留**
+>   （后者实测是 loader 的 root 配置，其注释原文即「Edit cordis.patch.yml, not this file」）。
+>
+> **三、本次无法完成、必须由用户手工做的**
+>
+> **ima 服务端那 913 条无法通过 API 删除**（`delete_knowledge` / `delete_media` / `delete_doc`
+> 等十种拼法全部 404），所以本地镜像可以清空，`Crusader Kings III Wiki` 这个知识库只能由用户
+> 在 ima 客户端里手工删除；`曦曦的知识库` 里那 12 条 CK3 探针条目与 `this-page-does-not-exist.md`
+> 同理。**这是 ima 接口的边界，不是本次清理的缺口。**
+>
+> **四、若将来重新拾起，两条必须继承的实测结论**（详见下文「站点」一节）
+>
+> 1. **JOIN 键是 `md5(percent-ENCODED url)`，对 manifest 的 `url` 字段原样哈希，不做
+>    percent 解码。** 用三条真实 `media_id` 逐位对撞确认：`md5(encoded)` 命中，
+>    `md5(decoded)` 三条全不命中。（规划阶段一份独立的架构复核主张相反 —— 必须解码后再哈希
+>    —— 照它实现会**静默丢掉约 265 行**，因为 916 行里 265 行 URL 含 `%2F`、519 行含 `%3A`。）
+> 2. **按标题 JOIN 也可用**（`<wiki 标题> - CK3 Wiki` 去掉后缀），实测 **912/913**；唯一未
+>    命中是 `CK3 Wiki`，即已知的重定向目标。两条路并存时以 digest 为主、标题为交叉校验。
+
+**目标**：把英文 [ck3.paradoxwikis.com](https://ck3.paradoxwikis.com/Crusader_Kings_III_Wiki)
+全量镜像进一个新的 ima 知识库。交付物在工作区 `tools/ck3wiki/`（工具、README、`falsify.mjs`），
+生成数据在 `tools/ck3wiki/data/` 并**已被 `.gitignore` 排除**（语料是 CC BY-SA 的 wiki 文本，
+不是本仓库的内容；工具与回归测试要跟仓库走）。
+
+### 站点：门是指纹判定，且是间歇性的
+
+任何路径（`/api.php`、`/rest.php`、`index.php?action=raw`）都可能返回 **HTTP 200 + 一张约
+3 KB 的 Fastly "Client Challenge" 页**。放行的条件是**浏览器样式的 User-Agent + 请求里存在
+`Accept-Language`**——
+
+| 请求 | 结果 |
+| --- | --- |
+| Chrome UA + `Accept-Language: en-US,en;q=0.9` | 真实 JSON（5/5、4/4 重复实验） |
+| 同样的头，去掉 `Accept-Language` | 挑战页 |
+| curl 自带 UA / `python-requests/2.31` + AL | 挑战页 |
+| `Accept-Language: *` | 真实 JSON |
+| **Node 26 `fetch`（undici）带齐两个头** | **挑战页** |
+| DSH 自己的 `web_fetch` | 成功抓到过一页（说明是间歇判定，不是绝对拦截） |
+
+所以抓取走 `child_process` 驱动的 **`curl.exe`**；HTTP/1.1 与 2 无差别。**每个响应都要检查
+是不是 HTML 再退避重试**，因为判定会间歇翻转。这条已记入 **D-54**（结论是**不改**
+`dsh-web-fetch-http`：它的固定头与"显式产品 agent、绝不伪装浏览器"是刻意的策略选择，
+且这是某一个第三方主机的属性，不是 fetch seam 的缺陷）。
+
+### 规模：1900 个 ns0 页面里只有 430 篇是内容
+
+`statistics.articles = 482`；`allpages&apfilterredir=nonredirects` 给 **430**；剩下 **1470**
+个是重定向。**`action=parse` 不跟随重定向**，所以直接抓 1900 个会得到 1470 个几百字节的
+重定向残页当成"内容"。分区与数量：ns0 430、ns4 4、ns828 12、ns8 20、ns10 254、ns14 202，
+合计 **922**。
+
+### 抓取：一页一个请求，这是被一次实测逼出来的
+
+第一版每页发**两个**请求（parse + `prop=revisions` 取 `{{Version}}` 横幅）。实测：并发 6 时
+整批只跑到 **~43 秒/页**；同一批页面顺序抓取则是 **~3 秒/页**。原因是那次 `revisions` 请求会把
+整页 wikitext **再传一遍**（Army 一页就 ~380 KB）。改成：`action=parse` 一次拿全
+（它本来就带 `revid`），`{{Version}}` 用**批量预取**（50 标题/请求）解决。结果 **~3.8 秒/页**、
+并发 6、922 页约 55 分钟。**不要把这个第二请求加回来。**
+
+### 转换器：四个静默缺陷，以及现在的架构
+
+`tools/ck3wiki/lib/convert.mjs` 是手写标签栈遍历器，零依赖。它被重写过一次，因为
+**按帧缓冲**的设计连续产出"看起来完整、其实错了"的结果。四个缺陷全部由一次独立的
+对抗性复核发现并被我逐条复现（**D-53** 记决策，`falsify.mjs` 钉回归）：
+
+| # | 缺陷 | 实测表现 |
+| --- | --- | --- |
+| 1 | `renderTable` 每次调用重置游标 | 第一张表之后**每张表都装上第一张表的单元格**（行数不变、内容全错，任何行数检查都看不见） |
+| 2 | 单元格文本同时进正文与表格 | 每页 **32%** 的字符是重复的；Faith 59,376 → 40,370 字符 |
+| 3 | 链接标签用惰性正则从成品文本里捞 | 标签吞掉链接之后的正文：Faith 上 **130 条链接**的标签是整段话 |
+| 4 | `closeFrame` 没有 `inline` 分支 | `</b>` 不闭合，加粗一路吃到块尾 |
+
+现在的架构（防的是这四类，而不是"修好了这四处"）：**每个作用域只有一个输出缓冲**；结构帧
+**不持有文本**；文本归属**最近的捕获型祖先**（`cell`/`tableRow`/`heading`/`caption`/`link`），
+而不是栈顶；**没收到自己结束标签的帧不得执行结构关闭动作**；只有标题留一个哨兵。
+
+**证据强度**：Faith 一页经两个**独立实现**得到**逐字节相同**的 40,370 字符输出。修好后
+8 个试点页在 `verify-convert.mjs` 上全绿；把游标改回缺陷版后 `falsify.mjs` 会失败（反向验证过）。
+
+**一处坦白的失败**：我先后写了三版"行级源码比对"检查，**每一版都在正确输出上误报**（渲染行无法
+与源行按下标对齐：表格嵌套、header 行、colspan 填充；改用词覆盖率后，短单元格行必掉到阈值以下）。
+三版都删了，`verify-convert.mjs` 里留下了这条经验：**宁可没有检查，也不要一个会喊狼来了的检查**——
+它训练读者忽略它。缺陷 1 由 `falsify.mjs` 的合成用例钉死。
+
+### ima 侧：三条决定架构的实测
+
+1. **没有删除接口**：`delete_knowledge`／`delete_media`／`delete_doc` 等拼法全 404。
+2. **URL 导入是就地更新**：同一个 URL 连导两次，返回**逐字节相同**的 `media_id`，
+   条目数 **13 → 13 不变**。这是唯一可用的"刷新"机制。
+3. **上传的 Markdown 永远读不回来**：`get_media_info` 对 `media_type: 7` 一律 `220030`。
+
+结论是 **D-52**：语料用 **URL 导入**入库，本地 Markdown 作为**可核对镜像**；文件上传只留给
+"必须控制标题"的场合，且每次上传都是新的永久条目（`add_knowledge` 没有 upsert 输入）。
+计划书里原本选的是上传 Markdown，被第 2 条实测反转。
+
+### 插件改动：本次新增四个工具（全部实测，未做推断性改动）
+
+`$DSH_HOME/plugins/dsh-ima-kb`（**不在本仓库**，规则 7 描述的模式）：
+
+| 改动 | 依据 |
+| --- | --- |
+| `ima_import_urls` | 批量 URL 导入；`ima_import_url` 一次只收 10 条，几百条语料会把模型调用也吃掉几百次 |
+| `ima_upload_dir` | 批量文件上传，含 `dryRun`、按文件名去重、限并发 |
+| `ima_kb_create` | **`create_knowledge_base` 真实存在**，两个必填项都是**被拒绝的请求**试出来的：`Name` 正则 `^\S[\S ]{0,23}\S?$`（1–25 字符）、`Type` ∈ {`KBT_MINE_KB`,`KBT_SHARED_KB`,`KBT_SUBSCRIBED_CREATE_KB`} |
+| `ima_kb_mkdir` | **`create_folder` 真实存在**（必填 `knowledge_base_id` + `name` ≤255）。这**修正了插件 README 的一条错误结论**——原文写"接口只能消费 folder_id、没有任何创建文件夹的能力" |
+| `client.js` 加 `createKnowledgeBase`/`createFolder` | 后者的返回字段是 **`media_id`**（不是 `folder_id`）；读错会往记录里写 `undefined`，而文件夹其实已经建好了 |
+| `package.json` 加 `"./lib/client.js"` 导出 | 让工作区脚本能按包名导入客户端 |
+| `Config` 加 `bulkMaxFiles`(600) / `bulkConcurrency`(2)；profile 行补全 **10** 个键 | patch 是**整段替换**，漏键即静默退回默认值 |
+
+工具面 9 → **13**。验证：`profiles/web/check-ima-kb.mjs` **从 profile 目录按 loader 用的包名导入**，
+config 过插件自身 schema、13 个工具的预编译 `parameters` 全被 `dsh-tools` 的
+`assertSupportedJsonSchema` 接受、`dryRun` 真跑一次。**它证不了 Cordis 注入真实服务**（用桩），
+这一层仍需真实会话。
+
+**一处方法上的教训（值得复用）**：这四个新接口的字段表全部是用**会被拒绝的请求**探出来的——
+缺哪个字段，protobuf 校验就报哪个字段名。用空 body 或不存在的 id 探测，**什么都不可能被创建**，
+却能得到完整的请求契约。`create_folder` 的 `{knowledge_base_id, name}` 与
+`create_knowledge_base` 的 `{name, type}` 都是这样确定的。
+
+### 尚未完成 / 未验证
+
+- **922 页抓取已完成**（后台作业 exit 0）：**922 页写入、0 抓取失败、15.9 MiB、482 秒**，
+  980 个请求里**0 次被门拦**。430 篇条目页**全部通过**审计，中位文本召回率 **0.99**。
+  154 个审计未通过全部是"页面本身就几乎为空"（144 个：图标分类页与三行界面文案，源 HTML 里
+  约 720 字节全是 MediaWiki 皮肤外壳）或"页面在**演示** HTML/脚本代码"（8 个 `<div>`/`eu4box`
+  出现在 `<pre>` 与 Lua 源码示例里）。**没有一篇真实条目页失败。**
+- **入库已完成**：新库 **`Crusader Kings III Wiki`**（id `iYD6qed-FqD1EjNWTAWFuJK-cfIqn3dzVkty4Ld4yEs=`）、
+  6 个文件夹、**922 条 URL 全部提交**。库内 **913 个唯一条目**，差 9 条**不是缺口**：
+  URL 导入**跟随重定向**且 ima 按抓取到的页面去重，所以 `Crusader_Kings_III_Wiki` 落成 `CK3 Wiki`
+  （与探测阶段的 `Religion`→`Faith` 同一现象）。按 **URL slug 逐条对撞**的覆盖率：
+  **429/430 条目页 + 其余 5 个分区 100%**（`data/coverage.json`）。
+- **标题回填未完成**：核对时 913 条里只有 **85** 条回填成 `X - CK3 Wiki`，**828** 条仍是原始 URL。
+  这是 ima 的**异步**行为，不是失败；回填全部完成后库内标题才准确。
+- **节流是真的，而且像凭证失败**：前 484 条之后 ima 开始回 **HTTP 403**（约 0.3–0.7 秒/批
+  ≈ 50 请求/秒）。**403 在这里不是凭证问题**——立刻做一次已认证读取即成功，且库内条目数正好
+  等于本地已记录的 484。改成 1 并发 + 1.2 秒间隔 + 403 指数退避后，其余全部通过，**失败 0**。
+  这条值得记住：**在这个接口上，403 的第一解释是限流，不是密钥失效**。
+- **`tools/ck3wiki/data/` 已 gitignore**：语料、manifest、kb.json、import-state.json、日志都不入库；
+  工具与 `falsify.mjs` 入库。
+- **D-46 缺口仍在**（见 BOARD）：本次新增编号从 **D-52** 起，未占用 46。
+
+### 收尾：插件上云与仓库标签（本次会话实测）
+
+**插件已推送，且用的是那条从未被真正跑通过的路径。** `bin/push-api-ref.ps1 -RemoteOnlyParent`：
+`refs/heads/main` 从 `4e2d9cc` 移到 **`53a3f66`**，新提交**以 `4e2d9cc` 为父**，所以是快进、
+不需要 `-Force`。核对**是对着 API 做的，不是读脚本自己的报告**，五项全过：远端 tree
+`ebdd375` == 本地 tree；父提交唯一且等于 `4e2d9cc`；**9 个 blob 与 `git ls-files` 完全一致**；
+无重复路径段（`bin/bin/…` 那个历史事故）；18 行提交信息完整。
+**`AGENTS.md` 一直把它记为 "NOT measured"，这次给出了结论**（见 **D-56**）。
+
+一路上撞到的两个坑，都是"以为是这样、实际是那样"：
+
+1. **脚本用 `git -C $PWD`**，操作的是**调用者的仓库**。从 `D:\DeepSeek Harness` 调用它推
+   `dsh-ima-kb`，它报 `no local commits in <sha>..HEAD`——而那个 range 在插件仓库里明明存在。
+   正确做法是**在插件目录里调用**，而且 `-Base` 必须给**完整 SHA**（短 SHA 同样解析不到）。
+2. **topics 接口拒绝显示写法**：PUT body 传 `"DeepSeek Harness Plugins"` 会被
+   `422 must start with a lowercase letter or number, consist of 50 characters or less` 拒绝，
+   必须传归一化后的 `deepseek-harness-plugins`——而 GitHub 又把它**显示回大写形式**，所以
+   读写两侧都要做归一化比较。另外 `dsh-desktop` 第一次写入回了**裸 HTTP 500**，原样重试即成功，
+   说明那里的 500 是暂时性的，不是校验问题。
+
+**`git push` 仍然是死的，而且与凭证无关：** 这次带着有效 token 重试
+（`https://x-access-token:…@github.com/…`）依旧 `schannel: CRYPT_E_NO_REVOCATION_CHECK (0x80092012)`。
+**git 的 OpenSSL 后端也不可用**——这台机器上**根本找不到 CA bundle**
+（`C:\Program Files\Git`、npm 缓存、PowerShell 目录全搜过），`http.sslBackend=openssl`
+无证书可验。
+
+**四个仓库现在都带 `DeepSeek Harness Plugins` 标签**，且**原有标签一个没丢**：
+`dsh-smith` 9 个、`dsh-account-balance` 7 个、`dsh-desktop` 1 个、`dsh-ima-kb` 1 个。
+
+**工作区整理**：`tools/ck3wiki/` 留下 **11 个文件**（工具 + `falsify.mjs` 回归测试 + README +
+`package.json`），**11 个调试副本（每个约 22 KB）已删除**；`data/`（916 个语料文件 + manifest +
+日志，共 934 个文件）由 `.gitignore` 排除，工具与回归测试保持可入库。该目录**仍未 `git add`**：
+本仓库只有 preset 的 surface，语料不该进来，而本次也没有要求提交它。
+`D:\DeepSeek Harness` **有** `origin`（指向 `dsh-smith`），但**本次没有推送它**——不在要求范围内。
+
+### `%TEMP%` 的累积，与委派子代理越界写盘（本次会话实测）
+
+**DSH 自己会在 `%TEMP%` 留下两类目录且从不回收**：`dsh-spill-*`（超长命令输出落盘，文件名形如
+`*-pwsh.txt`、`*-grep-results.txt`）与 `dsh-subprocess-*`（子进程 stdout/stderr 日志）。本次清理时
+它们已从 **09/04 攒到 09/13**：**46 个 subprocess + 25 个 spill**，有内容的合计约 10 MB，其余多为空目录。
+
+**委派的"只读"子代理会越界写盘，而且两层都发生过**：一个写了 `D:\dsh-factcheck`（92 文件 / 9.3 MB）；
+更深一层的 fan-out 写了 `%TEMP%\dsh-factcheck`（**242 文件 / 51.4 MB，含 12 个 `.ps1` 脚本**）。
+两次简报都明写"不写文件"。**这不是个别失误，是这个部署上委派行为的稳定特征**——中间产物会落在
+工作区外，而子代理自己的报告未必提（写过 92 文件的那次提到了；写 51.4 MB 的那次没有）。
+
+**所以"全面清理"不能按时间窗扫 `%TEMP%`。** 那里同时住着其他软件的 UUID 临时文件
+（`.tmp.js/.tmp.css/.tmp.png`，约 180 个）、其他会话的工作目录（`ck3review`，来自本文件
+「CK3 Wiki → ima 知识库」那次会话）、以及各类应用日志。正确做法是**按归因分层**：确定归因的删、
+DSH 自有的按 mtime 排除 30 分钟内后删、**无法归因的一律不动**。本次共释放约 114 MB。
+
+**一条会反复咬人的测量陷阱**：PowerShell 里 `... | Select-Object -First N` 会**提前掐断上游管道**、
+把原生命令杀掉，于是 `$LASTEXITCODE` 不再是那个命令的真实退出码。本次因此**两次误判**——
+`check` 实际退出 1、`--help` 实际退出 0，测出来却是 0 和 1。要测退出码就**单独运行、先把输出接进变量**。
