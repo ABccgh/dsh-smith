@@ -1,7 +1,7 @@
 {
   "name": "dsh-smith",
-  "version": "0.1.0",
-  "description": "Two DeepSeek Harness agent presets: `dsh-smith`, which builds harness agents and Cordis plugins, and `dsh-forge`, a software-delivery agent. Each carries a thinking protocol, a layered memory discipline, and a standing team of named experts.",
+  "version": "0.2.0",
+  "description": "Three DeepSeek Harness agent presets: `dsh-smith`, which builds harness agents and Cordis plugins, `dsh-forge`, a software-delivery agent, and `dsh-ck3-mod`, a Crusader Kings III mod-authoring agent with a check-before-delivery gate. Each carries a thinking protocol, a layered memory discipline, and a standing team of named experts.",
   "keywords": [
     "deepseek-harness",
     "dsh",
@@ -10,7 +10,8 @@
     "plugin",
     "multi-agent",
     "expert-team",
-    "software-development"
+    "software-development",
+    "crusader-kings-3"
   ],
   "license": "MIT",
   "author": "ABccgh",
@@ -22,6 +23,7 @@
     "bin",
     "dsh-smith",
     "dsh-forge",
+    "dsh-ck3-mod",
     "README.md",
     "LICENSE"
   ],
@@ -66,6 +68,11 @@
         "id": "dsh-forge",
         "repoDir": "dsh-forge",
         "installTarget": "${DSH_HOME:-~/.dsh}/.agent-presets/dsh-forge"
+      },
+      {
+        "id": "dsh-ck3-mod",
+        "repoDir": "dsh-ck3-mod",
+        "installTarget": "${DSH_HOME:-~/.dsh}/.agent-presets/dsh-ck3-mod"
       }
     ]
   },

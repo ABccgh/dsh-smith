@@ -17,12 +17,13 @@
  * directory name and a composition file that both still parse.
  *
  * `upstreamPreset` is the shipped preset each local preset began as, and it is
- * what `drift-check.mjs` compares against by default. The two local presets do
- * NOT share a lineage: `dsh-smith` was copied from the shipped `cordis` preset
+ * what `drift-check.mjs` compares against by default. The local presets do
+ * NOT share one lineage: `dsh-smith` was copied from the shipped `cordis` preset
  * (itself `standard` plus the self-referential Cordis toolset), while
- * `dsh-forge` is `standard` plus software-development rows. Comparing the wrong
- * one reports drift for every row that legitimately differs, which is worse than
- * reporting nothing.
+ * `dsh-forge` and `dsh-ck3-mod` are each `standard` plus their own rows — forge
+ * adds software-development rows, ck3-mod replaces the identity and the team with
+ * a Crusader Kings III mod-authoring surface. Comparing the wrong one reports drift
+ * for every row that legitimately differs, which is worse than reporting nothing.
  */
 import { access } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -54,6 +55,32 @@ export const PRESETS = {
     displayName: 'DSH 智能体工坊 · DSH Agent Smith',
     upstreamPreset: 'cordis',
     expectedTools: ['expert_architect', 'expert_verifier', 'expert_protocol', 'expert_chronicler'],
+    promptSurface: undefined,
+  },
+  'dsh-ck3-mod': {
+    repoDir: 'dsh-ck3-mod',
+    displayName: 'CK3 模组工坊 · CK3 Mod Forge',
+    upstreamPreset: 'standard',
+    // The three experts, the fork surface, and the FOUR tools a session on this
+    // preset is known to be able to lose. All four come from the host-plane
+    // `dsh-ck3-modcheck` plugin, which is installed per profile and NOT shipped by
+    // this repository, so a session that lacks them is a broken install rather than
+    // a broken composition.
+    // `ck3_mod_evidence` reads CK3's runtime logs, which only exist after the game
+    // has been launched once — a session on a machine where it never has will still
+    // have the tool, reporting "unavailable" with a reason.
+    // `verify.mjs` prints this list as the thing to eyeball in a session it cannot
+    // open, and a longer list does not make that check stronger.
+    expectedTools: [
+      'expert_modd',
+      'expert_verifier',
+      'expert_chronicler',
+      'subagent_fork',
+      'ck3_modcheck',
+      'ck3_mod_init',
+      'ck3_mod_status',
+      'ck3_mod_evidence',
+    ],
     promptSurface: undefined,
   },
   'dsh-forge': {

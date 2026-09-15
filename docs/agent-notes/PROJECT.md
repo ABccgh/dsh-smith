@@ -1043,6 +1043,105 @@ then read the values back:
   clean, so no such typo is present in *this* composition today. The caveat still governs the next
   edit, because preflight will keep passing over the same mistake.
 
+## `dsh-ck3-mod` — the CK3 mod-development preset and its plugin (this session)
+
+**What it is.** A third preset, `dsh-ck3-mod/` (**CK3 模组工坊 · CK3 Mod Forge**), narrowed on the
+user's instruction from an earlier dual-mode `dsh-ck3` (campaign advice ＋ mod development over the
+ima knowledge base). The campaign half and the wiki-retrieval plugin `dsh-ck3-wiki` were deleted
+outright (D-62). Three named experts: `expert_modd` (the only writer, `reasoningEffort: max`),
+`expert_verifier` (`deny: [write, edit]`, inherited effort), `expert_chronicler`. Three skills.
+
+**The plugin** lives outside this repository, per rule 7:
+`$DSH_HOME/plugins/dsh-ck3-modcheck/`, mounted by one `insert:` row in the web profile's
+`cordis.patch.yml`. It registers **three tools** into the host `tools` registry and **publishes no
+service**, so it needs no realm:
+
+| Tool | Reading |
+| --- | --- |
+| `ck3_modcheck` | 36 check codes over a mod on disk; read-only unless `fix: true` |
+| `ck3_mod_init` | generates a loadable skeleton, then validates what it wrote |
+| `ck3_mod_status` | reads `launcher-v2.sqlite` read-only via built-in `node:sqlite` |
+
+**Verification state as of this writing:**
+
+- `node test/falsify.mjs` → **97/97 assertions**, including two calibrations asserted permanently:
+  the encoding check reports **0 findings over the whole vanilla tree** (2,536 `common` ＋ 536 event
+  scripts) and the namespace check reports **exactly 20 over 536 vanilla event files** (19 mismatches
+  ＋ 1 missing) — which independently reproduces the `516 of 536 conform` census.
+- `node bin/preflight.mjs --preset dsh-ck3-mod` → `validated: 16   skipped: 9   failed: 0`.
+- `node bin/lint-skills.mjs --preset dsh-ck3-mod` → 3/3 clean. `check-pack.mjs` → `PACK OK`.
+- `dsh --profile web --dump-config` composes the `ck3-modcheck` row with all four config keys and
+  prints **no** patch warning.
+- The generator's output passes its own validator with **0 findings** (asserted), and a real instance
+  exists at `D:\CK3Mods\smoketest`.
+
+**Two things this section originally recorded as NOT verified, both since settled — superseded here,
+because the section is the current-state file and a stale "never run" is worse than a stale reading:**
+
+- **The mount check HAS now run.** `agentPresets.standingKeyFor('dsh-ck3-mod')` returned normally →
+  **`MOUNT OK`**, from a shipped-`cordis` session. The same probe's `compositionInventory()` gave
+  **24 leaf rows** (matching the recorded `27 named = 3 groups ＋ 24 leaves`), `broken: none`, and
+  **23 rows at `fiberState = 2`** (the one without a fiber is `tool-bash`, `disabled` by a platform
+  expression). `2 = ACTIVE` was read from `@deepseek-ai/cordis/lib/types/fiber.d.ts:70`
+  (`PENDING=0 / LOADING=1 / ACTIVE=2 / FAILED=3 / DISPOSED=4 / UNLOADING=5`), so **no row is stuck at
+  `PENDING` or `FAILED`**. **The D-40 boundary still holds and is not weakened by this:** it proves
+  "it did not throw and every enabled row is ACTIVE", **not** that any row contributes anything
+  model-visible — `tool-ck3-modcheck`'s fiber being ACTIVE does not put `ck3_modcheck` in that
+  preset's tool table.
+- **The Host HAS been restarted.** The node holding `127.0.0.1:3080` started at **23:28:03**, after
+  the plugin was written at 21:08:37, so the boot-time row is present in the current process.
+  **Still unverified, and still not to be claimed:** whether the four `ck3_*` tools or the three
+  `expert_*` tools appear in a session actually served by `dsh-ck3-mod`. Note the criterion — the four
+  `ck3_*` are **host-plane**, so they are visible in every session and checking for them is
+  **tautological**; the discriminator is the three preset-plane experts
+  (`expert_modd` ＋ `expert_verifier` ＋ `expert_chronicler`, and **no** `expert_architect`).
+- **The retired preset `dsh-ck3` has been removed through the sanctioned interface** —
+  `agentPresets.remove('dsh-ck3')`, verified twice (roster `8 → 7` presets, and `Test-Path` on
+  `…\.agent-presets\dsh-ck3` → `False`), with `dsh-ck3-mod` unchanged by the operation (5 files, same
+  SHA256). Worth recording what the live roster revealed before deletion: it carried **`broken`**, with
+  four rows resolving to the already-deleted `dsh-ck3-wiki`, so it could never have been mounted —
+  a dead entry, not merely a stale one. The deletion is **irreversible** (`git log --all -- dsh-ck3` is
+  empty; that install directory was the only copy), which is why the source was deleted from the repo
+  first and the install left to this interface rather than to a hand `Remove-Item`.
+
+**A finding worth carrying forward, because it invalidated a claim in three documents.**
+`bin/preflight.mjs` resolved a preset row's package name against `$DSH_HOME/profiles/`, one directory
+above any profile, while the harness resolves against **the profile's own directory**
+(`dsh-agent-presets` reads `agentCtx.baseUrl`). The effect was total and silent: **every** plugin row
+in **every** preset reported `Cannot find package …`, however correctly it was installed, while
+`dsh --profile web --dump-config` composed the same row without a warning. Measured:
+`dsh-ima-kb`, `dsh-account-balance` and `dsh-ck3-modcheck` all failed from `profiles/` and all three
+resolved from `profiles/web`. Fixed in this session (D-63).
+
+**Where the rules come from — and the correction that matters for the next reader.** The modding
+*articles* on the wiki document only two failure classes in prose; the machine-generated **patch
+notes** document many more ("Missing localization keys are logged as errors", `log_loc_errors = no`
+as the per-site opt-out, missing trait level, missing `chance`). **Trust the patch notes over the
+prose pages** for what the engine does and does not log. Two further corrections from the same pass:
+the namespace invariant is id-prefix == the file's **declared** `namespace` and never the filename
+(0 of 536 filenames match), and the wiki's tag list is stale (verified for 1.1, against a 1.19.0.6
+install) with **no canonical list anywhere on disk** — it is fetched over the network.
+
+**Known gaps, deliberate:**
+
+- **The runtime evidence plane is not implemented.** `logs\error.log`, `logs\database_conflicts.log`
+  and `logs\event_log.csv` are the only way to see reachability failures — an event that never fires
+  — and they are unreadable here because **the game has never been launched** (`logs\` does not
+  exist). A reader would have to be written blind, and the log needs a no-mod baseline to diff
+  against. The smallest check that would unblock it: **one launch**.
+- **Field-level schema validation is deliberately not derived from `_*.info` files.** Measured: only
+  **6 of 162** contain a parseable `Valid <thing>:` list — they are prose documentation.
+- **`ck3_modcheck` cannot prove the game loads a mod**, and does not claim to. Its report says so.
+
+**CK3-specific stale claims** *(the repository-wide list is the next section; these are only the ones
+this work created or corrected)*:
+
+- Docs or personas that still call the `path=` format UNVERIFIED are wrong — the wiki's
+  `Mod structure` Keys table gives three spellings and states the base is the **user folder**. This
+  session corrected the persona, the plan-protocol block and `docs/dsh-ck3-mod.md`.
+- Any statement that `tag-unknown` still exists. It was retired (D-65); the only tag check is
+  shape (list vs scalar).
+
 ## Stale claims to re-check
 
 - **The README's `cordis_*` claim was wrong and has been rewritten (this session's earlier

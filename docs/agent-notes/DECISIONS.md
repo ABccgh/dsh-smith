@@ -2242,3 +2242,761 @@ only its text is missing.)*
   The first is still re-runnable **only while the knowledge base exists** — the user is deleting it
   by hand, since ima's OpenAPI has no delete endpoint — and it needs the corpus regenerated for the
   manifest half; after the KB is gone, this entry stands as the terminal record.
+
+## D-60: Which transport reads a CK3 wiki page — Node's own `fetch`, or a spawned `curl.exe`?
+
+- **Decided:** **`curl.exe` spawned through `node:child_process`**, for every page read by a
+  plugin. The headers are a browser `User-Agent` **plus** an `Accept-Language`; each response is
+  checked for a challenge body and retried with backoff. A plugin that reads this site with
+  `fetch`/undici is not "slightly less reliable" — it fails **28 times in 30**, and every failure
+  arrives as **HTTP 200**, so a caller that trusts the status code records a challenge page as an
+  article.
+- **Because:** a 30-URL controlled comparison, same two headers on both arms, run in one session:
+
+  | transport | `mw-parser-output` present (a real page) |
+  | --- | --- |
+  | `curl.exe` + browser UA + `Accept-Language: en-US,en;q=0.9` | **30 / 30** |
+  | Node's built-in `fetch`, identical headers | **2 / 30** (`0` TLS errors — 28 challenge bodies) |
+
+  Node's `fetch` was also retried with `NODE_OPTIONS=--use-system-ca`; the body was the same 3,036-byte
+  challenge page, so this is **not** the certificate defect this file records elsewhere and no TLS
+  flag fixes it. **This refines D-54** ("keep the workaround local; do not change
+  `dsh-web-fetch-http`") without reversing it: D-54 is about not bending the *shared* fetch seam for
+  one third-party host, and this entry is the stronger, narrower statement that a plugin built for
+  **this** host must not use that seam at all. The two coexist — the seam stays as it is, and the
+  CK3 read path does not go through it.
+- **Rejected:** **`fetch` with the same headers** (2/30, and its failure mode is a 200);
+  **`web_fetch` as the read path** — it *does* pass the gate interactively, but it returns the raw
+  rendered HTML and truncates it, and the measured output for `Duchy_buildings` was 176 KB of markup
+  that included the icon walls (`<img alt="" src="/images/thumb/…">`) a reader must not be handed;
+  and **changing `dsh-web-fetch-http`'s headers** to browser-shaped ones, which D-54 already
+  rejected on principle and which no longer has a reason to be reconsidered.
+- **Reversed by:** a repeat of the 30-URL comparison in which Node's `fetch` returns real page HTML
+  for essentially all of them (the site's gate being lifted or relaxed is the plausible cause). The
+  check is one script; it took a few minutes and it is worth re-running before any future session
+  argues about this from memory.
+
+## D-61: Does `bin/preflight.mjs` validate the config of a plugin that exports an object-form schema?
+
+- **Decided:** **No — and it reports that as a `skip`, not as a pass.** Its config check is reached
+  only when `typeof Schema === 'function'` (`bin/preflight.mjs:178`; a non-function export returns
+  `{ kind: 'no-schema' }`, which the caller prints as `skip <id> (<pkg> exports no usable Config
+  schema)`). A plugin that exports the **plain-object** Standard Schema — the form the sanctioned
+  `dsh-ima-kb` uses, because a symlinked plugin may not import `@deepseek-ai/schemastery` (D-35) —
+  therefore has **its entire config surface unvalidated by preflight**, while the run still ends in
+  `PREFLIGHT PASSED`.
+- **Because:** two independent readings agree, one of them a measurement. The code reading is the
+  three lines above. The measurement is a live `node bin/preflight.mjs` on `dsh-smith`, which prints
+  `skip` for `command-goal`, `plan-mode`, `command-compact`, `tool-subagent-control`,
+  `tool-subagent-list-agents` and `tool-ask-user`, and ends `validated: 21   skipped: 10   failed: 0`
+  / `PREFLIGHT PASSED`. The `skipped: 10` figure that `README.md` has carried all along was
+  therefore never a set of "groups and JS-expression rows" — at least six of those ten are rows whose
+  schema this script declines to read.
+- **Rejected:** **treating `PREFLIGHT PASSED` as "every config validated"** — that is what the
+  script's own summary line invites ("every row resolved, and every config this script could read")
+  and what this repo's documents have said in shorter form. Also rejected as the remedy:
+  **re-exporting the schemas as functions to satisfy `typeof`** — that would be a plugin changed to
+  please a checker, and it would not make the loader behave any differently. What the *loader* does
+  with an object-form `Config` is unchanged: it calls `runtime.Config['~standard'].validate(config)`,
+  so mount-time validation still happens. Only the offline static check is blind.
+- **Reversed by:** `bin/preflight.mjs` learning to read an object-form `~standard` validator; or a
+  session in which a row exporting the object form is reported as `invalid` by this script. Until
+  then, config validation for such plugins belongs in their own `test/falsify.mjs`, and any document
+  claiming preflight covers their configs is wrong.
+
+## D-62: Should the CK3 agent keep its campaign-advisory half, or be narrowed to mod development only?
+
+- **Decided:** **Narrow it to mod development only.** The preset is `dsh-ck3-mod`, the earlier
+  `dsh-ck3` (campaign advice ＋ mod development over the ima knowledge base) is retired, and the
+  wiki-retrieval plugin `dsh-ck3-wiki` is **deleted outright** rather than left unmounted. The expert
+  team goes from five roles to three: `expert_modd` (the only writer, pinned to
+  `reasoningEffort: max`), `expert_verifier` (`toolFilter: { deny: [write, edit] }`, inherited
+  effort), `expert_chronicler` (inherited effort).
+- **Because:** the user asked for it in those words — first adding "mod development" to four
+  requirements, then narrowing to「只要 mod 开发」and「只保留必要的，其他的删除」— and measurement
+  agrees the two halves were never coupled: a grep over the `ck3-mod-authoring` skill for
+  `ck3_read|ck3_search|ima_kb_*|知识库` returned **zero** hits, and the surviving plugin
+  `dsh-ck3-modcheck` is self-contained (`name = 'ck3-modcheck'`, `inject: ['fs']`, one tool, no wiki
+  dependency). Every retrieval row and the whole wiki plugin served the *other* half only.
+- **Rejected:** **keeping `dsh-ck3-wiki` unmounted "just in case"** — the user said delete, and what
+  it costs to keep is not disk but a **second copy of the converter** whose defects are silent;
+  deleting it also leaves the repository with exactly one copy of `convert.mjs`
+  (`tools/ck3wiki/lib/`), which is the copy D-53's regression test covers. Also rejected:
+  **retiring it through `dsh plugin remove`** — it was never in any profile's dependencies, so a
+  profile-level remove would have been a no-op and deleting the directory was the whole job. Also
+  rejected: **dropping `expert_verifier` too**, against the user's explicit choice of three roles —
+  a mod with an unbalanced brace produces no error anywhere, so a reviewer that runs the checker
+  itself is the one role this domain cannot do without.
+- **Reversed by:** the user asking for campaign advice again. Note what that costs, because it is not
+  a config toggle: the wiki plugin is **gone** (its transport work, five tools and 38/38 test suite
+  would be rebuilt from nothing) and four expert personas would be rewritten. What survives in the
+  record is D-60's transport finding and the converter — which is why that entry is the part worth
+  keeping.
+
+## D-63: Why did no preset row naming an installed plugin resolve in `bin/preflight.mjs`?
+
+- **Decided:** because **its resolver base was wrong, and the error was total rather than
+  intermittent.** The script built its resolver from `join(DSH_HOME, 'profiles', 'package.json')` —
+  one directory *above* any profile — while the harness resolves a preset's bare specifiers against
+  **the profile's own directory**: `dsh-agent-presets` reads `agentCtx.baseUrl` and hands it to the
+  loader as `harnessBase` (`lib/index.js:1297-1299`, `:647-675`). The consequence was that **every**
+  plugin row in **every** preset reported `Cannot find package: <name>`, however correctly it was
+  installed, while the harness composed the same row without a warning. Fixed this session:
+  `bin/preflight.mjs` discovers the profile (`--profile <name>`, else a directory under `profiles/`
+  owning a `package.json`, preferring `web`) and prints which profile it resolved against.
+- **Because:** two independent measurements agreed. **From `$DSH_HOME/profiles`**:
+  `dsh-ima-kb`, `dsh-account-balance` and `dsh-ck3-modcheck` all failed `require.resolve` and all
+  three `profiles/node_modules/<name>` probes missed — so the failure was not specific to the new
+  row. **From `$DSH_HOME/profiles/web`**: all three resolved, `dsh-ck3-modcheck` to
+  `C:\Users\曦曦\.dsh\plugins\dsh-ck3-modcheck\lib\index.js`. The runtime settled it independently:
+  **`dsh --profile web --dump-config` composes the `ck3-modcheck` row with `modDir: D:\CK3Mods` and
+  prints no patch warning**, so the loader — the thing that actually matters — was never confused.
+  After the fix: `preflight --preset dsh-ck3-mod` → `validated: 16   skipped: 9   failed: 0`, with
+  `dsh-smith` (`21/10/0`) and `dsh-forge` (`24/10/0`) unchanged, so the shared script has no
+  regression.
+- **Rejected:** **deleting the `tool-ck3-modcheck` row to make the check pass** — the script was
+  wrong, not the composition, and the runtime proof above says the row is correct. Also rejected:
+  **declaring the row "expected-FAIL" in the docs and moving on** (the position this file held for
+  about an hour) — that would have written a falsehood into `README.md`, `AGENTS.md` and
+  `.github/workflows/checks.yml` and left the defect for the next plugin author. Also rejected:
+  **giving the row an explicit `config:` block** to dodge the resolution, for the same reason.
+- **Reversed by:** a session in which `node bin/preflight.mjs --preset dsh-ck3-mod` fails to resolve
+  `dsh-ck3-modcheck` **while `dsh --profile web --dump-config` composes that row** — which would mean
+  the discovery picks the wrong profile (e.g. a second profile with a `package.json` sorting before
+  `web`). The `resolving rows against profile: <name>` line the script now prints settles that in one
+  line, which is the check.
+
+## D-64: Was the localization entry pattern right, or did it flag the game's own files?
+
+- **Decided:** **it was wrong, and the fix is measured rather than guessed.** `LOCALIZATION_ENTRY`
+  required a version counter and a space before the value (`:\d*\s+"`), which flagged **742 entries
+  of the vanilla corpus** — every one of them a `key: "value"` line carrying no counter, some with a
+  trailing `# …` comment. The pattern is now
+  `/^\s*([A-Za-z0-9_.\-']+):(?:\d+)?\s*".*"(?:\s*#.*)?\s*$/`. After the fix the same check over the
+  same 122 files reports **0 findings**.
+- **Because:** the numbers come from the plugin's own exported function run over all of
+  `game\localization\english`: **122 files, 75,291 entry-like lines**. The non-alphanumeric characters
+  occurring *inside a key* are `.` (15,614×), `-` (498×) and `'` (2×, `b_mansa'l-kharaz`); `#` occurs
+  97× but only as the comment marker, which the check skips before reaching the pattern. Two
+  independent sources agree the counter is optional: those **742** counterless vanilla entries, and
+  the wiki's `Localization` page (revid 32485) — *"The number after the : is optional and it does
+  nothing for modders… completely deprecated."* That sentence also **corrects a claim this session
+  briefed into the preset**: the counter had been described as marking an entry for retranslation,
+  which the page contradicts. The persona and the `expert_modd` persona now state the
+  optional/deprecated reading and the measured 742.
+- **Rejected:** **leaving it and documenting the false positives** — a check that cries wolf on the
+  game's own 122 files trains its reader to ignore it, which is the failure mode this repository's
+  `tools/ck3wiki/verify-convert.mjs` already records ("宁可没有检查，也不要一个会喊狼来了的检查"). Also
+  rejected: **treating the first 522-finding sample as a real reading** — it came from a probe whose
+  own "entry-like" gate was looser than the checker's, so it measured the probe rather than the
+  plugin; the 742 figure comes from calling the plugin's exported function directly.
+- **Reversed by:** running `checkLocalizationFile` over the vanilla corpus and getting a non-zero
+  count, or finding a real mod localization line whose only defect is one of the now-tolerated shapes
+  (a missing counter, or a trailing comment). The regression that catches a future over-relaxation is
+  the plugin's own suite (**51/51**), which pins the entry-shape assertions independently of the
+  vanilla corpus.
+
+## D-65: Which of the CK3 modding checks carry their own evidence, and which were guesses dressed as checks?
+
+- **Decided:** **Retire the tag-vocabulary check; keep everything else and add the checks that a
+  measured gap analysis showed were missing.** Six checks were added (`mod-key-missing` /
+  `mod-key-empty` / `supported-version-missing`, `replace-path-unknown` /
+  `replace-path-destructive`, `mod-folder-mismatch`, `path-case-mismatch`,
+  `unexpected-extension`, `duplicate-localization-key`, `descriptor-disagrees`, `script-has-bom`,
+  `event-namespace-missing` / `event-id-namespace-mismatch` / `event-id-out-of-range` /
+  `event-file-empty`, `text-not-utf8`, `vanilla-file-overridden` /
+  `vanilla-single-file-database-override`), the plugin grew a **second tool**
+  (`ck3_mod_status`) and **four extra config keys** were retired/added around it, and the whole
+  suite is now **91 assertions** with **36 codes**.
+- **Because:** every add was driven by an executed scenario, not by reading. Twelve adversarial
+  scenarios were built against real CK3 failure modes; **11 of the 12 passed silently** before this
+  round. The provenance of each new rule is an external sentence, and the three that matter most:
+  the wiki's `Mod structure` **"Required?" table** (`version`/`name`/`path` = Yes;
+  `supported_version` = "Required for file alongside mod folder; not required for descriptor.mod");
+  its `replace_path` row ("Doesn't load vanilla files for the specified path"); and its override rule
+  ("If a mod has the same file as the game, it replaces all the contents of the file… Avoid doing this
+  unless you intend to overwrite the whole file!") together with the measured fact that a NEW filename
+  is additive (`common\governments\` carries both `00_` and `01_`).
+- **Rejected:** **keeping the tag-vocabulary check** — it compared against a 21-item list transcribed
+  from a wiki page flagged "last verified for version 1.1" (2023) while the install is 1.19.0.6; **no
+  tag list exists on disk** (the launcher fetches it over the network and four plausible endpoints
+  answer 403 unauthenticated), and the launcher's own database stored `tags: ["1.16 'Chamfron'"]` — a
+  game-version string — with the mod's status `ready_to_play`. A check that flags valid mods, whose
+  only suggested remedy is the one edit its reader would make, is worse than no check. Also rejected:
+  **driving field validation from the `_*.info` files** — measured, only **6 of 162** contain a
+  parseable `Valid <thing>:` list, so the feature would be built on underspecified input; they are
+  kept as citable documentation instead. Also rejected: **adding a `logs\` reader now** — the
+  directory does not exist on this machine (the game has never been launched), so it would be a
+  reader that cannot be tested.
+- **Because the new checks could themselves cry wolf, two calibrations are now permanent assertions
+  in the suite:** the encoding check reports **0 findings over the entire vanilla tree** (2,536
+  `common` scripts + 536 event scripts), and the namespace check reports **exactly 20 over all 536
+  vanilla event files** (19 prefix mismatches + 1 file declaring none) — which independently
+  reproduces the `516 of 536 conform` census a separate pass reported.
+- **Reversed by:** a vanilla calibration going non-zero (the encoding count, or the namespace count
+  moving off 20) — that means a check has started flagging the game's own files. The tag verdict is
+  reversed by a canonical, current tag list becoming readable from the install or from a document
+  that is verified for the running version.
+
+## D-66: Does the launcher's own database belong inside a validator's read surface?
+
+- **Decided:** **Yes, read-only, through a second tool (`ck3_mod_status`) rather than as more output
+  on `ck3_modcheck`.** It reads `launcher-v2.sqlite` with the **built-in `node:sqlite`** (no
+  dependency, no subprocess, verified importable on this deployment's Node v26.8.1) and reports the
+  launcher's view — registered mods, `status`/`metadataStatus`, and the active playset with each
+  mod's `enabled` and `position` — then cross-checks it against the disk.
+- **Because:** three questions a mod author actually has are unanswerable from files alone: *does the
+  launcher recognise this mod, is it enabled, and where does it sit in the load order?* The wiki makes
+  the third load-bearing ("The mod lower in the playset will overwrite identical files from above"),
+  and the launcher's `status` column is a **stronger verdict than anything this tool computes**,
+  because the launcher validates against the real game data. Measured on this machine: the database
+  exists (118,784 bytes), carries one mod row and a playset with `enabled: 1, position: 0`, and the
+  new tool renders all of it correctly against that live file.
+- **Rejected:** **folding it into `ck3_modcheck`** — a caller wanting a static verdict should not pay
+  for a database read, and a caller wanting the launcher's verdict should not run 21 file checks to
+  get it. Also rejected: **reconstructing a mod's path from `modDir`** — the first revision did, and
+  reported a "dead entry" for a mod the launcher had recorded at
+  `Documents\…\Crusader Kings III\mod\111`; the launcher's own `dirPath` column is authoritative and
+  a mod may legitimately live outside the workspace. Also rejected: **writing anything to that
+  database** — it belongs to the launcher.
+- **Reversed by:** the user declining the read surface (it touches a private database under the user
+  profile, which is why it is recorded here), or a launcher version whose schema no longer carries
+  `playsets_mods.position` / `mods.dirPath`. Both are one command to check: `dsh --profile web
+  --dump-config` (the row and its config) plus the tool's own output against the live file.
+
+## D-67: What may a runtime-log reader claim, given that a clean game already writes 512 warnings?
+
+- **Decided:** `ck3_mod_evidence` **counts and reports, and raises a finding for exactly one thing:
+  event reachability.** It never treats a non-empty log as a defect, and it distinguishes three states
+  a naive reader collapses into one: **unavailable** (`logs\` absent — the game has never run),
+  **present but not flushed** (the directory and its files exist at **0 bytes**), and **populated**.
+  The middle one is why the tool exists in this shape: an empty `error.log` and an `error.log` with no
+  errors are **indistinguishable from the bytes**, so the reader reports `flushed: false` as its own
+  answer rather than reporting "no errors".
+- **Because:** measured on this machine's **first** launch of CK3 1.19.0.6, with `dlc_load.json`
+  reading `enabled_mods: []` — a clean, unmodded baseline:
+
+  | Observation | Reading |
+  | --- | --- |
+  | At 23:17:39 the game created **16 log files, every one 0 bytes** | "created" is not "logging"; a reader built against zero bytes would have proved nothing |
+  | 45 s later, still **0 of 16** | the state persists while the game loads |
+  | Eventually `debug.log` **326,754 B**, `setup.log` **36,864 B** | the engine flushes as it goes |
+  | `setup.log` carried **512 W-level** lines and **0 E-level** | a non-empty log is not evidence of a problem |
+  | Its first line: `[W][provincetemplate.cpp:158]: Province 10186 has no pixels!` | **vanilla's own warnings, with no mod enabled** |
+
+  The wiki says the same in words: *"the log will report errors even in an unmodded game. Launch the
+  game without any mods and let it run for a while to learn which errors are common and not caused by
+  you."* So a reader that flagged a non-empty log would fire on a vanilla install. The one signal
+  genuinely about the author's content is `event_log.csv`: Patch 1.5 records that it stores "the # of
+  times each event has been checked, and the # of times each option has gotten picked", so
+  `checked = 0` says nothing calls that event — the one CK3 failure **no static parse can reach**,
+  which is why this plane exists at all.
+- **Also measured, and encoded:** the real log line format is
+  `[HH:MM:SS][LEVEL][source:line]: message`, levels `D`/`I`/`W`/`E`. `debug.log` contained **25 lines
+  that do not match it** (multi-line continuations), so unparsed lines are **counted and preserved**
+  rather than dropped — a changed format must stay visible instead of parsing to zero findings.
+- **CORRECTION, forced by a second measurement after a campaign was actually started.** This entry
+  first recorded that `event_log.csv` "is absent at the main menu and appears once a campaign runs".
+  **That is wrong.** With the game launched, a campaign open, and 16 log files present,
+  `event_log.csv` **still does not exist**, and — the decisive part — **`event_log` appears nowhere in
+  `log_settings_live.json` or `log_settings_release.json`**. So the file is **opt-in**, which is
+  exactly what the Patch 1.5 wording said all along (*"if enabled"*); it is not a thing a campaign
+  produces by itself. The tool's text was corrected to say so, and the reachability check must now be
+  described as **implemented and tested, but never yet triggered on real data**.
+- **A second count defect, found the same way.** The same two E-level messages appeared in
+  **`debug.log` + `error.log` + `game.log`** — the engine fans one message out to several sinks — so a
+  per-file sum reported **6 E-level for 2 distinct errors, an exact 3× inflation**. The reader now
+  deduplicates by message text (stripping the timestamp), keeps the list of sinks per message, and the
+  report leads with the distinct count. Measured: raw 6 → distinct 2.
+- **And a measured baseline that is stronger than the one first recorded.** With `enabled_mods: []`,
+  `error.log` is not merely capable of holding vanilla noise — it *did*:
+  `[E][landed_title_name_util.cpp:853]: Failed to find any valid flavorization for title` and
+  `[E][character.cpp:1813]: Failed to find any valid flavorization for character '议潮 张' …`. Two
+  E-level errors, from the game, with no mod loaded. This is why the tool reports counts and raises no
+  finding from log content.
+- **Rejected:** **shipping a stored baseline in this round** — the clean run is now measured, but a
+  baseline is a *machine artifact* that moves with game version and DLC set, so baking today's noise
+  into the tool would enshrine it. The report states the numbers and explains them instead. Also
+  rejected: **surfacing `error.log` contents as findings** — with no mod loaded that file was *still
+  empty* while `setup.log` carried 512 warnings, so "errors in the log" is not yet a calibrated signal.
+  Also rejected: **waiting until `event_log.csv` exists before shipping the tool** — it is absent at
+  the main menu (a campaign has to run), and the reader must say "cannot read it" in exactly that case
+  rather than return an empty result.
+- **Reversed by:** a launch in which `event_log.csv` exists and the reader miscounts its rows (the
+  header is read by name, so a renamed column surfaces as `null` rather than a wrong number); or
+  evidence that a non-empty `error.log` *is* reliably the mod's fault on a machine whose baseline is
+  known.
+
+## D-68: Why does `event_log.csv` never appear, and what actually produces it?
+
+- **Decided:** **it is not produced by the logging system at all, and the two obvious remedies are
+  both wrong.** It is written by a **console command**, whose name in this build is **`event_queue`**,
+  and reaching it requires a `-debug_mode` launch. The procedure is therefore
+  **① `-debug_mode` → ② load a campaign → ③ run `event_queue` in the console**, after which
+  `logs\event_log.csv` exists and the reachability check has real data.
+- **Because:** measured in this order, each reading narrowing the next.
+
+  | Reading | What it rules out |
+  | --- | --- |
+  | `event_log` and `csv` appear in **none** of `log_settings_live.json`, `_release.json`, `_debug.json` | "it is a log setting" |
+  | The 16 files in `logs\` correspond **one-to-one** with the `loggers[].sinks[].file_name` union (debug, error, game, setup, system, text, profile, message, memory, gui_warnings, code_revisions, custom_automated_stats, dedicated_server, **database_conflicts**, multiplayer, pdxsdk) | "it is a sink I have not found yet" — every sink is accounted for and none is an event log |
+  | `ck3.exe` contains `Event debug info written to logs/event_log.csv` | the feature exists in this build |
+  | Adjacent in the same console-command string pool: `logs/`, `logs/%s/%s.csv`, **`event_queue`**, `== HELP LOG ==`, `Invalid arguments count.`, and the `console_command_implementation.cpp` path | the writer is a console command, and names the token |
+  | The other two `event_queue` occurrences sit in `jomini_event_queue_manager.cpp` | an unrelated function of the same name is not the command |
+
+  One further reading came out of the same pass and explains an earlier puzzle: both live and release
+  settings carry **`flush_interval_seconds = 3`** at top level, so **"16 files, all 0 bytes" is an
+  expected window rather than an anomaly** — measured at 0/16 forty-five seconds after start, with
+  content appearing later. That is the empirical justification for `readRuntimeEvidence`'s second
+  state, which had until then been designed from reasoning about what a loading game "should" look
+  like.
+- **Rejected:** **"it needs to be enabled" as an answer** — the previous wording was directionally
+  right and practically useless: it named no file to change, no flag to pass, and no command to run,
+  which is exactly the state that leaves a reader stuck. Also rejected: **editing
+  `log_settings_*.json` to add an event sink** — measured to be the wrong direction, since the writer
+  is not in that system and a hand-added sink would be inert. Also rejected: **treating the absent file
+  as a permanent limitation** — the feature is present in the binary, so this is a missing *procedure*,
+  not a missing capability.
+- **Reversed by:** running `event_queue` under `-debug_mode` and getting **no** `event_log.csv` (the
+  token is a strong lead from string adjacency, **not** a command anyone has executed), or getting a
+  file whose header names its columns differently than `event`/`checked` — in which case the reader's
+  by-name lookup returns `null` and the candidates in `parseEventLog`'s `find()` must be widened to the
+  real header.
+
+## D-69: Has the unlocking command been run since D-68 named it? (No — and absence is now proven exhaustively.)
+
+- **Decided:** **the "row 2" state is confirmed rather than advanced — the one command in D-68's procedure
+  is still unexecuted, and that is now a *measurement over the whole machine* instead of an absence in one
+  directory.** The reachability plane still holds **no real data**; the next step is unchanged and still
+  belongs to the user.
+- **Because:** three independent readings, in this order.
+  - The app's own report calls `ck3_mod_evidence` once and prints **"没有 `event_log.csv`"** — consistent
+    with D-68, so the tool's behaviour has not silently changed.
+  - `logs\` holds **16 files**, 11 of them 0 bytes (`code_revisions`, `custom_automated_stats`,
+    `database_conflicts`, `gui_warnings`, `memory`, `message`, `multiplayer`, `pdxsdk`, `profile`, `system`,
+    `text`) and 5 with content (`debug.log` 601,714 B, `setup.log` 36,864 B, `game.log` 1,854 B,
+    `error.log` 288 B, `dedicated_server.log` 144 B). All 16 carry the **2026/9/14 23:17:39–23:26:22**
+    window, i.e. this is still the same *one* launch D-67/D-68 measured.
+  - A recursive filename search for `*event_log*` over **all of `D:\`** and over the **entire user profile**
+    returns **nothing**. The previous statement ("still does not exist") was about one directory; this one
+    rules out a copy elsewhere, which is what a reader would need in order to be wrong.
+  - Re-confirmed independently this session, not carried over: `event_log` and `csv` appear in **none** of
+    `log_settings_live.json` (9,162 B), `_release.json` (9,522 B), `_debug.json` (10,417 B).
+  - Re-extracted from `ck3.exe` (95,206,088 B) rather than quoted: `event_queue` at byte offset
+    **68103024**, `event_counts` at **68114472**, and `Event debug info written to logs/event_log.csv`
+    alongside `console_command_implementation.cpp` — the same pool D-68 identified.
+- **Rejected:** **re-arguing D-68's conclusion.** It was already right; what was missing was proof that its
+  premise had not since changed, and that is exactly what the three searches above supply. Also rejected:
+  **softening the tool's wording to "may be missing"** — the machine-wide search makes plain absence the
+  accurate reading, and a hedged sentence is what let the earlier "if enabled" wording go stale.
+- **Reversed by:** `logs\event_log.csv` appearing (one file, any source) or a launch whose log timestamps
+  postdate 2026/9/14 23:26:22 — either would mean a new run happened and the readings above describe the past.
+
+## D-70: What does `ck3_modcheck` pass on, and which load-blocking defects can it not see?
+
+- **Decided:** **`ck3_modcheck`'s zero-finding verdict is compatible with a mod that (a) can never show the
+  player anything and (b) cannot be loaded at all.** Measured on the generator's own sample mod, which the
+  checker reports as **`errors: 0   warnings: 0   total findings: 0`**. Four distinct defect classes were
+  found in it by reading it against vanilla, and the checker names none of them. The distinction to hold is
+  **file-structure validity versus load-and-run validity**, and the checker only speaks to the first.
+- **Because:** each defect has its own ground truth, and none of them is a parse failure.
+  - **Unreachable event (the class D-67 was built for — and the check still cannot run).**
+    `D:\CK3Mods\smoketest\events\smoketest_events.txt` defines `smoketest.0001`, and a grep of the whole mod
+    for `trigger_event` / `on_action` / `smoketest.0001` returns **no call site**: the decision in
+    `common\decisions\smoketest_decisions.txt` sets only `add_gold = 50`. So nothing can ever fire the event,
+    and the only plane that could have said so is the one blocked in D-68/D-69.
+  - **A property CK3 does not document.** `is_triggered_only = yes` — the CK2 spelling — occurs in the whole
+    vanilla `game\` tree **exactly once, inside a `#` comment**
+    (`game\events\education_and_childhood\chinese_disciple_events.txt:922`), and appears nowhere in the event
+    template `game\events\_events.info`. **Measured boundary, stated as such:** this establishes that vanilla
+    never uses it, **not** that the engine rejects it — `_events.info` opens with "May not be exhaustive".
+    The defect that stands on its own is the missing call site above, the property is corroboration.
+  - **An invalid `theme`.** `theme = realm_management` is not a key in
+    `game\common\event_themes\00_event_themes.txt`, which `_events.info:216` names as the authority ("For a
+    list, check: 00_event_themes.txt"), and `realm_management` occurs **nowhere** in the vanilla `game\` tree.
+    The near-miss keys that do exist are `realm` (line 472) and `ruler_objectives` (line 2901). The point
+    about `theme` is *icon, background and sound* — so this one degrades the event rather than blocking it.
+  - **A missing localization key.** `common\decisions\smoketest_decisions.txt` defines the decision
+    `smoketest_decision`, and `localization\english\smoketest_l_english.yml` contains only
+    `smoketest_greeting`. A key with no entry renders raw in the interface, and this is precisely the class
+    the checker's localization pass is aimed at — it verifies each *present* entry's shape, not the
+    *referenced-but-absent* key.
+  - **And the load blocker, which is not a file defect at all.**
+    `C:\Users\曦曦\Documents\Paradox Interactive\Crusader Kings III\mod\` is **empty**, while `ck3_mod_status`
+    reads the launcher's registry as exactly one mod, **"1111"**, recorded at `...\mod\111` — a folder that
+    does not exist (`WARN launcher-entry-dead`), and the launcher itself marks it `unsubscribed` /
+    `not_applied` (`ERROR launcher-reports-problem`). `smoketest` is therefore in **no playset**, so the
+    launcher will not load it however correct its files are. A checker that only reads the mod's own tree
+    cannot see this by construction, and `ck3_modcheck` says so in its own words: it does not establish that
+    the game loads the mod.
+- **Rejected:** **reading a zero-finding verdict as "this mod works"** — that is the exact
+  succeed-on-disk-and-be-ignored failure this whole plane exists against, and it just happened one layer
+  above the files. Also rejected: **treating `is_triggered_only` as proven invalid** — see the measured
+  boundary above; the honest statement is "absent from vanilla and undocumented", which is enough to remove
+  it but not enough to call the engine's behaviour known. Also rejected: **filing the launcher finding as a
+  checker defect** — the checker's stated contract excludes it, so the gap is in the *procedure* (register
+  the mod with the launcher, then check), not in the tool.
+- **Reversed by:** a `smoketest` load in which the decision appears named rather than raw **and** the event
+  window is somehow reached without a call site — which would mean the event fires by a path this reading
+  missed; or a `ck3_modcheck` release that reports any of the four above (at which point this entry becomes
+  the record of a fixed gap rather than an open one).
+- **Follow-up, same session — the generator has been corrected, and the running Host has NOT picked it up.**
+  The four file-level defects were not artifacts of a stale sample: `scaffoldMod` in
+  `$DSH_HOME\plugins\dsh-ck3-modcheck\lib\rules.mjs` emitted all of them, and its own suite **passed 107/107
+  while doing so** — because every assertion tests *structure* (`scaffoldMod: the generated mod passes every
+  check with ZERO findings`) and none tested *function*. Corrected in place: `theme = realm` (not
+  `realm_management`), `is_triggered_only` dropped, the decision's `effect` now carries
+  `trigger_event = <ns>.0001` **only when the events system was also requested**, the decision-level
+  `icon = "decision_icon.png"` replaced by the documented
+  `picture = { reference = "gfx/interface/illustrations/decisions/decision_misc.dds" }`
+  (`_decisions.info:16`–`:24`), and the localization file now also emits `<name>_decision` and
+  `<name>_decision_desc` when decisions are requested. Suite re-run after the edit: **107/107, still passing**.
+  Generated output validated in a fresh process: **0 findings** on an ASCII path (`D:\ck3regenproof`, since
+  deleted) — and the *same* output reported 2 `non-ascii-path` findings when generated under `%TEMP%`, whose
+  path contains `曦`, which is the ASCII check behaving correctly rather than a defect.
+  **The live `D:\CK3Mods\smoketest` is STILL the old content.** Proven cause, not assumed: `ck3_mod_init`
+  reported creating all 5 files and their timestamps read **2026-09-15 19:29:11**, yet the bytes are the old
+  ones — so the write succeeded and the *generator in memory* is old. The Host process booted **19:08:30**,
+  before `rules.mjs` was written at **19:28:42**, and a plugin's module is loaded at boot. **A Host restart is
+  required before the tool emits the corrected shape**, and until then the sample mod must be re-generated
+  rather than trusted.
+  **Still open, and not a file defect:** D-72's launcher-scan question — a corrected skeleton at `D:\CK3Mods`
+  is still outside the launch the launcher was observed to scan.
+
+## D-71: Two byte-level tooling traps, measured on this machine — one of which produced a wrong reading before it was caught.
+
+- **Decided:** **`-shl` on a `[byte]` is silently a no-op in this PowerShell build, and it must never be used
+  for byte arithmetic; cast to `[int]` first or multiply.** Separately, **`node:sqlite` cannot open the
+  launcher's `launcher-v2.sqlite`** even though the file is structurally valid, so the launcher DB is readable
+  only through the tool. Both cost real readings this session and neither raised an error.
+- **Because:**
+  - `$b = [byte[]](…); [byte]16 -shl 8` → **`0`**, while `[int]16 -shl 8` → **`4096`** and
+    `[int]([byte]16) -shl 8` → **`4096`** (pwsh **7.7.0-preview.4**, `LanguageMode = FullLanguage`). The
+    documented-looking expression `($b[16] -shl 8) + $b[17]` therefore reads the SQLite page size as **`0`**.
+    It was caught only because the derived numbers were nonsense together and the cell_count read back as `1`.
+  - Re-derived without the shift: `page_size = 4096`, `db_size_pages = 29`, and **29 × 4096 = 118,784 = the
+    exact file length**, so the header is *coherent* — the first reading was the artifact, not the file.
+  - `node:sqlite` (`node v26.8.1`, `DatabaseSync`) still refuses that file: **`ERR_SQLITE_ERROR` /
+    `errcode 26` / `file is not a database`**, identically under `{}`, `{readOnly:true}` and
+    `{readOnly:true, allowExtension:false}`. The magic is the genuine `SQLite format 3\0`. Not diagnosed
+    further — the verdict that mattered (`smoketest` is in no playset) was taken from `ck3_mod_status`, which
+    reads the same file successfully, so this is a **tooling boundary, not a finding about the launcher**.
+- **Rejected:** **quoting the first header reading** — it would have put "page_size = 0" into the record, and
+  a `0` page size is the kind of number a later session would build on without checking. Also rejected:
+  **writing a bespoke SQLite parser to work around `node:sqlite`** — the DB exposes no fact the tool does not
+  already surface, and a second reader would be one more thing to keep in step.
+- **Reversed by:** `[byte]16 -shl 8` returning `4096` on a future PowerShell (the trap is build-specific), or
+  a `node:sqlite` that opens this file (at which point the limitation is that version's, not the runtime's).
+
+## D-72: Does the launcher scan `D:\CK3Mods` at all? (Not observably — and the `modDir`/scan-dir mismatch is a project-level issue.)
+
+- **Decided:** **on this machine the launcher's mod discovery is not reaching `D:\CK3Mods`, and the fix is
+  *not* to move the mods — it is to make the `.mod` descriptor visible to the launcher while the mod's files
+  stay on an ASCII path.** The wiki's own remedy for a non-ASCII account name points at exactly that shape.
+  **The recommendation below is documented-and-inferred, not tested; the test is a launcher restart, which I did
+  not perform.**
+- **Because:** read from the launcher's own log, `%LOCALAPPDATA%\Paradox Interactive\launcher-v2\logs\launcher-2026-09-14.log`
+  (458 lines, 56,240 B), not inferred:
+  - It **does** scan, twice, once per launcher run: `14:44:44.575` (pid 1524) `[Mods scanning task]: Start scanning
+    mods for ck3` → `:641` `Finished scanning mods for ck3` (**66 ms**); and again at `15:16:48.721` → `:49.079`
+    (**358 ms**). Neither scan logs a single mod.
+  - Its inputs are named: `[SteamService]: Getting subscribed Steam workshop items` → `Expecting 0 items` /
+    `Got "0" workshop items in total`, and `[SettingsService]: Initialized SettingsService for
+    ~\Documents\Paradox Interactive\Crusader Kings III\mods_registry.json`.
+  - **`mods_registry.json` does not exist on disk** (`ABSENT`, while `pdl_settings.txt`, `launcher-v2.sqlite`
+    and `dlc_load.json` all do), and `playsets_backup\` is **empty**. So the only mod the DB knows is the
+    hand-made dead `"1111"` entry D-70 recorded, and the string `smoketest` appears **nowhere** in any launcher
+    log — nor does `CK3Mods`.
+  - The one mod the launcher ever registered, it registered **through its own UI**: `[ModHandler]: Opening mods
+    upload window` (12:45:27) … `[ModService]: Updating mods with new sizes: [ { size: 80, id: '82454ef3-…' } ]`
+    — and an 80-byte `.mod` is exactly a descriptor with no content, i.e. the upload-window flow, not a scan.
+- **The tension, and how the page itself resolves it.** `Mod_structure` revid 18579 says in one place "Each mod
+  requires two parts. **Both must be located in the folder above** and share the same name … otherwise, the game
+  launcher will *not* recognise the mod", and in another (Creating initial files → Directory) *"Directory cannot
+  include non English characters. If your Windows account name have such characters you must use a directory
+  outside your Documents folder."* On an account named `曦曦` those two cannot both be satisfied by one location.
+  The page resolves it elsewhere: `path` "Sets which folder is the mod's folder. Note that it is no longer
+  relative to the main *Crusader Kings III* folder, but rather to the Crusader Kings III user folder ….
+  **Alternatively, one can use the entire path**", with the example
+  `path="C:/Users/Example/Documents/Paradox Interactive/Crusader Kings III/mod/my_mod"` — an absolute path whose
+  equivalent here is the one `smoketest.mod` already carries, `path="D:/CK3Mods/smoketest"`. The resulting shape
+  is also the shape Steam Workshop mods already use, so it is not an invention.
+- **Rejected:** **moving the mods under `Documents\Paradox Interactive\Crusader Kings III\mod`** — that path
+  contains `曦曦`, which is the one condition the wiki states must not occur, and it is the silent failure this
+  whole plane exists against. Also rejected: **changing the checker's `modDir` to the user mod folder** — the
+  authored files are legitimately elsewhere; the missing piece is a descriptor in the scan directory, not a
+  different place to write content. Also rejected: **calling the launcher's silence an error** — it logs no
+  warning at all, which is the normal shape of this failure.
+- **Reversed by:** a launcher restart in which `D:\CK3Mods\smoketest` appears in the picker (scan does reach it
+  after all), or a mod placed in `...\Crusader Kings III\mod\` that the launcher also fails to list (which would
+  move the cause somewhere other than the path).
+
+## D-73: Was D-70's "the Host holds the old generator" claim ever *proven* — and how much of `ck3_modcheck`'s blind spot is closable?
+
+- **Decided:** **two answers, and the second is the useful one.** (1) D-70's restart claim was **inferred from
+  mtimes and is now measured directly against the running process** — it is confirmed, and the method that
+  settles this class of question is *calling the tool the running Host serves*, not comparing timestamps.
+  (2) The blind spot is **only partly closable by comparing against vanilla**: a key/identifier-existence check
+  would catch **2 of the 6** defects, not all of them. So "build a vanilla key index" is a real capability but
+  an incomplete answer, and its cost is now measured rather than guessed.
+- **Because — (1) the proof, and why the earlier evidence could not carry it.** D-70's three facts were a stale
+  *sample*, its `19:29:11` mtimes, and the Host's `19:08:30` boot time. None of them observes what the running
+  process *emits now*: a stale file shows that **some** write wrote old bytes, not that the next one will.
+  The direct test is free because the decision is already a tool this session can call. `smoketest` was deleted
+  first so nothing stale could contaminate the reading, then **`ck3_mod_init`** (served by PID **16276**) was
+  called for a new name `hoststate`, and its bytes were read back:
+
+  | key | emitted by the RUNNING Host | what `rules.mjs` on disk now writes |
+  | --- | --- | --- |
+  | decision | `icon = "decision_icon.png"` | `picture = { reference = "…/decision_misc.dds" }` |
+  | event | `theme = realm_management` ＋ `is_triggered_only = yes` | `theme = realm`, no `is_triggered_only` |
+  | decision `effect` | no `trigger_event` | `trigger_event = hoststate.0001` |
+  | localization | 1 entry, 60 B | 3 entries |
+
+  All six stale defects reproduced, with the source on disk already corrected — **conclusive, not inferred**.
+  Probe artifacts deleted; `D:\CK3Mods` is empty. Also measured: the tool's own report said
+  **"0 findings — the generated skeleton passes every check"**, so it certifies the defective output. **A restart
+  fixes the generator; it does not fix that self-report**, which is the same blind spot below.
+- **Because — (2) the six defects do not divide the way it looks.** Classified by *what a vanilla-comparison
+  check could see*:
+
+  | defect | catchable by "this key/identifier exists in vanilla"? |
+  | --- | --- |
+  | `is_triggered_only = yes` | **yes** — 0 occurrences in the whole vanilla tree (its single hit is inside a `#` comment, `chinese_disciple_events.txt:922`) |
+  | `theme = realm_management` | **yes (value domain)** — vanilla event scripts use **36** distinct themes; not one of them |
+  | decision missing `picture` | no — an **absent** key is not a bad key |
+  | decision missing `trigger_event` | no — same; and "the event has no call site" is unreachable by design (D-67) |
+  | `icon = "decision_icon.png"` | no — the key is legitimate and used **116** times in vanilla decisions; the **value** is wrong (`.png`: **0** in vanilla decisions, `.dds`: **419**) |
+
+  Measured cost of the index that would deliver those two: `common` + `events` + `history` =
+  **4,180 files / 185.7 MB**, enumeration **9.2 s**, and parsing **138,038** distinct keys takes **225 s**
+  (~3.2 MB as JSON). Viable only if built **once and cached**, or narrowed to the handful of non-terminal
+  keys the generator itself emits — a check whose data is already in hand and which is therefore nearly free.
+- **Rejected:** **re-deriving the restart claim from mtimes a third time** — the class of evidence that produced
+  the inference cannot upgrade it. Also rejected: **calling the six defects the checker's fault** — five are
+  *absent-or-wrong-value* properties that no structural pass reaches, and the checker's own text already
+  disclaims load-and-run validity (D-70). Also rejected: **building a 225-second full-tree key index into the
+  default check path** — it would make every run unusably slow to catch one class, when the same signal is
+  available from the generator's own emitted key set.
+- **Reversed by:** a Host restart after which `ck3_mod_init` still emits `icon = "decision_icon.png"`
+  (which would move the cause off module caching), or a mod that passes a vanilla key-existence check and still
+  fails to load (which would show the index buys even less than the two above).
+
+## D-74: D-73's own cost figure was wrong by 95×, and both gaps it named are now closed in code.
+
+- **Decided:** **three things, one of which is a correction of my own record.** (1) D-73's "225 s to build a
+  vanilla key index" was an artifact of the *measurement tool* — a PowerShell loop — not a property of the
+  data; the same scan written in-process takes **2.4 s**, so no index file and no 225-second design constraint
+  was ever needed. (2) The generator's six defects are now **caught by the suite** rather than only by a human
+  reading the output: the suite went 107 → **121** assertions and the new ones are *functional*, falsified by
+  planting three of the original defects back. (3) The validator gained two checks that name **two of the six**
+  — and the other four remain unreachable, for the separations D-73 already recorded.
+- **Because — the cost correction, which is the part worth remembering.** D-73 measured the index build with a
+  PowerShell loop over 185.7 MB and got 225 s. Re-measured with the module's own reader (`collectFiles` plus a
+  cheap `includes('=')` rejection before the regex), over `common` + `events` + `history`:
+
+  | | D-73's figure | re-measured |
+  | --- | --- | --- |
+  | files | 4,180 | **3,785** |
+  | bytes | 185.7 MB | **114.4 MB** |
+  | build time | 225 s | **2.4 s** |
+  | distinct keys | 138,038 | **130,536** |
+
+  So D-73's conclusion — "viable only if built once and cached, or narrowed to the generator's own keys" — was
+  reasoning from a bad number. The real position is better: a full scan is affordable inline, and the in-process
+  cache exists only so several mods in one call pay once. **The lesson is not "PowerShell is slow"; it is that a
+  cost estimate produced by the measuring tool inherits that tool's constant factor, and I nearly designed
+  around it.** (The file and byte counts differ too because the two scans used different walkers; both find the
+  same keys, and `is_triggered_only` is absent from both — which is the property that matters.)
+- **Because — the generator assertions, and how they were proven real.** The new block reads the emitted bytes
+  and asserts invariants, each coupled to a known-bad value it must reject: no depth-1 `icon` while
+  `picture = { reference = …dds }` is present; the event's `theme` is one of the **151** names read from the
+  install's own `00_event_themes.txt` (so the assertion tests the game, not a hand-copied list); no
+  `is_triggered_only` anywhere; the decision's `effect` calls the generated event id; the events-only variant
+  has no call site; and every key the scripts reference is defined in the `.yml`. **Falsified by planting the
+  original defects back**, one at a time, with `rules.mjs` restored byte-identically after each: the bad theme
+  produced 1 FAIL, the restored depth-1 `icon` produced 2, and deleting the call site produced 1. A suite that
+  cannot fail is the thing that let the six through in the first place, so this was not optional.
+- **Because — the two new checks, and their measured behaviour against the real install.**
+  `vanilla-key-unknown` compares a mod's **depth-1** properties against the key set the install actually uses;
+  `event-theme-unknown` compares every `theme` value against the declared theme list. The depth cut was chosen
+  by measurement, not taste: including depth-0 keys adds the mod's own object names (`good_decision`,
+  `good.0001`) as permanent false positives, while depth ≥ 1 leaves **exactly the defect**. Measured on
+  `D:\CK3Mods` against the real install: a **correct** skeleton → **0 findings** (2.4 s cold); the **stale**
+  skeleton → **2 findings** naming `is_triggered_only` and `realm_management` (10 ms warm). Severity is `warn`
+  for both, because D-70's boundary still holds — "absent from vanilla" is not "the engine rejects it" — and the
+  assertions include one that fails if any message starts claiming a verdict the check does not have.
+- **Rejected:** **building the index file D-73 proposed** — the 2.4 s reading makes an on-disk artifact pure
+  overhead, and a cached file is one more thing to invalidate. Also rejected: **leaving the new assertions out
+  because the checker already passes the skeleton** — that reasoning is exactly the 107/107 trap. Also rejected:
+  **claiming the six defects are now covered** — four are not, and the two that are are named; the missing
+  `picture`, the missing call site in the reachability sense, the `.png` value and the missing localization
+  entries are each a *presence* question this check cannot ask.
+- **Reversed by:** a re-measurement showing the in-process scan is far slower on a machine with cold storage
+  (which would restore the caching question), or a real `event_log.csv` whose header defeats
+  `parseEventLog` — the parser's tolerance was measured over **8 plausible formats** (delimiter, column order,
+  quoting, CRLF, extra columns, uppercase header) plus 2 unreadable shapes, and all 8 read identically while
+  both unreadable shapes return `null` rather than an empty report, but none of that is a real file.
+
+## D-75: `event_log.csv` is NEVER created — the unlock was run, and it proved the earlier diagnosis wrong.
+
+- **Decided:** **`event_queue` is a real console command and it works, but it does not write `event_log.csv` in
+  this build; it prints into `debug.log`.** D-68/D-69's "unlock is three steps, then the file appears" is
+  **superseded**: no step produces the file. The reasoning that originally established the command name drew its
+  evidence from **string-pool adjacency**, and that technique produced a false conclusion — both strings are in
+  the binary, but they belong to **different code paths**. The event-reachability signal is therefore still
+  unavailable, and now for a **known** reason rather than an untried one.
+- **Because — the unlock was actually run, and it left three independent traces.** The user executed the command
+  inside a loaded campaign. Measured afterwards:
+  - **The engine's own command history agrees it ran.** `console_history.txt` holds exactly one line,
+    `event_queue`. That file is the game's record of typed console input, so it settles "did the unlock happen"
+    without depending on anyone's account of it.
+  - **The log shows it running and reporting.** `debug.log:5594`
+    `[20:16:11][D][console.cpp:1164]: Running console command: event_queue`, then `:5595`
+    `[D][console_command_implementation.cpp:820]: Total items in queue: 2107`.
+  - **And nothing else appeared.** Recursive search for `event_log*` across **all of `C:\` and all of `D:\`**
+    returned **zero hits**. The game was still running (verified by PID) and `debug.log` was byte-identical
+    across two reads six seconds apart, so this is not an unflushed buffer.
+- **Because — the binary settles *why*, and it is not "the name was wrong".** The implementation of
+  `event_queue` contains **no file write at all**. Its complete set of format strings, read as raw bytes at
+  offset `72187380`:
+
+  ```
+  "Total items in queue: %d\n"  "nullptr"  "- OnActions: %d\n"  "- Events: %d\n"
+  "\t%s\t%d\n"  "\n-- EVENTS --\n"  "\n-- ON_ACTIONS --\n"  "event_queue_update"
+  ```
+
+  Every one of those appears in the observed output, which is how the command was confirmed rather than
+  assumed. The `Event debug info written to logs/event_log.csv` string **does** exist — offset `68104256` — but
+  it sits with `logs/` and `logs/%s/%s.csv` immediately before **`help event_queue`**, next to
+  `See game.log for full help details.` (raw bytes at `68103980`: `…No help for you! … borken console. please…
+  make it stop … See game.log for full help details.`). That cluster is the **`help` command's log redirect**,
+  and its sibling string `Event queue data written to game log` names where the event output really goes —
+  which the measurement confirms: `game.log` has **0** matching lines, `debug.log` has them all.
+- **Because — the output is truncated, and that is the part that governs correctness.** `event_queue` printed a
+  header claiming **`- Events: 2063` / `- OnActions: 44`**, while the file contains only **29** event rows and
+  **2** on_action rows, then blank lines and EOF. So this block yields **real fire counts for 29 events**
+  (`diarchy.0011` 693, `councillor_spouse_background.0001` 584, …) and **nothing about the other 2034**. **An id
+  absent from this list is not "never fired"** — it is usually "past the cut". Emitting `event-never-fired` from
+  it would manufacture false positives at a scale that makes the check worse than no check, which is why the
+  tool now says so where it used to hand out the three-step recipe.
+- **Rejected:** **re-running the unlock or hunting a different command name** — the command ran, was recorded,
+  reported, and wrote nothing; a name that works cannot be diagnosed from a name that works. Also rejected:
+  **treating the 29 rows as a partial `event_log`** — see the truncation above. Also rejected: **deleting
+  `parseEventLog`** — its format tolerance is real and pinned (D-74), and if a future build or a mod-side tool
+  ever emits that file the reader is already correct.
+- **Still open, and named rather than hand-waved:** the sibling command **`event_counts`** exists in the same
+  binary help dump (offset `68114472`, help string `Print event debug counts`) and is the natural candidate for a
+  **complete** count table. It has **not been run** — `console_history.txt` still holds only `event_queue`, which
+  also corrects a mid-conversation claim that it had been. Whether it prints a full list, writes a file, or only
+  draws on screen is **unmeasured**, and no tool behaviour is built on it.
+- **Reversed by:** `event_counts` producing a complete id→count table (which would make the never-fired check
+  genuinely runnable), or an `event_log.csv` appearing from any other code path or build.
+
+## D-76: Can an agent "gain experience"? — yes, as a bounded pipeline, and the live evidence is in this turn's prompt.
+
+- **Decided:** **"experience" is implementable on this harness, but not as learning.** No weight update path
+  exists, so the achievable thing is a **disciplined, bounded pipeline that guarantees retrieval** — and the
+  four existing memory layers already solved *storage*. The measured failure was **retrieval**: D-74's own
+  95×-wrong cost estimate (225 s vs 2.4 s) was designed around by an agent that had the correction written in
+  `DECISIONS.md` and did not read it. The build is `dsh-agent-memory`, one out-of-repo host-plane plugin with
+  two tools, plus a managed region of `~/.dsh/AGENTS.md`; **no preset was modified**, deliberately.
+- **Because — the injection problem was already solved, and only its content was unmanaged.**
+  `@deepseek-ai/dsh-agent-instructions` reads the **user-global `~/.dsh/AGENTS.md`** in every preset (the path is
+  hardcoded — `dsh-agent-instructions/lib/index.js:141,148`, `:756`), and re-checks it **each turn** against a
+  per-session version cache (`reconcileInstructionContext:907`, `versionStatesFor:864`, `:1011-1013`) rather
+  than freezing it at boot. So the correct move was **not** to invent a second injection path via
+  `ctx.systemPrompt` (which would mean registering into a host-owned assembly, with scope-shadowing and ordering
+  to get wrong) but to **own one delimited region of the file that path already reads**. Measured reason the file
+  chosen is the *user-global* one and not a project file: the three user presets **disagree** on
+  `instructionFileCandidates` (`dsh-ck3-mod` adds `CLAUDE.md`/`MODDING.md`; the other two use defaults), but all
+  three list `AGENTS.md` and all three cap at `maxBytes: 196608`. Only the user-global path is preset-independent.
+- **Because — the budget is the design, not a parameter.** `AGENTS.md` is in context **every turn**. The repo's
+  own copy is already **31,290 B**, while `DECISIONS.md` (236,914 B) and `PROJECT.md` (125,252 B) can never be
+  injected wholesale — a 372 KB corpus against a per-turn budget. So `memory_consolidate` computes the UTF-8 byte
+  length **before writing any byte** and **refuses** on overage, naming the largest entries. **Silent truncation
+  is the one outcome worse than an error**, because it looks like the mechanism is working while it drops
+  experience; the refusal is asserted.
+  Two related semantics came from the declarations rather than from taste: `maxBytes` truncates a rendered batch
+  (`lib/index.js:120-123`) while `maxSourceBytes` **silently discards a whole file** (`lib/types/config.d.ts:16`,
+  default `1048576` at `:19`) — which is why this design adds **no new discovered file** and writes inside one
+  the loader already reads.
+- **Because — the live proof is not a test result, it is this turn's own prompt.** After the first
+  `memory_consolidate` run, the managed block appeared **in the very next turn's system reminder**, attributed to
+  `~/.dsh/AGENTS.md` — **with no Host restart**. That is the mechanism demonstrating itself rather than being
+  argued for, and it cleanly separates the two halves: **the experience layer is live now; only the two tools need
+  the restart.** Recording that split matters, because "needs a restart" is exactly the kind of claim D-73 had to
+  prove by calling the running process.
+- **Because — the implementation is the deployment's proven shape, and its two real defects were found by the
+  test rather than by reading.** The plugin follows `dsh-ck3-modcheck` exactly: `export const name`,
+  `inject: ['fs','tools']`, a hand-written plain-object `Config`, and a **local** `defineTool` +
+  `parameterSchemaSpecToJsonSchema` (`dsh-ck3-modcheck/lib/index.js:211,284`). Two defects the 29-assertion suite
+  caught:
+  - **`resolve` is not an existence test.** The first version refused to write any file that did not already
+    exist, because it read `resolve` as the existence check. It is documented as *"the stable target"*
+    (`dsh-fs/lib/types/index.d.ts:83`) — unconditional, which is what makes it usable for writes — while
+    existence is **`lstat`**, *"undefined for an absent path"* (`:142`). Verified against the real provider:
+    `dsh-fs-local/lib/index.js:770-781`, `if (!info) return void 0` at `:775`.
+  - **An empty block must not be written.** With no lessons recorded, the first version still wrote a block full
+    of boilerplate into a file loaded every turn. It now writes **nothing** when there is nothing to say.
+  Neither was visible by reading the code; both are asserted with the specific bad value they must reject.
+- **Rejected:** **touching `ctx.systemPrompt` or `ctx.skills`** to inject dynamically — a second injection path
+  where a proven one already exists, and a registration into host-owned registries that brings scope and ordering
+  problems for no gain. Also rejected: **deleting the managed block when the lessons file is missing** — a
+  synchronous cleanup would silently destroy every injected lesson the moment its source path was wrong; the
+  tool refuses instead. Also rejected: **building this as a dynamic plugin** (`cordis_define`) — dynamic plugins
+  are process-local and temporary, which contradicts "loaded in every session"; the skill's own guidance also
+  governs function-body code, not an installed package. Also rejected: **claiming this is learning** — it is a
+  retrieval guarantee over what was written down, and it knows nothing about a lesson nobody recorded. That is
+  precisely how D-74 happened, and this reduces the probability rather than removing the class.
+- **Reversed by:** a lesson that gets recorded, consolidated, injected, and still fails to change behaviour —
+  which would show the failure is in *compliance*, not retrieval, and no amount of loading fixes that; or an
+  upgrade to `dsh-agent-instructions` that stops revalidating instruction files per turn, which would make block
+  edits stop taking effect without a restart.
+
+## D-77: How does "every session knows to record" reach all sessions — and what can an agent tool actually write?
+
+- **Decided:** **one skill in the user-global root, `~/.dsh/skills/memory-discipline/SKILL.md`, and nothing
+  else.** No row is added, changed or removed; no preset is touched; no service is published. The running process
+  found it **in the same turn it was created**, so this needed no restart. Separately, and more consequentially:
+  **the `memory_*` tools are read-and-render only in a sandboxed session** — they cannot persist their own
+  output, and that is the sandbox working correctly rather than a defect in the plugin.
+- **Because — the user root is the only preset-independent skill root.** Each of the three user presets mounts
+  `skill-filesystem` with its own `customSkillDirs` **and leaves `includeDefaultRoots` on** (their own comments
+  say project and user roots still contribute). The user root resolves to `join(dshHome, "skills")` with
+  `source: "user-dsh"` (`dsh-skill-filesystem/lib/index.js:171-175`; `dshHome` default at `:77`), and precedence
+  is project → **custom** → **user-dsh** → user-agents → bundled (`roots()`, `:150-188`). A uniquely-named user
+  skill therefore reaches all three presets and nothing shadows it — which is why this cost one file instead of
+  three preset edits. Verified against the live catalogue rather than argued: `dsh-smith`'s five skills are
+  exactly this session's five, and after the write the catalogue listed six.
+- **Because — the sandbox boundary is a real capability limit, measured rather than predicted.**
+  `memory_remember` and `memory_consolidate` both failed with `file access denied under workspace-write mode`
+  for `C:\Users\曦曦\.dsh\…`, while `memory_consolidate({dryRun:true})` read both files fine. The mechanism is
+  the **seam**, not the path: the plugin writes through the **sandboxed** `fs`, and `dsh-fs-sandbox` decides per
+  call from `ctx.sandboxPolicy.defaultMode` (`dsh-fs-sandbox/lib/index.js:104`
+  `static inject = ["sandboxPolicy"]`, `:108`, `:125-126`, enforced at `:153`), documenting `workspace-write` as
+  allowing writes *"only inside its workspace root"* and refusing the rest with `FS_SANDBOX_DENIED`. `writeText`
+  takes a policy as its fifth parameter (`dsh-fs/lib/types/index.d.ts:212`) and the tool ignores the `exec` it is
+  handed, so the write is attributed to the tool's own path rather than to the session's wider policy. **The
+  user-global directory being unwritable by an agent tool is the protection working**: an agent should not be
+  able to silently rewrite the file that instructs every session. The tool's error message now says this instead
+  of implying a path bug — **that edit is not live yet** (see the stale-edit note below).
+- **Because — two smaller facts, measured not assumed.** `bin/lint-skills.mjs --installed` reads a preset's own
+  `skills/` directory and does **not** scan the user root, so linting a user-root skill needs
+  `--path <parent-of-skills>`; the linter is a syntax check, and the live catalogue is the independent proof of
+  discoverability. And `skipSystem: true` on the user root only excludes a `.system` subdirectory *inside* it
+  (`lib/index.js:545,555,585`) — it does not disable the root.
+- **Rejected:** **editing all three presets** to add a skill, a `customSkillDirs` entry, or a prompt section —
+  the user root already reaches every preset, so three edits would add three drift surfaces for no reach. Also
+  rejected: **calling the write denial a plugin bug** — the seam is doing its job, and the right output is a
+  truthful boundary plus a read-and-render path, not a sandbox bypass. Also rejected: **using my own write tool
+  and calling the loop "working"** — that would conflate two capabilities; the honest statement is that the
+  plugin *generates* and a writer with sufficient access *persists*, and materialisation went through my tools
+  here precisely because the plugin's own path was correctly denied.
+- **Superseded detail, recorded because it is live state:** `lib/index.js` was edited **after** the Host restart
+  that made the tools callable, so the running deployment holds the module **without** the improved
+  sandbox-denial message. That change needs the **next** restart; the block content is unaffected and correct.
+- **Reversed by:** a session whose policy allows writes outside its workspace, which would let both tools write
+  directly and turn the read-and-render caveat into a non-issue; or a change to `dsh-fs-sandbox` that propagates
+  the session policy into the `exec` a tool receives, which would fix the attribution rather than the policy.
+

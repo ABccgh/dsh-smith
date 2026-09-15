@@ -71,20 +71,35 @@ jobs:
       - name: lint skills (dsh-forge)
         run: node bin/lint-skills.mjs --preset dsh-forge
 
+      - name: lint skills (dsh-ck3-mod)
+        run: node bin/lint-skills.mjs --preset dsh-ck3-mod
+
       - name: preflight — resolve every row's package and validate every config
         run: node bin/preflight.mjs
 
       - name: preflight (dsh-forge)
         run: node bin/preflight.mjs --preset dsh-forge
 
+      # ONE OF THIS PRESET'S ROWS NAMES A HOST-PLANE PLUGIN THIS REPOSITORY DOES NOT
+      # SHIP — `dsh-ck3-modcheck`. It resolves from the profile's `node_modules` in a
+      # real deployment, so `preflight --preset dsh-ck3-mod` PASSES on a machine with
+      # the plugin installed and would FAIL on a runner, which has no profile. Per the
+      # rule at the top of this file, a step that cannot be made green is EXCLUDED
+      # with its reason rather than run under a `continue-on-error`. What still covers
+      # this preset here: `lint-skills` above, and the tarball inventory below, which
+      # fails if `dsh-ck3-mod/` is missing from `files` or declared without a directory.
+      # Run it by hand, on a machine with the plugin installed:
+      #   node bin/preflight.mjs --preset dsh-ck3-mod
+
       # The step this workflow exists for: read the PACKED artifact, not the tree.
       - name: published tarball carries every declared preset
         run: node bin/check-pack.mjs
 
       - name: preset inventory must match the packed tarball
-        # A cheap cross-check that the two preset directories on disk are the ones the
-        # manifest declares, so a third preset added without a manifest entry is caught here
-        # rather than at publish time.
+        # A cheap cross-check that every preset directory on disk is one the
+        # manifest declares, so a preset added without a manifest entry is caught
+        # here rather than at publish time. Written as a set comparison rather
+        # than a count, so it does not need editing when a preset is added.
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'

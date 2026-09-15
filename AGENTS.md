@@ -2,12 +2,25 @@
 
 This tree is the **`dsh-smith` npm package** and the presets it ships. Source of truth for each
 composition is that preset's own directory: `dsh-smith/agent.cordis.yml` (builds harness agents
-and Cordis plugins) and `dsh-forge/agent.cordis.yml` (software delivery). `bin/presets.mjs` is
-the registry of which presets exist, which directory each lives in, and which shipped
-preset each one was copied from — the five scripts that install, verify, lint, drift-check and
-preflight a preset read their paths from it. The ids are mirrored in `package.json`'s
-`dsh.presets`, which `bin/check-pack.mjs` reads for the packed surface and the CI inventory
-step reconciles against disk, so **a new preset is an edit in both files**.
+and Cordis plugins), `dsh-forge/agent.cordis.yml` (software delivery), and
+`dsh-ck3-mod/agent.cordis.yml` (a Crusader Kings III **mod-authoring** agent). `bin/presets.mjs`
+is the registry of which presets exist, which directory each lives in, and which shipped preset
+each one was copied from — the five scripts that install, verify, lint, drift-check and preflight a
+preset read their paths from it. The ids are mirrored in `package.json`'s `dsh.presets`, which
+`bin/check-pack.mjs` reads for the packed surface and the CI inventory step reconciles against disk,
+so **a new preset is an edit in both files**.
+
+**`dsh-ck3-mod` is the one preset whose rows name a package this repository does not ship** —
+`dsh-ck3-modcheck`, a host-plane Cordis plugin under `$DSH_HOME/plugins/` (rule 7's pattern, like
+`dsh-ima-kb`). Two measured consequences. `bin/preflight.mjs --preset dsh-ck3-mod` passes only where
+that plugin is installed, which is why `.github/workflows/checks.yml` **excludes** that step rather
+than running it under a `continue-on-error`. And that same script **does not validate that row's
+config at all**: it reads a row's `Config` export only when that export is a *function*
+(`bin/preflight.mjs:178`, `typeof Schema !== 'function'` → `no-schema`), while this plugin exports
+the plain-object Standard Schema exactly as `dsh-ima-kb` does, so it prints
+`skip … (exports no usable Config schema)`. Config validation for it therefore lives in the plugin's
+own `test/falsify.mjs`, next to assertions that six planted defects are each named and that a real
+vanilla localization file produces zero findings.
 
 ## Evidence rules
 
@@ -86,16 +99,16 @@ step reconciles against disk, so **a new preset is an edit in both files**.
 
 6. **Edit the preset here, never the installed copy by hand.** The live files are
    `${DSH_HOME}/.agent-presets/<id>/agent.cordis.yml`. A hand edit there creates silent
-   drift from this repo. Change `dsh-smith/**` or `dsh-forge/**` and then re-install —
-   `node bin/install.mjs --preset <id>` is the *sanctioned* writer for that path, and
-   `--force` is a real replace (delete then copy), which is what removes skills a newer
-   version dropped. Both local preset directories are *user* preset territory and are
+   drift from this repo. Change `dsh-smith/**`, `dsh-forge/**` or `dsh-ck3-mod/**` and then
+   re-install — `node bin/install.mjs --preset <id>` is the *sanctioned* writer for that path,
+   and `--force` is a real replace (delete then copy), which is what removes skills a newer
+   version dropped. All three local preset directories are *user* preset territory and are
    authoring-free; the shipped presets under the deployment's own `agent-presets`
    directory (`standard`, `ptc`, `minimal`, `cordis`) are the ones that must never be
    written at all.
 
-7. **This repo ships presets and nothing else.** Two directories — `dsh-smith/` and `dsh-forge/` —
-   are the whole owned surface, and each is written to its install target only through
+7. **This repo ships presets and nothing else.** Three directories — `dsh-smith/`, `dsh-forge/` and
+   `dsh-ck3-mod/` — are the whole owned surface, and each is written to its install target only through
    `bin/install.mjs --preset <id>` (rule 6). A **Cordis plugin is a different kind of thing** and
    would not belong here: it is mounted by a *host-composition row* in a profile's
    `cordis.patch.yml`, and the sanctioned writer for a profile's dependency graph is
@@ -120,7 +133,16 @@ step reconciles against disk, so **a new preset is an edit in both files**.
    knowing before writing the next one: it **symlinks** the package, so the plugin's own **bare**
    specifiers fail to resolve from the link's real path (`ERR_MODULE_NOT_FOUND`), while relative
    imports among its own files are unaffected (D-35).
-   **A THIRD existed and has been REMOVED — `$DSH_HOME/plugins/dsh-github` (D-47, removed by D-51).**
+   **Two more were built for `dsh-ck3-mod` and one of them has already been retired (measured).**
+   `$DSH_HOME/plugins/dsh-ck3-modcheck` validates a mod against the real vanilla installation and is
+   **live** — one `insert:` row in the web profile (to be written by `dsh plugin --profile web add`).
+   `$DSH_HOME/plugins/dsh-ck3-wiki` (five wiki-retrieval tools) was written, tested 38/38, and then
+   **deleted outright** when the user narrowed that preset to mod development only; it never entered
+   any profile's dependencies, which is what made deleting the directory sufficient. The lesson worth
+   keeping: a plugin that is never added to a profile leaves no trace to unwind, so **write the row
+   before the plugin, and put the plugin in the profile only when the capability is wanted** — the
+   reverse order costs a `dsh plugin remove` plus a Host restart to undo.
+   **A THIRD is GONE — `$DSH_HOME/plugins/dsh-github` (D-47, removed by D-51).**
    The user cancelled that project and it was fully torn down: the plugin, its `link:` dependency,
    the three profile rows, and its two credential refs are all gone. It is kept in this rule as the
    **worked example of a plugin that consumes a service another profile-patch row publishes** —
@@ -145,10 +167,14 @@ step reconciles against disk, so **a new preset is an edit in both files**.
 ## Boundaries
 
 - Do not modify, migrate, or delete anything under `~/.dsh/**` — profiles, sessions, or other
-  presets' installs — from a session rooted here, **except** the two preset directories this
-  repo owns (`~/.dsh/.agent-presets/dsh-smith` and `.../dsh-forge`), and only through
-  `bin/install.mjs`, which is the sanctioned writer for exactly those two paths. A hand edit
-  under `~/.dsh` is still a violation even for an owned preset.
+  presets' installs — from a session rooted here, **except** the three preset directories this
+  repo owns (`~/.dsh/.agent-presets/dsh-smith`, `.../dsh-forge`, `.../dsh-ck3-mod`), and only
+  through `bin/install.mjs`, which is the sanctioned writer for exactly those three paths. A hand
+  edit under `~/.dsh` is still a violation even for an owned preset. **Removing one is the
+  exception that proves the rule:** `agentPresets.remove(id)` is the only sanctioned delete, it
+  needs the `cordis_*` tools, and those exist only in a shipped-`cordis` session — so when a preset
+  is retired, delete its **source** here and report the stale install directory for the user to
+  remove through that interface. Do not hand-delete it, and do not claim it is gone.
 - **A desktop application for DSH exists and it is NOT in this tree** — `D:\dsh-desktop`, its own
   project, the same out-of-repo pattern rule 7 already records for `dsh-account-balance` and
   `dsh-ima-kb`. It is a *shell*: Electron owns one window and one child process, and the harness runs
@@ -189,8 +215,9 @@ step reconciles against disk, so **a new preset is an edit in both files**.
   that can see a `files`-allowlist omission.** Every other script in `bin/` reads the working tree,
   so all of them pass whether or not `package.json`'s `files` list is right — which is the failure
   the bullet above calls undetectable by running this repo. Run it as `node bin/check-pack.mjs`, or
-  through CI (`.github/workflows/checks.yml`, which also runs the lint and preflight steps for both
-  presets). Two things to keep straight: a **falsification must mutate a COPY**, never this tree,
+  through CI (`.github/workflows/checks.yml`, which also runs the lint and preflight steps for the
+  presets whose rows all resolve from this machine). Two things to keep straight: a
+  **falsification must mutate a COPY**, never this tree,
   and **dropping `bin` from `files` is not a defect** because npm force-includes whatever the `bin`
   map names — the case that must fail is a dropped **preset directory**. The workflow deliberately
   does **not** run `verify.mjs`, `install.mjs`, or `drift-check.mjs`, and its header says why; a

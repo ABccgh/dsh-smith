@@ -87,7 +87,15 @@ function tokenise(html) {
   let last = 0
   let m
   while ((m = re.exec(html)) !== null) {
-    if (m[0].startsWith('<!--')) { last = re.lastIndex; continue }
+    if (m[0].startsWith('<!--')) {
+      // Drop the comment, but NOT the text in front of it. Advancing `last` without
+      // emitting that slice first silently deletes it, which is how `<p>before<!-- … -->after</p>`
+      // lost its `before`. Comments are only skipped; the text between the previous token and
+      // this comment belongs to the stream exactly as it does before any other match.
+      if (m.index > last) tokens.push({ type: 'text', value: html.slice(last, m.index) })
+      last = re.lastIndex
+      continue
+    }
     if (m.index > last) tokens.push({ type: 'text', value: html.slice(last, m.index) })
     last = re.lastIndex
     tokens.push({

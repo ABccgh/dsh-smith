@@ -1,8 +1,320 @@
 # Board
 
+## 经验层（agent-memory）—— 已交付并**正在生效**（D-76）
+
+用户问「可以实现经验吗」。答案是：**模型权重学习做不到，但「有界、保证被检索的记忆管线」可以，而且已经建好。**
+
+改动面：仓库外宿主平面插件 `$DSH_HOME/plugins/dsh-agent-memory`（2 个工具）＋
+`profiles/web/cordis.patch.yml` 里一行 `insert:`（由 `dsh plugin --profile web add` 写入 `link:` 依赖，
+行本身手写在补丁层）＋ 受管区块落在 `~/.dsh/AGENTS.md`。**没有动任何 preset。**
+
+| 项 | 读数 |
+| --- | --- |
+| 插件自证 | `node test/falsify.mjs` → **29/29 断言**（含 2 个真缺陷：`resolve` 被当成存在性检查；无经验时仍写空区块） |
+| 静态面 | `--dump-config` **0 条 patch 警告**，`id: agent-memory` 行成分正确（3 个 config 键） |
+| preset 面未受影响 | `preflight --preset dsh-smith` **validated 21 / skipped 10 / failed 0**；技能 lint **5/5 clean**；**PACK OK** |
+| 受管区块 | `~/.dsh/AGENTS.md` **3247 B / 32 行**，上限 **16384 B**；5 条经验 |
+| 幂等性（对**真实文件**实测） | 重跑 consolidate **逐字节不变**；标记各**恰好 1 个** |
+| **自动加载** | **本轮系统提示里已出现该区块**，归因 `~/.dsh/AGENTS.md` —— **不需要重启** |
+
+**两个半边必须分开说**：**经验层本身现在就生效**（next turn 的提示里就有它）；
+**两个工具需要宿主重启才可调用**（当时服务进程 PID 5600 早于该改动）。
+**重启已经做过，两个工具现在都实测可调用** —— 见下方「已补上」一节的实测读数。
+
+**为什么落点是 `~/.dsh/AGENTS.md`**：三个用户 preset 的 `instructionFileCandidates` **互不相同**
+（`dsh-ck3-mod` 多 `CLAUDE.md`/`MODDING.md`），但都列 `AGENTS.md`、都是 `maxBytes: 196608`；
+而用户全局路径在源码里硬编码（`dsh-agent-instructions/lib/index.js:141,148`），**因此与 preset 无关**。
+注入路径本来就有，缺的只是它的内容纪律。
+
+**上限是设计而不是参数**：`AGENTS.md` 每轮都在上下文里，本仓库那份已 **31,290 B**，
+而笔记层 `DECISIONS.md` 236,914 B ＋ `PROJECT.md` 125,252 B **永远不可能整体注入**。
+所以 `memory_consolidate` 在**写任何字节之前**算 UTF-8 长度，超限**报错拒绝并列出最大条目**——
+静默截断会让它看起来在工作而实际在丢经验。这条拒绝已断言。
+
+### 已补上：`memory-discipline` 技能（D-77）—— 让每个会话知道**该记录**
+
+落点 `~/.dsh/skills/memory-discipline/SKILL.md`（**一个文件**）：**不加行、不改 preset、不发布服务**。
+用户根是唯一**与 preset 无关**的技能根，因为三个 preset 都保留了 `includeDefaultRoots`
+（各自只加自己的 `customSkillDirs`）。
+
+| 项 | 读数 |
+| --- | --- |
+| **活进程发现它** | 创建后**同一轮内**系统提示的技能目录就多出 `memory-discipline`，随后 `skill` 工具成功返回其正文 —— **不需要重启**。这条此前只是从代码推断的，现已是实测 |
+| 技能 lint | `ok memory-discipline (description 503 chars, body 3228 chars)`；注意 `--path` 要指向 **skills 的父目录**，`--installed` **不扫用户根** |
+| 回归 | **PACK OK**；`preflight` dsh-smith `21/10/0`、dsh-ck3-mod `16/9/0`；ck3-mod 自己的 **3 个技能未被遮蔽**（用户根优先级低于 preset 的 custom 根） |
+| 名称一致性 | 插件真实注册 `["memory_consolidate","memory_remember"]`；技能正文两处齐备、**零编造**（两个方向都核对） |
+| 经验区块 | **6 条 / 4310 B**（上限 16384）；标记各 1 个；重复 consolidate **逐字节不变** |
+
+**⚠️ 实测到的能力边界（别当成 bug）**：`memory_remember` / `memory_consolidate`
+**在沙箱会话里写不了 `~/.dsh`** —— 报 `file access denied under workspace-write mode`，而同一会话的
+`dryRun` 读得到。机制在**接缝**上：插件走的是**被沙箱包住的** `fs`，`dsh-fs-sandbox` 按
+`ctx.sandboxPolicy.defaultMode` 逐次判定（`dsh-fs-sandbox/lib/index.js:104,108,125-126,153`）。
+**这是保护在起作用**：agent 不该能悄悄改掉那份「指导每个会话」的文件。
+所以这两个工具在受限会话里是**只生成、不落盘**；落盘需要策略允许写到工作区之外，或由有该权限的写入者执行
+（本轮就是用自己的 write 工具落盘的，并在下一轮看到区块自动更新为 6 条）。
+工具原本的报错文案已在 `lib/index.js` 改得更准确，**但那次编辑发生在本次重启之后，要等下一次重启才生效**。
+
 ## Objective
 
-**Current: CK3 Wiki 镜像 —— CANCELLED and fully cleaned up（用户于本次会话取消，D-57）。**
+**Current（本文写作时的目标）：`dsh-ck3-mod` —— 只做《Crusader Kings III》模组开发的一个 preset。**
+用户先要求四条（CK3 专属、加强记忆、加强思考、专业专家团），中途追加第五条 **模组开发**，
+随后在第二轮把它**收窄为「只要 mod 开发」**，并要求「只保留必要的，其他的删除」。
+交付面 = 仓库内一个新 preset（`dsh-ck3-mod/`）＋ **一个**仓库外宿主平面插件
+（`$DSH_HOME/plugins/dsh-ck3-modcheck`）＋ 仓库登记面与文档。
+被删掉的是「战局咨询」那一半：检索插件 `dsh-ck3-wiki`（连同代码）与旧 preset `dsh-ck3/`。
+
+**已交付并实测的（下一个会话不必重新推导）**：
+
+| 项 | 读数 |
+| --- | --- |
+| preset 组合 | `dsh-ck3-mod/agent.cordis.yml`：**27 个具名行 = 3 个 group ＋ 24 个叶行**；persona 只出现 `{{model}}` 与 `{{cwd}}` |
+| 专家团 | **三位**：`expert_modd`（`reasoningEffort: max`，无 filter）、`expert_verifier`（`deny: [write, edit]`，继承推理档）、`expert_chronicler`（继承推理档） |
+| 技能 | 3 个，`--path` / `--preset` / `--installed` 三条路都 **3/3 clean** |
+| 静态预检 | `preflight --preset dsh-ck3-mod` → **`validated: 16   skipped: 9   failed: 0`，PREFLIGHT PASSED** |
+| 打包面 | `check-pack.mjs` → **PACK OK**，`dsh-ck3-mod` 5/5 文件、3 个技能进 tarball |
+| 安装 | `install.mjs --preset dsh-ck3-mod --force` 已装入 `…\.agent-presets\dsh-ck3-mod`（5 文件），与仓库副本 **SHA256 逐字节相同** |
+| 插件自证 | `node test/falsify.mjs` → **121/121 断言**。含 6 类植入缺陷逐个点名，**并含生成器产出的功能断言**（本轮新增：3 个原始缺陷植入回去后逐个被抓到，见下） |
+| 插件工具面 | **4 个工具**：`ck3_modcheck`（**39** 个检查 code，`Object.keys(CODES).length` 实测）／`ck3_mod_init`（生成骨架并自证）／`ck3_mod_status`（读启动器 playset 数据库）／`ck3_mod_evidence`（读运行时日志） |
+| 原版校准（新增，永久断言） | 编码检查对**整个原版树 0 findings**（2,536 个 `common` ＋ 536 个 event 脚本）；namespace 检查对 **536 个原版事件文件恰好 20 条**（19 处前缀不符 ＋ 1 个未声明）＝独立复现 `516/536` 普查 |
+| 覆盖检测 | 同名同路径覆盖原版文件 → 报警；**新文件名**（追加）→ 不报；`common\holdings`／`common\traits` 这类单文件数据库 → error |
+| 生成器 | `ck3_mod_init` 产出的骨架通过**全部检查、0 findings**（已断言）；默认绝不覆盖。**六个缺陷已修、且已在活宿主里实测（D-73/D-74）**：`picture`、`trigger_event`、`theme = realm`、无 `is_triggered_only`、无 depth-1 `icon`、本地化 key 齐全 |
+| **运行时证据面** | 游戏已启动过一次 ⇒ `logs\` 存在。实测拿到**无 mod 基线**（`dlc_load.json` 为 `enabled_mods: []`）：启动时建 **16 个日志文件、全 0 字节**，随后 `debug.log` 长到 **326,754 B**、`setup.log` **36,864 B**，其中 **512 条 W、0 条 E**，首行是原版自身的 `provincetemplate.cpp: Province 10186 has no pixels!`。据此定下：**日志非空 ≠ 有问题**，工具只统计与报告。**`event-never-fired` 这条 finding 目前拿不到数据：`event_log.csv` 在本 build 里永远不出现——解锁命令跑通了，但它只写 `debug.log` 且被截断到 29 行（D-75）** |
+| 端到端校验探针 | 合法 mod **0 findings**；5 类植入缺陷**各自被点名**；CJK 路径被报出、纯 ASCII 路径不报 |
+| 原版误报 | 对 `game\localization\english` **全部 122 个文件 0 findings** |
+| 加载器认得它 | `dsh --profile web --dump-config` 组合出 `ck3-modcheck` 行（含 4 个 config 键）且 **0 条 patch 警告**，exit 0 |
+
+### ⚠️ 生成器的六个缺陷、校验器的盲区、以及「Row 1 其实还没闭环」
+
+这一节是本轮**实测**的结论，两条都是往下的（不是好消息），写下来因为下一个会话一定会踩。
+
+**1）正在运行的宿主仍在产出旧内容 —— 这一条是拿运行时问出来的，不是从 mtime 推的。**
+
+先前只有一处**间接**证据：`D:\CK3Mods\smoketest` 的文件 mtime 是 `19:29:11`（写成功了），
+**字节却是旧的**。那只能说明**某一次**写入写进了旧内容，**不能**说明现在还会。
+
+决定性的一次是这个会话自己的工具调用（`ck3_mod_init`，由**运行中的宿主进程**提供服务）：
+先删掉 `smoketest` 以免污染，再用全新名字 `hoststate` 生成，读回的字节是
+
+| 键 | 运行中的宿主实际写出 | 磁盘上的源码会写出 |
+| --- | --- | --- |
+| 决策 | `icon = "decision_icon.png"` | `picture = { reference = "…/decision_misc.dds" }` |
+| 事件主题 | `theme = realm_management` | `theme = realm` |
+| 事件 | `is_triggered_only = yes` | 该行不存在 |
+| 决策 effect | 无 `trigger_event` | `trigger_event = hoststate.0001` |
+| 本地化 | 1 行（60 B，只有 `*_greeting`） | 3 行（多出决策的两个 key） |
+
+时间线吻合：宿主 PID **16276 启动于 09-15 19:08:30**，`lib\rules.mjs` 的 mtime 是 **19:28:42**，
+`lib\index.js` 是 **19:14:18**。Node 的模块是首次 import 即缓存，所以该进程持有的是**修复前**的版本。
+⇒ **重启宿主是必需的，且重启前所有新会话的 `ck3_mod_init` 都会产出这六个缺陷。**
+（探针产物 `D:\CK3Mods\hoststate*` 已删除，`D:\CK3Mods` 现为空。）
+
+**2）校验器盲区：一个含六个真缺陷的骨架，`ck3_modcheck` 报 `0 findings`。**
+
+这不是「运行旧代码导致的」，是**规则本身缺一类检查**。把六个缺陷按「能不能被现有原版对照发现」分类：
+
+| 缺陷 | 能否被「键/标识符在原版存在过」发现 |
+| --- | --- |
+| `is_triggered_only = yes` | **能** —— 全原版树 0 次（唯一一次在 `#` 注释里，`chinese_disciple_events.txt:922`） |
+| `theme = realm_management` | **能**（值域）—— 原版事件主题共 **36** 个，不含它 |
+| 决策缺 `picture` | 不能（**缺**键，不是坏键） |
+| 决策缺 `trigger_event` | 不能（同上；且「事件没有调用点」按设计就够不着，见生成器注释） |
+| `icon = "decision_icon.png"` | 不能 —— 键合法且原版有 116 次；坏的是**值**（`.png` 在原版 decisions 里 **0** 次，`.dds` **419** 次） |
+
+所以「建一个原版键索引」是**真能力**，但它**只覆盖六个里的两个**，而且成本已实测：
+`common`＋`events`＋`history` 共 **4,180 文件 / 185.7 MB**，枚举 **9.2 s**，解析出 **138,038 个**不同键需
+**225 s**，索引 JSON 约 **3.2 MB**。正确做法不是每次 225 s，而是**构建一次并缓存**，或只校验
+「生成器自己写出的那几个非终结键」（那一组实测**全部**在原版索引里，是一行代码级的小检查）。
+
+**3）`ck3_mod_init` 的自证会复述这个盲区。** 上面那次调用自己的输出里就写着
+「**0 findings** —— 生成的骨架通过全部检查」——它调用的是同一个校验器，所以**重启也不会修好这一行**。
+
+### 本轮把上面两条盲区都收窄了（实测；代码已改、已自证）
+
+**A. 生成器的功能断言（`test/falsify.mjs`，107 → 121 条）。** 新增的不再测结构，而是**读产出的字节**，
+并各自绑定一个**必须被拒的旧值**，所以断言本身不会空过。**已用植入法证明它们真会失败**：
+把三个原始缺陷逐个植回 `rules.mjs`，套件立刻变红——
+
+| 植回的缺陷 | 结果 |
+| --- | --- |
+| `theme = realm` → `realm_management` | 1 条 FAIL，点名该断言 |
+| `picture = {…}` → `icon = "decision_icon.png"` | 2 条 FAIL（depth-1 icon ＋ picture 缺失） |
+| 删掉 `trigger_event` 调用点 | 1 条 FAIL（事件变成死文本） |
+
+三次植入后 `rules.mjs` 都**逐字节还原**（实测 `RESTORED byte-identical: true`）。断言用**不变量**而非
+golden 文件；其中「theme 必须是本机 `00_event_themes.txt` 里真实存在的 151 个之一」是**直接读安装目录**，
+所以它测的是游戏，而不是我抄下来的清单。
+
+**B. 校验器新增两个检查，命名了六个缺陷里的两个。** `vanilla-key-unknown`（属性在原版脚本树里
+一次都没出现）＋ `event-theme-unknown`（theme 值不在安装定义的 151 个里）。实测：
+
+| 输入 | 结果 |
+| --- | --- |
+| 正确骨架（真安装，`D:\CK3Mods`） | **0 findings**，冷启动 2.4 s |
+| 旧骨架（六个缺陷） | **2 findings**：`is_triggered_only` ＋ `realm_management`，10 ms（缓存命中） |
+
+**C. D-73 里那个「225 秒」是我自己的测量工具造成的，不是数据的性质。** 那是 PowerShell 逐行循环的
+读数；换成模块内的 `collectVanillaKeys`（走既有的 `collectFiles`）实测 **130,536 个键 / 2.4 秒**——
+**快 95 倍**。所以既不需要 225 秒的索引文件，也不需要为它设计缓存策略，一个进程内 Map 就够。
+**这条订正写在 D-74。**
+
+**D. Row 2 —— 已结（见下方「Row 2 结了」一节与 D-75）。** 最早那一版说「工具侧已经做完，剩下的一步
+只能由用户做」——**这个判断被实测推翻了一半**：用户做了那一步，而它证明 `event_log.csv` 在本 build 里
+根本不会被创建。所以旧的「解锁三步、然后文件就会出现」文案是错的，已从 `ck3_mod_evidence` 里删除。
+同一轮仍然有效的那条收获是：**文件格式的容忍度不再是风险**——`parseEventLog` 对 8 种可能格式
+（分隔符、列序、引号、CRLF、多余列、大写表头）**读数完全一致**，读不出来的形状返回 `null`（不是空报告），
+这 8 种 ＋ 2 种不可读形状已固化成断言。**若将来某个 build 真的写出这个文件，读取端已经是对的；变的是
+「它会不会出现」，不是「出现了读不读得懂」。**
+
+
+
+1. **真挂载判定 —— 已完成（实测，出厂 `cordis` 会话）。** `agentPresets.standingKeyFor('dsh-ck3-mod')`
+   **正常返回 ⇒ `MOUNT OK`**；同一次 `compositionInventory()` 给出该 preset 的 **24 个叶行**
+   （与上表 `27 = 3 group + 24 叶行` 一致，容器不计入）、`broken` 为 `none`，
+   **23 行 `fiberState = 2`**，1 行 `tool-bash` 因平台表达式 `disabled` 而无 fiber（`(none)`）。
+   `2 = ACTIVE`（`@deepseek-ai/cordis/lib/types/fiber.d.ts:70`，6 个成员依次
+   `PENDING=0 / LOADING=1 / ACTIVE=2 / FAILED=3 / DISPOSED=4 / UNLOADING=5`），
+   所以没有一行停在 `PENDING`（等待服务）或 `FAILED`——包括仓库外那一行 `tool-ck3-modcheck`。
+   **边界（D-40 不变，不许过度声称）**：这一步证明的是**"没有抛错、且每个启用行都到达 ACTIVE"**，
+   **不是**"每一行都贡献了模型可见的东西"——`tool-ck3-modcheck` 这个 fiber 是 ACTIVE，
+   **不等于** `ck3_modcheck` 出现在该 preset 的工具表里。`node bin/verify.mjs` 仍然不是这条检查。
+2. **用户手工三件**：
+   - ① **重启 Host —— 已完成（实测）**：占用 `127.0.0.1:3080` 的 node 启动于 **23:28:03**，晚于插件写入的
+     21:08:37，所以那一行 boot-time row 本次启动就在场。
+   - ② **在一个真正由 `dsh-ck3-mod` 服务的新会话里核对工具表 —— 仍未完成，且只能由用户开新会话完成。**
+     判别键是下方告警里的**三位专家**，不是四个 `ck3_*`。
+   - ③ **旧 preset `dsh-ck3` 的已安装目录 —— 已用正规接口删除（实测）。**
+     `agentPresets.remove('dsh-ck3')` 正常返回；删除后**独立读回两处**：roster 剩 **7 个** preset 且不含
+     `dsh-ck3`，`…\.agent-presets\dsh-ck3` 目录消失（`Test-Path` → `False`）；同一轮
+     `dsh-ck3-mod` 仍在（5 文件），其 `agent.cordis.yml` 的 SHA256 与删前一致
+     （`8E8B21863375D5802E3BD6C45588B8FA9428F9AD0F4B131BF99D00833D85A409`）。
+     **删除前它在 roster 里是 `trust: user` 且带 `broken`**：4 行指向早先被整个删掉的 `dsh-ck3-wiki`
+     （`tool-ck3-search` / `tool-ck3-read` / `tool-ck3-cache` / `tool-ck3-freshness`）——
+     所以它不只是"陈旧"，而是一个**在任何 picker 里都永远挂不起来**的死条目。
+
+> ### ⚠️ 验收的判别键是**三位专家**，不是四个 `ck3_*`
+>
+> 这条曾经写错，记下来免得再错一次。四个 `ck3_*` 工具在**宿主平面**
+> （`profiles\web\cordis.patch.yml` 那一行），注册进宿主的 `ctx.tools`，所以
+> **每一个会话都看得见，包括不是 CK3 的会话**——「工具表里有 `ck3_*`」只能证明那一行挂上了，
+> 是一条**恒真**的检查，证明不了当前会话是不是 CK3 模组工坊。
+>
+> 真正的判别键是 **preset 平面**的三个具名专家：
+>
+> | 看到什么 | 结论 |
+> | --- | --- |
+> | `expert_modd` ＋ `expert_verifier` ＋ `expert_chronicler`，**且没有** `expert_architect` | 是 `dsh-ck3-mod`，**这一半才算闭环** |
+> | `expert_architect` / `expert_local` 这一族 | 是 `dsh-smith`，即尚未真正新开 CK3 会话 |
+>
+> 实测佐证：本会话（`dsh-smith`）的工具表里就有四个 `ck3_*`，而专家是
+> `expert_architect`／`expert_protocol`／`expert_verifier`／`expert_chronicler`。
+> 另外「工具在表里」与「工具能返回真数据」也是两件事：后者本轮已在 `dsh-smith` 会话里
+> 实测过（`ck3_mod_status` 读出启动器库的 1 个 mod 与 2 条交叉判定；`ck3_modcheck` 零参数跑通
+> `D:\CK3Mods` 并报 0 findings）。
+
+**运行时证据面的边界（写清楚，免得下一个会话过度声称）**：游戏已启动、战役已开、`logs\` 有 16 个文件，
+但 **`event_log.csv` 仍然不存在 —— 而且现在知道它在本 build 里永远不会出现（D-75）**。
+下面这一节是**旧诊断**，它推错了，保留是为了说明错在哪里：
+
+- `event_log` **不在** `log_settings_live.json` / `_release` / `_debug` 任何一个里，而 `logs\` 里那 16 个文件
+  与配置里的 `loggers[].sinks[].file_name` **一一对应** ⇒ **它不走日志系统**。所以「开一局就会生成」与
+  「改 `log_settings`」两个方向**都是错的**。
+- 它是**控制台命令**写出来的。`ck3.exe`（95,206,088 B）里有一对相邻字符串：
+  **`event_queue`** 与 `Event debug info written to logs/event_log.csv`，同属
+  `console_command_implementation.cpp` 的字符串池；另两处 `event_queue` 在
+  `jomini_event_queue_manager.cpp`（不同模块，已排除）。
+- **解锁三步**：① `-debug_mode` 启动游戏；② 加载一局；③ 控制台执行 **`event_queue`**。
+  **命令名是字符串池顺序推出来的强线索，不是实测跑通的**——若它不产出文件，那就是名字不对。
+- **复测（新会话，实测）：这条命令至今没有被执行过，而且这次是「整机级」的缺席证明，不是「一个目录里没有」**
+  （D-69）。① `ck3_mod_evidence` 原话仍是「没有 `event_log.csv`」；② `logs\` 仍是 **16 个文件**
+  （11 个 0 字节 ＋ 5 个有内容，`debug.log` 601,714 B／`setup.log` 36,864 B），时间戳全部落在
+  **2026/9/14 23:17:39–23:26:22** 那一次启动里；③ 对**整个 `D:\`** 与**整个用户目录**递归搜 `*event_log*`
+  **零命中**——上一个会话只说了「`logs\` 里没有」，这次排除的是「副本在别处」。字符串偏移也重新量过：
+  `event_queue` @ 68103024、`event_counts` @ 68114472、`Event debug info written to logs/event_log.csv`
+  同池。**所以本行状态是「已定根因、未解锁」，不是「已解决」。**
+
+所以「事件从不触发」这条检查是**已实现、已测试、但尚未在真实数据上触发过**——这是**缺能力，不是通过**。
+
+### ✅ Row 2 结了 —— 结法是「解锁执行了，而它证明了旧诊断是错的」（D-75，实测）
+
+**用户已在游戏里执行了那条命令。** 三个互相独立的痕迹都指向同一个结论：
+
+| 读数 | 来源 |
+| --- | --- |
+| `console_history.txt` 全文只有一行 **`event_queue`** | 游戏自己记录的输入历史——不依赖任何人的转述 |
+| `debug.log:5594` `Running console command: event_queue`，`:5595` `Total items in queue: 2107` | 引擎自己的日志 |
+| **整个 `C:\` ＋ 整个 `D:\` 递归搜 `event_log*` 零命中** | 文件系统；两次读间隔 6 秒且字节不变，排除未 flush |
+
+**命令跑通了，但它不创建 CSV。** `ck3.exe` 里 `event_queue` 的实现**没有任何写文件调用**——
+它的全部格式串（offset `72187380` 原样读出）是：
+
+```
+"Total items in queue: %d\n"  "nullptr"  "- OnActions: %d\n"  "- Events: %d\n"
+"\t%s\t%d\n"  "\n-- EVENTS --\n"  "\n-- ON_ACTIONS --\n"  "event_queue_update"
+```
+
+这些串**逐条都在观测到的输出里出现**，所以命令是被确认的，不是被推断的。
+
+**旧诊断错在哪：`同偏移 ≠ 同功能`。** `Event debug info written to logs/event_log.csv`（offset `68104256`）
+确实存在，但它和 `logs/`、`logs/%s/%s.csv` 挨着，而这三者紧挨 **`help event_queue`**，旁边就是
+`See game.log for full help details.`（offset `68103980` 原样读出）——**那是 `help` 命令的日志重定向**。
+同族的 `Event queue data written to game log` 才说明了真正的去向，实测也吻合：
+`game.log` **0 条**，`debug.log` 全在里面。**「同属一个字符串池」曾经被当成相关性的证据，这次证明它不是。**
+
+**而且输出是截断的，这一点决定了能不能用**：表头自称 `- Events: 2063` / `- OnActions: 44`，
+文件里**只有 29 行事件、2 行 on_action**，随后是空行与 EOF。所以它给出的是
+**那 29 个事件的真实触发次数**（`diarchy.0011` 693 次、`councillor_spouse_background.0001` 584 次……），
+**对其余 2034 个一无所知**。**没出现在这份列表里 ≠ 从不触发**，多数只是被截断了——
+拿它做 `event-never-fired` 会量产假阳性，比不检查更糟，所以工具的旧「解锁三步」文案已删除。
+
+**唯一还没量过的**：同族命令 **`event_counts`**（二进制帮助串 `Print event debug counts`，offset `68114472`）
+**从未被执行过**——`console_history.txt` 至今只有 `event_queue` 一行。它可能给出完整计数表，
+**在跑过之前本工具不假设它的行为**，也没有任何代码建立在它上面。
+
+**顺带实测的两条（对下一个会话有用）**：
+
+1. **`rules.mjs`（19:51:55）已经进了正在运行的宿主，`index.js`（20:20:10）没有。**
+   服务本 GUI 的是 **PID 5600，启动于 19:56:28，持有端口 59190**。所以：
+   新增的 `vanilla-key-unknown` / `event-theme-unknown` **现在是活的**（已用 `ck3_mod_init`
+   生成 `liverule` 验证：`picture = { reference = …decision_misc.dds }`、`trigger_event`、
+   `theme = realm`、无 `is_editor_only`、无 depth-1 `icon`——**六个缺陷一个不剩**）；
+   而 `ck3_mod_evidence` 里改过的文案**要等下一次重启**才生效。
+2. **`ck3_modcheck` 的 `modPath` 语义是「这个路径本身就是一个 mod 文件夹」**，不是 mod 目录。
+   传 `D:\CK3Mods`（一个装 mod 的目录）会把目录本身当成 mod 去校验，于是报
+   `mod-file-missing` / `descriptor-missing`。目录为空时这是正确行为，但**别把它读成工具坏了**。
+
+
+**另一条实测顺带解释了当初的「全部 0 字节」**：`log_settings_live.json` 与 `_release.json` 顶层都是
+**`flush_interval_seconds = 3`**，所以「文件已建、内容未落盘」是个**预期窗口**而不是异常读数
+（实测启动后 45 秒仍是 0/16，之后才陆续写入）。
+
+**从真实日志里量出来的两条**（都不许当成缺陷）：
+
+1. **同一台机器两次启动、两次 `enabled_mods: []`**，日志里就已经有原版自己的东西：
+   `setup.log` **512 条 W**（`provincetemplate.cpp: Province 10186 has no pixels!`），
+   `error.log` **2 条 E**（`landed_title_name_util.cpp:853: Failed to find any valid flavorization for title`）。
+   ⇒ 工具只统计、不把「日志非空」当缺陷。
+2. **一条消息会同时写进多个 sink**：实测同一条错误出现在 `debug.log ＋ error.log ＋ game.log`，
+   按文件求和是 6 条、**去重后只有 2 条，虚高正好 3 倍**。⇒ 报告以**去重后的条数**为准，
+   并列出每条错误出现在哪些 sink。
+
+模组"能被游戏加载"仍然只能由用户在游戏里验证。
+
+**规划阶段实测、仍然有效的关键事实**：
+
+| 事实 | 读数 |
+| --- | --- |
+| 知识库 | 仍在（`Crusader Kings III Wiki`，913 条），但**本 preset 不再使用它**——模组开发不需要 |
+| mod 素材量 | `Category:Modding` **71 个成员**；`Scripting` md=27,667／25 段代码块；`Localization` md=26,480／67 段代码块 |
+| 版式判据 | `Scripting`＝`timeless`；`Mod structure`＝1.1（revid 18579）；`Localization`＝**1.4**（revid 32485）；游戏当前 **1.19.0.6** |
+| 模组硬约束 | wiki 原文：非英文账户名必须把 mod 目录移出 Documents；实测 `USERNAME=曦曦` 含 **2 个非 ASCII 字符** ⇒ mod 放 `D:\CK3Mods`（已建，空） |
+| 原版本地化版式 | `game\localization\english` **122/122** 个 `.yml` 带 UTF-8 BOM；首行 `l_english: `；**版本号可选且已弃用**（742 条原版条目根本不写），条目可带行尾 `#` 注释 |
+| 原版安装布局 | 数据在 `<gameRoot>\game\`：`common\` **122** 子目录、`events\` 33、`gui\` 196、`localization\` 9 语言 ＋ `jomini` ＋ `languages.yml` |
+| `preflight` 的两个边界 | ① 只在 `typeof Config === 'function'` 时读 schema（`:178`）⇒ 导出普通对象 schema 的插件一律 `skip`，**其 config 没有任何仓库内脚本会验**；② 解析基座曾是 `$DSH_HOME/profiles/`（错），**已修**为 profile 自己的目录——见 **D-63** |
+
+**上一轮目标（CK3 Wiki 镜像）已 CANCELLED 并完成清理（D-57）**，下文保留为该项目的完整历史记录；
+它留下的 913 条知识库本轮**未被使用**。
+
+**CK3 Wiki 镜像 —— CANCELLED and fully cleaned up（用户于上一轮会话取消，D-57）。**
 交付物 `tools/ck3wiki/`（工具 + `falsify.mjs` + README）与知识库 `Crusader Kings III Wiki`
 （`iYD6qed-…`，913 条）**两者都已交付**；本次按用户要求取消项目并做全面清理：删掉 934 个
 生成物文件（19.41 MB，可重建）、5 个一次性/探针脚本与 `$DSH_HOME\profiles\web\` 的四个 CK3

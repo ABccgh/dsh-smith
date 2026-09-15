@@ -50,7 +50,7 @@
  *   node bin/preflight.mjs --path <file>      preflight a specific composition file
  *   node bin/preflight.mjs --quiet            only rows that failed
  */
-import { access, readFile } from 'node:fs/promises'
+import { access, readFile, readdir } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -204,6 +204,41 @@ function expressionPaths(value, prefix = '') {
   return []
 }
 
+/**
+ * Name the profile whose `node_modules` a row's package name should resolve against.
+ *
+ * A preset does not carry its profile, and `--preset` names a preset rather than a profile, so the
+ * profile is discovered: an explicit `--profile <name>` wins; otherwise a directory under
+ * `profiles/` that owns a `package.json`, preferring `web`. Returns `undefined` when none
+ * qualifies, which is the honest answer on a machine — or a CI runner — with no profile at all.
+ *
+ * @param profilesDir - the absolute `$DSH_HOME/profiles` directory.
+ * @returns the profile name, or undefined when no profile can host a resolution.
+ */
+async function discoverProfile(profilesDir) {
+  const index = process.argv.indexOf('--profile')
+  if (index !== -1 && process.argv[index + 1] !== undefined) return process.argv[index + 1]
+  let names
+  try {
+    names = (await readdir(profilesDir, { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+  } catch {
+    return undefined
+  }
+  const withManifest = []
+  for (const name of names) {
+    try {
+      await access(join(profilesDir, name, 'package.json'))
+      withManifest.push(name)
+    } catch {
+      // a profile directory without a manifest cannot host a resolution
+    }
+  }
+  if (withManifest.length === 0) return undefined
+  return withManifest.includes('web') ? 'web' : withManifest.sort()[0]
+}
+
 async function targetComposition() {
   const index = process.argv.indexOf('--path')
   if (index !== -1 && process.argv[index + 1] !== undefined) return resolve(process.argv[index + 1])
@@ -245,9 +280,36 @@ async function main() {
   }
 
   const rows = collectRows(document)
+  // WHICH BASE A ROW'S PACKAGE NAME RESOLVES AGAINST — measured, and it is NOT
+  // `$DSH_HOME/profiles`.
+  //
+  // The harness resolves a preset's bare specifiers against the *profile's own directory*:
+  // `dsh-agent-presets` reads `agentCtx.baseUrl` and hands it to the loader as `harnessBase`
+  // (`dsh-agent-presets/lib/index.js:1297-1299`, `:647-675`), so a row named `dsh-ima-kb`
+  // resolves through `profiles/<name>/node_modules` — which is exactly where
+  // `dsh plugin --profile <name> add <path>` puts its symlink.
+  //
+  // An earlier revision used `join(DSH_HOME, 'profiles', 'package.json')`, which resolves one
+  // level up from there. The effect was silent and total: EVERY plugin row in EVERY preset
+  // reported `Cannot find package …` no matter how correctly it was installed, while the
+  // harness itself composed the same row without a warning. Measured on this deployment —
+  // `dsh-ima-kb`, `dsh-account-balance` and `dsh-ck3-modcheck` all failed here and all three
+  // resolve from `profiles/web`.
+  //
+  // The profile name is not carried by a preset (`--preset` names a preset, not a profile), so
+  // it is discovered: an explicit `--profile`, else a directory under `profiles/` that owns a
+  // package.json, preferring `web`, which is the profile this repository targets. When no
+  // profile qualifies, the old base is used and the failure is reported plainly rather than
+  // being papered over.
   const profileRoot = join(DSH_HOME, 'profiles')
-  const requireFrom = createRequire(join(profileRoot, 'package.json'))
+  const profileName = await discoverProfile(profileRoot)
+  const requireFrom = createRequire(join(profileName === undefined ? profileRoot : join(profileRoot, profileName), 'package.json'))
 
+  if (profileName !== undefined) {
+    say(`resolving rows against profile: ${profileName}`)
+  } else {
+    say('resolving rows against: $DSH_HOME/profiles (no profile with a package.json was found)')
+  }
   say(`composition: ${compositionPath}`)
   say(`rows:        ${rows.length}`)
   say('')

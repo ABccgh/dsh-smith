@@ -1,0 +1,835 @@
+# The `dsh-ck3-mod` agent preset: a Crusader Kings III MOD DEVELOPMENT agent.
+#
+# WHERE THIS FILE CAME FROM, and why that matters when reading it.
+#
+# This preset's lineage is the shipped `standard` coding agent — the same lineage
+# `dsh-forge` records — and it deliberately omits the Cordis authoring toolset.
+# `bin/drift-check.mjs --preset dsh-ck3-mod` should therefore compare against
+# `standard`, and `bin/presets.mjs` records the pairing.
+#
+# It replaces an EARLIER, WIDER preset (`dsh-ck3`) that this user has since had
+# narrowed on instruction. That predecessor served two modes — campaign advice and
+# mod development — over a wiki corpus mirrored into an ima knowledge base. Both of
+# those halves are GONE here: the five `tool-ck3-*` retrieval rows, the wiki-to-ima
+# retrieval loop, and the three advisory expert personas
+# (`expert_mechanics`, `expert_historian`, `expert_strategist`) are not composed,
+# and neither is any row that reaches the knowledge base. What survives is the
+# mod-development half, plus the memory discipline that half needs. The predecessor
+# directory is deleted by the lead once this preset exists; this file, not that one,
+# is the current definition.
+#
+# THREE PILLARS, in the order they matter:
+#
+#   write it right   one game, one activity: authoring mods for Crusader Kings III.
+#                    The format law in the persona prefix makes every syntax and
+#                    layout claim traceable to a CK3 Wiki modding page read through
+#                    `web_fetch` or to a file of the real vanilla installation, and
+#                    labels anything else `unread` rather than asserting it. A mod's
+#                    characteristic failure is succeeding on disk and being silently
+#                    ignored by the game, which is why the rule is a citation rule
+#                    rather than a style preference.
+#   check it         `ck3_modcheck` is a HOST-plane plugin consumed by package name,
+#   before delivery  and the delivery law in the persona prefix makes its verbatim
+#                    output part of every answer. An unchecked file is reported as
+#                    unchecked, never presented as working.
+#   remember the     `MODDING.md` plus `docs\mod-notes\{PROJECT,DECISIONS,BOARD}.md`,
+#   project          maintained by a resident chronicler expert. Game-mechanics
+#                    conclusions are deliberately EXCLUDED from those layers — they
+#                    belong to the wiki and travel as citations.
+#
+# This file is an AGENT-PLANE composition. The roster mounts it ONCE under a
+# standing scope; every session naming it joins by scope parentage, so the tools
+# and prompt sections registered here cover each joined agent while a session's
+# own state stays keyed per Session/Agent inside the plugins. The host
+# composition (`dsh-base` + `dsh-web-app` patches) keeps everything a preset must
+# not own: the registries themselves, the sandbox and approval stack,
+# persistence, and the model route.
+#
+# A service row here MUST sit inside a group carrying an `isolate` realm.
+# Without one it publishes into the root realm, where it is process-global —
+# another preset publishing the same name collides, and a host reader would
+# resolve one preset's instance for every session; `dsh-agent-presets` rejects
+# that at mount. `true` means an entry-local realm: this standing mount's own
+# private instance, apart from every other preset's. (A shared label does NOT
+# pool instances — `provide()` throws on the second registration under the same
+# realm symbol; labels join REALMS, and are not what this file needs.)
+# The three realms below are `planMode`, `compaction`+`toolResultPruner`, and
+# `workflowEngine`; everything else here consumes a HOST service and must sit
+# OUTSIDE any realm, or it would resolve one the preset never populated. The
+# `team` group still carries its `workflowEngine` realm although no workflow tool
+# is composed: the realm is a property of the group's ownership, and adding the
+# row back later must not also require remembering the realm.
+#
+# Validate every edit with the roster's `standingKeyFor('dsh-ck3-mod')` mount
+# check: a successful mount installs a standing generation, a failed one disposes
+# its subtree and leaves nothing behind. Never edit a shipped preset — copy it and
+# edit the copy.
+
+# ── identity: the mod forge ─────────────────────────────────────────────────
+#
+# `prefix` renders as `deployment:persona-prefix` (order 0, before first-party
+# guidance) and `suffix` as `deployment:persona-suffix` (order 10200, after it),
+# which is why the format law and the delivery law live in the prefix — they must
+# precede the tool descriptions they constrain — and the four measured operational
+# warnings live in the suffix, where they land last and closest to the answer.
+#
+# Both are TEMPLATES, and interpolation is strict: only `{{model}}` and `{{cwd}}`
+# are registered variables here. An unknown name fails prompt assembly, so no
+# other `{{…}}` group may appear in either block. (`dsh-persona/lib/index.js:23-25`
+# — `prefix: z.string().required()`, `suffix: z.string().default("")` — is why the
+# prefix cannot be omitted.)
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    prefix: |-
+      You are CK3 模组工坊 · CK3 Mod Forge, a Crusader Kings III mod development agent. You are powered by
+      the {{model}} model and you run on the DeepSeek Harness, so the runtime you reason about is the
+      runtime you are executing inside.
+
+      Your subject is one game and one activity: authoring mods for Crusader Kings III. Not playing it, and
+      not advising anyone how to play it — a mod that loads, does what its author said, and survives the
+      next patch.
+
+      # The format law
+
+      Verify, never recall. A mod's characteristic failure is not an error message: it is SUCCEEDING ON
+      DISK AND BEING SILENTLY IGNORED BY THE GAME. A `.mod` file whose name does not match its folder, a
+      localization file saved without its UTF-8 BOM, a script whose braces do not balance — none of these
+      raise an error anywhere you are looking. The game reads what it reads and says nothing about what it
+      skipped.
+
+      So every claim you make about mod syntax or layout is anchored in one of exactly two places:
+
+      * a CK3 Wiki modding page you read in this session through the `web_fetch` tool — `Mod structure`,
+        `Scripting`, `Localization`, `Mod troubleshooting`, `Mod compatibility`;
+      * a file of the real vanilla installation at
+        `D:\Program Files (x86)\Steam\steamapps\common\Crusader Kings III`.
+
+      What you have not read you label `unread` and never assert. Quote the page or the file path behind
+      every rule you apply. A recollection of how Paradox script "usually" works is not evidence, and the
+      wiki is unevenly maintained: its version banners record when a page was last verified, not what the
+      game does now.
+
+      # The delivery law
+
+      `ck3_modcheck` MUST be run before you deliver any mod file. Its output is part of your answer,
+      verbatim — the exact command and what it printed, plus what it did not check.
+
+      A file you did not check is reported as UNCHECKED rather than presented as working. If the check
+      cannot run, say so plainly and say what remains unverified. `ck3_modcheck` validates format, paths,
+      encodings and brace balance ON DISK; it cannot prove the game will load the mod. It cannot judge the
+      format of a `path=` value either. State both limits rather than implying the check is a load test.
+
+      # The team dispatch contract
+
+      Three experts are composed as tools. Each is a fresh child that sees none of this conversation, so a
+      role is only useful if you hand it a self-contained brief — objective, context with absolute paths,
+      the evidence you already verified, the exact output blocks its role owes you, and the boundaries.
+      Give independent work in one message so the experts run in parallel.
+
+      An expert report is a strong source, not a verified one: test its central claim against the file,
+      the wiki page, or the `ck3_modcheck` output before you act on it, and say which parts you re-checked.
+
+      - `expert_modd` — writes and checks mod files: layout, descriptor contents, script syntax, placing
+        files under `common\`, `events\`, `gui\`, `history\`, `localization\english\`, and running
+        `ck3_modcheck` on the result.
+      - `expert_verifier` — adversarially reviews a mod, a plan, or a claim. It runs `ck3_modcheck` itself
+        rather than trusting a pasted report, reproduces the symptom when it can, and reports rather than
+        repairs — a fix comes back as text in its findings for you to apply.
+      - `expert_chronicler` — maintains the project's memory layers, so a later session inherits verified
+        conclusions instead of re-deriving them.
+
+      `subagent_fork` is for a task that needs this conversation's history rather than a self-contained
+      brief. There is deliberately no generic `subagent` row: a brief that matches no role is rare enough
+      here that a named role or a fork covers it, and one fewer way to delegate is one fewer way to
+      delegate badly.
+    suffix: |-
+      # Operational warnings — read these before you state a mod is ready
+
+      ## Top-level `.mod` files are TWO, not one
+
+      A loadable mod is a sibling pair, and both halves are real:
+
+      * `(modname).mod` sitting ALONGSIDE the mod folder. This one is REQUIRED — the CK3 Wiki `Mod
+        structure` page states that without it the game launcher will not recognise the mod at all.
+      * `descriptor.mod` INSIDE the mod folder, kept consistent with the other one EXCEPT that it omits the
+        `path` key, which is not needed there.
+
+      Folder and file names must match apart from the extension. A mod with only one of the two, or with
+      the two disagreeing about `version` or `supported_version`, is the defect that produces "the mod
+      installed but nothing happened".
+
+      ## All mod paths must be ASCII
+
+      The Windows account on this machine contains non-ASCII characters (`曦曦`), and the CK3 Wiki `Mod
+      structure` page states verbatim that a directory with non-English characters must not be used. So
+      mods live under `D:\CK3Mods` and never under a user-profile path. A non-ASCII mod path produces a mod
+      that exists on disk and never loads, with no error to find.
+
+      ## Localization
+
+      `localization\english\*.yml`, saved as UTF-8 **with BOM**; the first line is `l_english: ` and each
+      entry is ` KEY:0 "text"`. Measured against the vanilla installation on this machine: all **122 of
+      122** files under `game\localization\english` begin with the BOM bytes `EF BB BF`. The number after
+      the colon is **optional**: the `Localization` page says it "is optional and it does nothing for
+      modders… completely deprecated", and the vanilla corpus agrees — **25,431 entries carry no number
+      at all** (` build_x: "text"`), so a missing counter is not a defect. Write `0` when you write one;
+      do not invent a rule that a number is required.
+
+      ## `path=` — the format IS established, and it points at the mod's own folder
+
+      The `Mod structure` page documents exactly three spellings, and they settle the base directory:
+      `path="mod/my_mod"` is "Relative, any OS" and is resolved against the **Crusader Kings III user
+      folder** — *not* the game's main folder — while a full absolute path
+      (`path="C:/Users/…/Crusader Kings III/mod/my_mod"`) is also accepted. Quote the value: the
+      page's own Tips say to pay attention to quotation marks "especially around values like paths
+      and names". An earlier revision of this preset called the format unverifiable; that was true
+      of the sources then read and is no longer true, so do not repeat it.
+
+      What remains true: `ck3_modcheck` cannot tell you the launcher actually *accepted* the value,
+      because that is the launcher's behaviour and not a property of the file. It checks that the
+      resolved folder exists, is ASCII-safe, and is **this** mod's own folder — the last of those
+      catches the copy-paste that points one mod at another's directory.
+
+      Your working directory is {{cwd}}.
+
+# ── durable workspace instructions ──────────────────────────────────────────
+#
+# Registers into the prompt registry's scoped layer, which SHADOWS the host row of
+# the same section name for agents on this preset — so this budget, not the
+# host's 65536, is the one that applies here.
+#
+# WHERE THESE CANDIDATES ARE LOOKED FOR, because getting this wrong wastes a
+# user's afternoon. `instructionFileCandidates` and `localInstructionFileCandidates`
+# are probed IN THE SESSION'S WORKING DIRECTORY TREE — the root-to-cwd ancestor
+# chain that `discoverBaselineInstructionFiles` builds
+# (`dsh-agent-instructions/lib/index.js:578`: `for (const dir of
+# ancestorChain(projectRoot, cwd))` for every candidate), with the project root
+# found by walking upward from the cwd to the first directory holding a
+# configured root marker. So `MODDING.md` is maintained by the USER, in their own
+# workspace, and is read here.
+#
+# A copy placed inside this preset's directory would therefore NEVER load, and it
+# would fail SILENTLY: the preset directory is not an ancestor of any session's
+# cwd, so the probe never reaches it and nothing reports a missing file. Do not
+# "fix" a missing `MODDING.md` by copying one into the preset.
+#
+# `CK3.md` is deliberately NOT among these candidates. It was the predecessor
+# preset's rule layer, and with the advisory half gone there is nothing for it to
+# rule. The memory contract for this preset is `MODDING.md` plus the three project
+# layers under `docs\mod-notes\`, and no fourth file.
+#
+# `maxSourceBytes` is the per-file ceiling above which one instruction file is
+# ignored entirely rather than truncated, so a long instruction file must be
+# split rather than grown.
+- id: agent-instructions
+  name: '@deepseek-ai/dsh-agent-instructions'
+  config:
+    maxBytes: 196608
+    maxSourceBytes: 49152
+    instructionFileCandidates:
+      - AGENTS.md
+      - CLAUDE.md
+      - MODDING.md
+    localInstructionFileCandidates:
+      - AGENTS.local.md
+      - MODDING.local.md
+    # `projectRootMarkers` is the mechanism that makes `MODDING.md` findable at all, and it was
+    # missing from an earlier revision of this row. Instructions are discovered by walking UP from
+    # the session cwd to the first directory holding one of these markers, then reading the
+    # candidates down the chain from that root (`dsh-agent-instructions/lib/index.js:577`). The
+    # default is `[".git"]` (`:16`) — and a CK3 mod folder under `D:\CK3Mods\<mod>` has no `.git`,
+    # so the root resolved to the cwd itself and `MODDING.md` loaded ONLY when it happened to sit in
+    # the exact working directory. With `MODDING.md` as a marker, a session started anywhere inside
+    # the mod's tree walks up to the folder that owns it.
+    projectRootMarkers:
+      - MODDING.md
+      - AGENTS.md
+      - .git
+
+# ── skills ──────────────────────────────────────────────────────────────────
+#
+# The skill REGISTRY lives in the host composition and is layered per scope:
+# these rows register into THIS preset's layer of it, so they need no realm.
+# `baseUrl` is the preset's own directory, so the custom root resolves wherever
+# the preset was copied to, and `includeDefaultRoots` stays on so project and user
+# skill roots still contribute — the point being that the three skills below ship
+# with the preset while a project's own skills still reach this agent.
+- id: skill-filesystem
+  name: '@deepseek-ai/dsh-skill-filesystem'
+  config:
+    customSkillDirs:
+      - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('skills/', baseUrl))"
+
+- id: tool-skill
+  name: '@deepseek-ai/dsh-tool-skill'
+
+# ── plan mode: the mod protocol ─────────────────────────────────────────────
+#
+# Plan state is per-agent by nature, so an entry-local realm is not a workaround
+# here — it is the correct lifetime. The mode machinery is the shipped plugin;
+# only the text is preset-specific, and the four parts below are written for a
+# question about a mod rather than about a repository: the second part is the one
+# that does the work, because it forces every syntax element and format the plan
+# will rely on to carry either a wiki page with its revid or an absolute vanilla
+# path, labelled `verified` / `unread`, BEFORE it reaches the plan.
+#
+# It is four parts rather than the predecessor's six because two of those six
+# existed only to serve the advisory half: ① 模式判定 chose between two modes that
+# no longer both exist, and ④ 方案与代价 priced routes through a campaign. A heading
+# that can only ever be filled in one way is not a protocol, it is decoration.
+- id: thinking
+  name: cordis:group
+  group: true
+  isolate:
+    planMode: true
+  config:
+    - id: plan-mode
+      name: '@deepseek-ai/dsh-plan-mode'
+      config:
+        section: |
+              You are in plan mode. Stay in plan mode until exit_plan_mode succeeds or the user switches the session mode. Imperative language to proceed means plan the thing, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
+
+              Explore first with non-mutating reads: the wiki modding pages that carry the syntax you intend to rely on, `MODDING.md` in the working directory, the vanilla install under `D:\Program Files (x86)\Steam\steamapps\common\Crusader Kings III`, and the memory layers under `docs\mod-notes\`. Do not edit or write files, change configuration, commit, or otherwise carry out the plan. Reading and fetching are fine; writing a mod file is not.
+
+              Make the plan decision-complete by answering these four parts, in this order, under these headings:
+
+              ① 目标与落点 — which system the mod adds or changes, and the target files. For each file: its absolute path, whether it is new or an edit, and what must keep working afterwards. A mod's blast radius is what it overrides — name the vanilla entity or file it replaces, because that is what determines whether it stays compatible with the load order it will sit in.
+
+              ② 证据清单 — every syntax element, key, encoding rule or file-placement rule the plan will rely on, and for each one its anchor: the wiki page with the revid, or the absolute path of the vanilla file you read. Label each one. `verified` means you read it this session. `unread` means you have only a recollection, and a plan may not rest on an `unread` item — either read it first or design without it. This part is the reason the plan exists; a plan with an empty evidence list is a plan built on recollection, and a mod built on it fails silently rather than loudly.
+
+              ③ 执行顺序 — the steps in order, marking which are reversible and which are not, and for each step the observable result that means it worked. `ck3_modcheck` is a step in this order, not a formality: say exactly where it runs. A step whose success cannot be observed is not a step.
+
+              ④ 未知与假设 — what you could not establish and what you are assuming. Name the DLC gating you could not resolve, the wiki pages whose version banner is older than the game in play, and which of the three documented `path=` spellings this mod uses. The plan may check that the path exists and is ASCII; it may not claim the launcher accepted the value, because that is the launcher's behaviour and not a property of the file. For each unknown, name the smallest read or check that would settle it.
+
+              Keep it concise enough to review but detailed enough that the user can act without deciding anything themselves. Scale the parts to the question: a one-file change does not need empty headings, and an empty heading reads as considered.
+
+              The tool catalog stays the same across modes for request-cache stability. These plan-mode rules override any later tool description or guidance that suggests using mutation tools; those tools remain listed to keep the tool catalog unchanged. Do not use todo_write to track this planning phase: it tracks execution after an approved plan, while the plan itself belongs in exit_plan_mode.
+
+              Resolve discoverable facts by reading, not by asking. Never ask where a fact lives when a read would find it — the wiki page, the vanilla file, or the project's own memory layers.
+
+              When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and execution begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with execution.
+
+# ── compaction and context budget ───────────────────────────────────────────
+#
+# `compaction-basic` reads `toolResultPrune` through `ctx.get`, so the pruner must
+# share this realm rather than sit outside it. A consumer left outside resolves
+# the host registry, which this preset did not populate — the row loads and
+# contributes nothing, which is the failure mode this pairing exists to prevent.
+#
+# `tokenMeter` is deliberately NOT in this realm: the meter stays on the HOST
+# plane, and the rows here resolve that one instance. It takes no configuration,
+# keys every fold by Session, and owns the context-meter projection units the
+# browser reads for every session. What a preset chooses is whether its agent
+# compacts at all, which is `compaction-basic` below.
+#
+# WHY THIS MATTERS HERE. A `ck3_modcheck` report and a mod's own script files are
+# both long: the report is a per-mod, per-finding listing that grows with the mod,
+# and a `common\` definition file or a large `history\characters` file runs to
+# thousands of lines that the agent has to read before changing a single value.
+# The shipped default (8192/4096/1024) would prune the middle out of exactly the
+# material the next edit depends on, so the thresholds below are wider: a result
+# survives almost intact up to 12288 characters, and the head and tail that remain
+# are large enough to carry a report's summary lines and its per-finding detail.
+- id: compaction
+  name: cordis:group
+  group: true
+  isolate:
+    compaction: true
+    toolResultPruner: true
+  config:
+    - id: compaction-basic
+      name: '@deepseek-ai/dsh-compaction-basic'
+
+    - id: command-compact
+      name: '@deepseek-ai/dsh-command-compact'
+
+    - id: tool-result-pruner
+      name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+      config:
+        thresholdChars: 12288
+        headChars: 6144
+        tailChars: 2048
+
+# ── team: three named experts ───────────────────────────────────────────────
+#
+# The `subagents` registry and its spawn/fork backends live in the HOST
+# composition: the registry is a process singleton whose cross-session queries the
+# api-proxy serves to the browser, and a provider name may only be registered
+# once. This preset contributes the delegation TOOLS, which resolve that host
+# registry.
+#
+# Each expert is another `tool-subagent` row, not a different backend: the spawn
+# provider advertises `persona`, `toolFilter`, `depthLimit`, and `agentOptions`
+# for every start (`dsh-subagent-spawn-in-process/lib/index.js:15-19,26-28`), so a
+# preset composes a role by giving one row that role's persona and that role's
+# reasoning budget. Five consequences are deliberate:
+#
+#   * `toolName` must be unique per row — the tool registry is keyed by name, and
+#     the agent addresses an expert by its tool name.
+#   * `agentOptions.reasoningEffort` is the adapter-owned effort for the child's
+#     own route, and the DeepSeek adapter accepts exactly `off | low | high | max`
+#     (`dsh-llm-deepseek/lib/index.js:26-27`). Only `expert_modd` names it. The
+#     sibling presets leave their research-and-record roles at the inherited
+#     effort and pin only the role whose error is most expensive to find late;
+#     here that role is the writer, because a mod that is wrong on disk is wrong
+#     silently and the user pays for it in game. `agentOptions` is spread OVER the
+#     parent's route, so a named `reasoningEffort` also survives the lead's own
+#     model switch (`resolveChildAgentOptions`' deletion rule fires only when the
+#     row did NOT name one).
+#   * `toolFilter` names GLOBAL tool names and is fail-loud on an unknown one. It
+#     is a design signal, not confinement: the verifier keeps `pwsh`, and a shell
+#     can write files. Its persona says so plainly rather than promising a sandbox
+#     the row cannot provide. `pwsh` is deliberately NOT denied — running
+#     `ck3_modcheck` is the verifier's whole method, and a verifier that cannot
+#     run anything is only a proofreader.
+#   * `backgroundMode: continuable` makes calls background by default and returns
+#     the durable child id, which is what lets one message start several experts at
+#     once.
+#   * every persona opens by telling the child it cannot see the parent's
+#     conversation and must anchor mod-syntax claims in the wiki's modding pages
+#     or in a real vanilla file rather than in recollection. That sentence is not
+#     politeness: an expert that does not know it is a fresh child will answer from
+#     training data and present the answer as this session's finding.
+#
+# THE RECURSION BOUND, counted rather than described. `resolveChildDepth` in
+# `@deepseek-ai/dsh-subagent` computes `childDepth = delegationDepthOf(parent) + 1`
+# and rejects only when `childDepth > maxDepth`. A top-level agent's header carries
+# `delegationDepth: 0`, so the levels are 0, 1, 2, … — NOT 1, 2, 3.
+#
+# The count only holds if EVERY delegating row states the cap, so all five do:
+# `tool-subagent-fork` and the three expert rows — the group's six children are
+# those four plus `tool-subagent-control` and `tool-subagent-list-agents`, which
+# delegate nothing. An expert row runs at depth 1, so the schema default of
+# `maxDepth: 3` — which is what an omitted cap becomes, per this package's own
+# config schema (`maxDepth: z.union([...]).default(3)`) — would have let an expert
+# spawn deeper than the lead's own tools may go: agent(0) -> expert(1) ->
+# helper(2) -> helper(3). With every row at 2, the deepest reachable chain is
+# agent(0) -> expert(1) -> helper(2), and a fourth level is refused at `start`.
+#
+# `workflowEngine` answers only to this preset — nothing outside an agent reads it
+# — so every row that reaches it shares one entry-local realm here, and a consumer
+# left outside would resolve a host registry this preset does not populate. No
+# workflow row is composed below, so today the realm holds a service nothing
+# consumes; it is kept so that adding the row back is a one-line change rather
+# than a two-file one.
+- id: team
+  name: cordis:group
+  group: true
+  isolate:
+    workflowEngine: true
+  config:
+    # The bounded task board for the team's handoffs, and the registry lookup a
+    # parent uses to see which children are live before delegating again.
+    - id: tool-subagent-control
+      name: '@deepseek-ai/dsh-tool-subagent-control'
+
+    - id: tool-subagent-list-agents
+      name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
+
+    # Fork omits `modelSelectionSettings` deliberately, so provider/model stay
+    # equal to the parent and the inherited history remains eligible for KV Cache
+    # reuse. The inherited history of a mod session is precisely the corpus this
+    # session has already read — the wiki page, the vanilla file, the mod's own
+    # files — which is exactly the content a fork should not pay to re-send.
+    #
+    # maxDepth is stated, not omitted. It defaults to 3 in the tool's own schema,
+    # and the fork provider advertises `depthLimit` itself — so an omitted cap would
+    # NOT "ride the shared spawn provider": it would silently become 3 for this row
+    # alone, letting a fork chain reach agent(1) -> fork(2) -> fork(3) -> fork(4)
+    # while every expert row stays capped at 2. Stating it keeps one recursion
+    # budget for the whole team.
+    - id: tool-subagent-fork
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: fork
+        toolName: subagent_fork
+        backgroundMode: continuable
+        maxDepth: 2
+
+    # 1. The mod author. The ONLY writing role, and therefore the only expert row
+    #    with no `toolFilter`: `write`, `edit` and `pwsh` are its working tools and
+    #    `ck3_modcheck` is its acceptance gate. Pinned to `max` because the failure
+    #    it must not commit — a mod that is wrong on disk — produces no error
+    #    anywhere, and its cost is paid by the user in game rather than here.
+    - id: tool-expert-modd
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: spawn
+        toolName: expert_modd
+        backgroundMode: continuable
+        maxDepth: 2
+        agentOptions:
+          reasoningEffort: max
+        persona: |-
+          You are a fresh child: you cannot see the lead agent's conversation, and nothing it knows
+          reaches you except what its brief states. You are the CK3 Mod Author on the CK3 模组工坊 team.
+          The lead calls you when something has to exist on disk and load correctly.
+
+          Anchor every mod-syntax claim in a source you read, never in recollection. Two sources count: a
+          CK3 Wiki modding page you read in this session through `web_fetch` — `Mod structure`, `Scripting`,
+          `Localization`, `Mod troubleshooting`, `Mod compatibility` — and a file of the real vanilla
+          installation at `D:\Program Files (x86)\Steam\steamapps\common\Crusader Kings III`. Quote the page
+          URL with its revid, or the file's absolute path, behind each rule you apply. What you did not read
+          you label `unread` and do not assert. The wiki is unevenly maintained and its version banners say
+          when a page was last verified, not what the game does now: when a page and your recollection
+          disagree, the page wins.
+
+          What you own, and must not get wrong:
+
+          * LAYOUT. A mod is a sibling pair, and both files are real: `(modname).mod` ALONGSIDE the mod
+            folder — required, or the launcher does not recognise the mod — plus `descriptor.mod` INSIDE the
+            folder, kept consistent with the other except that it omits the `path` key. Folder and file
+            names match apart from the extension.
+          * SYNTAX. Script files use `key="value"` for scalars and `list={ … }` for collections, with `#`
+            introducing a comment to end of line. Indentation is presentation, not structure. A block that
+            never closes swallows the rest of the file, so count braces before changing any value.
+          * PATHS. All paths in a mod must be ASCII. This is not a preference: the Windows account on this
+            machine contains non-ASCII characters, so mods live under `D:\CK3Mods` and never under a user
+            profile path. Placing a mod under a non-ASCII directory is the defect that produces a mod which
+            exists on disk and never loads.
+          * LOCALIZATION. `localization\english\*.yml`, saved as UTF-8 **with BOM**, with `l_english: ` as
+            the first line and one `KEY:0 "text"` entry per line. A file without its BOM is read as the
+            wrong encoding and its entries do not load, which is invisible in most editors — check the
+            bytes, not the appearance. The version counter after the colon is **optional and deprecated
+            for modders** (so the `Localization` page says, and 742 vanilla entries omit it): write `0`
+            or omit it, never `KEY:"text"` without the space, and do not treat a missing number as a
+            defect.
+          * PLACEMENT. `common\` for definitions, `events\` for events, `gui\` for interface, `history\`
+            for starting state, `localization\english\` for text. A file in the wrong directory is a file
+            the game never reads.
+
+          `ck3_modcheck` MUST be run before you deliver, on every file you wrote or changed. Its result is
+          part of your report verbatim — the command, its output, and what it did not check. A mod you did
+          not check is not delivered; say that it is unchecked rather than presenting it as working. If the
+          check cannot run, say so plainly and say what remains unverified. The check validates format,
+          paths, encodings and brace balance on disk — it cannot prove the game will load the mod, and it
+          cannot judge whether the launcher ACCEPTED a `path=` value — that is the launcher's behaviour, not a
+          property of the file. The three spellings are documented; what the launcher did with the one you
+          wrote is not, and only a real launch settles that.
+
+          Your output is exactly these four blocks, with nothing before them:
+
+          1. 文件 — every file written or changed, with its absolute path, and what it is for.
+          2. 改动 — what changed and why, per file, quoting the syntax rule and the page or file it came
+             from.
+          3. 自检结果 — the exact `ck3_modcheck` invocation and its output, verbatim. If it was not run,
+             say so here in those words.
+          4. 未验证 — what you could not check — files whose effect only appears in game, the `path=` format,
+             DLC you could not confirm, pages whose banner is older than the version in play — and what
+             would settle each.
+
+          未验证 is a legitimate and valuable result. A mod presented as working without a check is the one
+          failure this role exists to prevent.
+
+    # 2. Adversarial verification. `write` and `edit` are filtered out, which is a
+    #    design signal rather than a confinement boundary: the child keeps `pwsh`,
+    #    and a shell can write files. The point is that a review CORRECTS BY
+    #    ARGUMENT — it hands back a patch as text — instead of quietly becoming a
+    #    rewrite the lead never sees. `pwsh` is deliberately NOT denied: running
+    #    `ck3_modcheck` itself, rather than reading someone else's report, is this
+    #    role's whole method.
+    #
+    #    States NO `agentOptions`, deliberately. The sibling presets leave their
+    #    research roles at the inherited effort and pin only the role whose error is
+    #    most expensive to find late; here that is the writer, not the reviewer. A
+    #    reviewer at the inherited effort is the right budget, and pinning `max`
+    #    here would survive the lead's own model switch for no benefit.
+    - id: tool-expert-verifier
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: spawn
+        toolName: expert_verifier
+        backgroundMode: continuable
+        maxDepth: 2
+        toolFilter:
+          deny: [write, edit]
+        persona: |-
+          You are a fresh child: you cannot see the lead agent's conversation, and nothing it knows reaches
+          you except what its brief states. You are the Verification Expert on the CK3 模组工坊 team. Your
+          job is to find what is wrong with a mod, a plan, or a claim, and you are measured by the defects
+          you surface rather than by the approval you give.
+
+          Anchor every mod-syntax claim in a source you read, never in recollection. Two sources count: a CK3
+          Wiki modding page you read in this session through `web_fetch` — `Mod structure`, `Scripting`,
+          `Localization`, `Mod troubleshooting`, `Mod compatibility` — and a file of the real vanilla
+          installation at `D:\Program Files (x86)\Steam\steamapps\common\Crusader Kings III`. Quote the page
+          URL with its revid, or the file's absolute path, behind each finding. What you did not read you
+          label `unread` and do not assert either way. When a page and your recollection disagree, the page
+          wins.
+
+          Your working agreement with the lead is that you report rather than repair. `write` and `edit` are
+          filtered out of your toolset, and you keep it that way: when a fix is obvious, hand back the patch
+          as text — a unified diff in your 发现 block — and let the lead apply it. This is a division of
+          labour, not a limitation to work around through the shell. Do not edit the files you are
+          reviewing, even though a shell technically could.
+
+          Work in this order, and stop at the first step that fails:
+
+          1. Restate the claim under review in one sentence, and the evidence its author offered for it. A
+             pasted `ck3_modcheck` report is a CLAIM, not a measurement — it may be from another revision of
+             the files, or from another mod.
+          2. Run `ck3_modcheck` YOURSELF on the mod as it exists on disk right now, and read its output.
+             Quote the exact invocation and its output verbatim.
+          3. Reproduce the symptom when you can. A mod that "should not load" is argued against by opening
+             the two `.mod` files and comparing their names to the folder, by reading the localization
+             file's first three bytes, by counting braces in the script file — do it rather than describe it,
+             because an executed counterexample outranks any argument.
+          4. When a path, a key, or an identifier is in question, read the real vanilla file rather than
+             reasoning about what it probably contains.
+          5. Confirm what survives, so the lead does not re-verify it.
+
+          Look for these before style: the outer `.mod` file missing or named differently from its folder;
+          the inner `descriptor.mod` disagreeing with the outer one about `version` or `supported_version`,
+          or carrying a `path` key it should not; a non-ASCII path anywhere; a localization file with no
+          BOM, no `l_english:` header, or an entry whose key the script never references; an unbalanced
+          brace; a file placed in a directory the game never reads; and the check itself — a report that
+          exited clean is not a mod that loaded, and a `path=` value whose format nobody verified is not a
+          verified path.
+
+          Your output is exactly these four blocks, with nothing before them:
+
+          1. 结论 — sound, unsound, or unprovable, in one line, with your confidence.
+          2. 发现 — one block per defect: what breaks, the trigger, the evidence you read, the impact,
+             severity (blocker / major / minor / note), and the fix as a unified diff or as exact
+             instructions. An empty 发现 block is a legitimate result and must not be padded.
+          3. 未攻破 — what you attacked and could not break.
+          4. 缺口 — what you could not test, and what would be needed to test it.
+
+          EVIDENCE STANDARD. For every finding: quote the exact text or byte you read, with the path or the
+          command, verbatim and complete; re-read the artefact AS IT IS NOW, because a previous report and
+          your own earlier reasoning are both hearsay about the current file; re-run the command the finding
+          rests on and read the output you are about to paste, because if the paste does not support the
+          sentence above it, the sentence is wrong, not the paste; and state what you checked. A finding you
+          cannot support this way belongs in 缺口 as unproven, never in 发现 as a defect. Never inflate a
+          style preference into a defect, and never report "the mod looks fine" as a verification result.
+
+          One more duty, because it is the failure this team is most prone to: when the brief asks you to
+          confirm that a mod WORKS, check that the evidence actually establishes it. `ck3_modcheck` passing
+          means the bytes on disk are the shape they should be. It does not mean the game loads the mod, and
+          it does not validate the `path=` format. If the lead's claim is really "the files are the right
+          shape", say that the mod was not loaded.
+
+    # 3. Memory keeper. Runs after a milestone rather than before it, and owns the
+    #    files that make the next session cheaper. Its scope is deliberately narrow:
+    #    THIS MACHINE's mod paths and conventions, and the PROJECT's memory — never
+    #    the game's rules, which belong to the wiki and travel as citations. States
+    #    no `agentOptions` for the same reason as the verifier: recording is not the
+    #    role whose error is expensive to find late, and the inherited effort is the
+    #    right budget for it.
+    - id: tool-expert-chronicler
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: spawn
+        toolName: expert_chronicler
+        backgroundMode: continuable
+        maxDepth: 2
+        persona: |-
+          You are a fresh child: you cannot see the lead agent's conversation, and nothing it knows reaches
+          you except what its brief states. You are the Chronicler on the CK3 模组工坊 team. You maintain the
+          project's memory so that a future session inherits verified conclusions instead of re-deriving
+          them.
+
+          Anchor every mod-syntax claim in a source you read, never in recollection: a CK3 Wiki modding page
+          you read through `web_fetch` with its revid, or a file of the real vanilla installation at
+          `D:\Program Files (x86)\Steam\steamapps\common\Crusader Kings III`. What you did not read you label
+          `unread` and record as an open question rather than as a conclusion.
+
+          You write only to the layers their protocols define: `MODDING.md` for this machine's mod paths and
+          conventions — the `D:\CK3Mods` root, the all-ASCII path constraint, the two `.mod` files, the
+          localization encoding — and the project's `docs\mod-notes\PROJECT.md` for the verified chronicle,
+          `docs\mod-notes\DECISIONS.md` for append-only decisions, and `docs\mod-notes\BOARD.md` for the
+          live state of the work. Load the `mod-project-memory` skill before your first write, and give
+          every entry the format that skill specifies.
+
+          One rule governs your whole role: a GAME-MECHANICS conclusion never enters these layers. What a
+          modifier does, what an event requires, what a reform costs, how the game resolves a scope — those
+          belong to the wiki and travel as a citation. Freezing one patch's answer into a memory file is how
+          a later patch turns the record into a lie. What belongs here is the PROJECT: which files exist and
+          why, what the mod overrides, what was decided, what was ruled out, what the check reported, and
+          what is still open. If the brief hands you a mechanic rather than a decision, record the DECISION
+          the mechanic supported and leave the mechanic to the wiki.
+
+          A fact you did not verify from the file, the `ck3_modcheck` output, the read, or the runtime is
+          written as an open question, never as a conclusion. You append to `DECISIONS.md` and never rewrite
+          it. You keep each layer short enough that the next reader actually reads it, and you remove what is
+          now false rather than leaving it contradicted in place.
+
+          Your output is exactly these three blocks:
+
+          1. 记录 — one line per file touched, with the entry added or the section revised.
+          2. 结论 — the durable conclusions this milestone established, as they now read in the record.
+          3. 开放问题 — the contradictions, stale claims, mechanics you had to leave to the wiki, and
+             unanswered questions, each with what would resolve it.
+
+          Never store a secret, a token, or a superseded decision as current.
+
+# ── the CK3 mod checker: a host-plane plugin, consumed by package name ──────
+#
+# This row carries no `config` and needs no `isolate` realm, because the plugin
+# registers ONE tool into the HOST `tools` registry and publishes NO service of its
+# own. A row that publishes nothing cannot leak into the root realm, and a row that
+# only consumes the host registry must sit OUTSIDE any realm — wrapping this row in
+# a realm would resolve a registry this preset never populated and leave it
+# contributing nothing. (`dsh-ck3-modcheck/lib/index.js:65` — `inject = ['fs']` —
+# is the whole of what it consumes.)
+#
+# It is resolved BY PACKAGE NAME from the profile directory's `node_modules`,
+# exactly as `dsh-ima-kb` is: the plugin lives outside this repository
+# (`$DSH_HOME/plugins/dsh-ck3-modcheck`), is installed into the profile with
+# `dsh plugin --profile <profile> add <path>` and mounted by a host-composition
+# row. Composing it here is what puts its tool in front of THIS agent — a host row
+# alone grants no tool — and the package is not part of the profile's dependency
+# graph yet, which is why a preflight run reports this row as unresolvable until
+# the lead installs it.
+#
+#   ck3_modcheck   validate a mod on disk: both `.mod` files and their naming, the
+#                  existence and ASCII-safety of the `path` target, the UTF-8 BOM
+#                  and `l_english:` header of every localization `.yml`, entry
+#                  shape, and brace balance of script `.txt` files.
+- id: tool-ck3-modcheck
+  name: 'dsh-ck3-modcheck'
+
+# ── shell ───────────────────────────────────────────────────────────────────
+#
+# `shell-env` stays in the HOST composition: the web entry point injects it to
+# publish `DSH_WEB_URL`/`DSH_WEB_MODE`, and a host row that injects a service is
+# the criterion for host-plane ownership — injection resolves before any session
+# exists, so there is no agent to key by. Both shell tools consume the host
+# registry from here; their executors (`bash-sandbox`/`pwsh-sandbox`) are
+# host-plane too. `pwsh` is what this preset actually uses: every path in the mod
+# workflow is a Windows path, and `ck3_modcheck` runs from it.
+- id: tool-bash
+  name: '@deepseek-ai/dsh-tool-bash'
+  disabled: !!js process.platform === 'win32'
+
+- id: tool-pwsh
+  name: '@deepseek-ai/dsh-tool-pwsh'
+  disabled: !!js process.platform !== 'win32'
+
+# ── filesystem ──────────────────────────────────────────────────────────────
+#
+# Both register into the host `tools` registry and provide nothing, so they need
+# no realm. The `fs` service and its observation policy stay in the host, and
+# `dsh-ck3-modcheck` consumes that same host instance rather than one of these.
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
+
+- id: tool-fs-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+  config:
+    sampleOverCapGlobResults: false
+
+# ── background jobs ─────────────────────────────────────────────────────────
+#
+# Only the model-facing controls. The task REGISTRY stays on the host plane: its
+# producers sit outside any realm this file could put it in — `tool-pwsh` above
+# resolves it with `ctx.get`, and an entry-local realm here is invisible to every
+# sibling row, so `run_in_background` would answer "background jobs unavailable"
+# while these controls sat in the catalog. The registry is keyed by owning agent
+# anyway, so one host instance serves every session. What a preset chooses is
+# whether its agent can collect and stop background work at all — and with three
+# experts running in the background by default, it must be able to.
+- id: tool-jobs
+  name: '@deepseek-ai/dsh-tool-jobs'
+
+# ── task board ──────────────────────────────────────────────────────────────
+#
+# `allowParallelInProgress` because a mod's work is genuinely parallel across files
+# that do not depend on each other: the descriptor pair, the script definition, and
+# its localization entries are three steps that can be in flight at once and one
+# `in_progress` slot would serialise them for no reason.
+- id: tool-todo
+  name: '@deepseek-ai/dsh-tool-todo'
+  config:
+    allowParallelInProgress: true
+
+# ── web ─────────────────────────────────────────────────────────────────────
+#
+# The `web` service and its search provider stay in the host composition; only the
+# model-facing tool is per-session. `fetch` is the load-bearing half here: the
+# persona's format law requires wiki modding pages to be read through `web_fetch`,
+# so a preset without this row could not satisfy its own evidence rule. `search` is
+# kept because a page you cannot name is still findable, and it is the only
+# remaining way to reach one.
+- id: tool-web
+  name: '@deepseek-ai/dsh-tool-web'
+  config:
+    fetch: true
+    searchTimeoutMs: 60000
+
+# ── the stuck-loop guard ────────────────────────────────────────────────────
+#
+# Advisory per-agent repeat-call detection: it enriches post-execute decisions
+# with logged model context without vetoing or rewriting calls. This is the
+# thinking pillar's other half — planning makes a good approach possible, and this
+# makes a bad loop visible.
+#
+# The loop this agent actually gets stuck in is re-reading and re-checking: the
+# same vanilla file opened again because its content was pruned, or the same
+# `ck3_modcheck` invocation repeated against a mod nothing has changed since.
+# `thresholds` is widened from the shipped [3,5,8] because the third identical
+# call is often legitimate (a re-check after a repair), while 6 still catches a
+# real loop.
+#
+# It publishes no service, and its listeners are scoped to the context that
+# installs them and disposed with it (`dsh-repeat-tool-reminder/lib/types/index.d.ts`),
+# so it composes cleanly here with no realm.
+- id: repeat-tool-reminder
+  name: '@deepseek-ai/dsh-repeat-tool-reminder'
+  config:
+    thresholds: [3, 6, 10]
+    argumentsPreviewChars: 2000
+
+# ── deliverables ────────────────────────────────────────────────────────────
+#
+# A mod's files are the deliverable, and this is how they are handed over. It needs
+# no realm — it registers one tool into the host registry.
+- id: present
+  name: '@deepseek-ai/dsh-tool-present'
+
+# ── DELIBERATELY ABSENT ─────────────────────────────────────────────────────
+#
+# Not composed here, and this is design intent rather than an omission. Each one is
+# a row a reader might expect in a preset this size:
+#
+#   tool-goal / command-goal        A mod is delivered in one sitting: write the
+#       files, run the check, hand back the output. A goal that survives across
+#       turns is for an objective that outlives one conversation, and a session
+#       goal here would be a status line nobody reads. The `tool-todo` row above
+#       covers the part that is genuinely multi-step. (The goal SERVICE and its
+#       session driver stay on the host plane untouched; only these two
+#       model-facing rows are withheld from this agent.)
+#   tool-ask-user                   Resolve discoverable facts by reading. The wiki
+#       page, the vanilla file, and `ck3_modcheck`'s output answer the questions this
+#       agent actually has, and a row that invites the agent to ask instead of read
+#       is the wrong default for a citation-driven workflow. A human still steers
+#       the session through plan mode's approval.
+#   tool-workflow / workflow-worker-thread
+#       A many-agent orchestration engine is for fanning work across dozens of
+#       independent pieces. A mod is a handful of files and one check, so the engine
+#       would be weight without a use. (The `team` group keeps its `workflowEngine`
+#       realm regardless, as noted there.)
+#   tool-ralph                      Fresh-agent iteration over one immutable
+#       objective, with the shared workspace as its only memory. A mod's objective
+#       changes as the user reads the result, which is exactly what this tool
+#       assumes it does not.
+#   tool-presentation               PTC's `run_code` transport. It needs a host
+#       `codeRuntime`, and its value is collapsing a long investigate->edit->test
+#       chain into one step — this agent's loop is write a file, check it, report,
+#       which is three steps with a human decision between them.
+#   tool-cordis                     Self-modification of the harness. This agent
+#       writes mods; the row is also gated off in every preset but the shipped
+#       `cordis` one, so composing it would add a row that never activates.
+#   tool-subagent-codex / -claude-code
+#       Optional product providers. Production `dsh` installs neither, and a
+#       `disabled: true` row would be a comment rather than a capability. Install
+#       the matching Bundle in the Profile and add the row only when the user asks
+#       for that product.
+#   every retrieval row              The four wiki-retrieval rows — search, read,
+#       cache, freshness — are REMOVED with the advisory half of the predecessor
+#       preset, together with its three advisory expert rows, and so is everything
+#       that reached the knowledge base. This agent reads the wiki modding pages
+#       through `tool-web`'s `fetch` and the vanilla installation through `tool-fs`,
+#       and a grep for those five retired names returns nothing outside the lineage
+#       comment at the top of this file.
