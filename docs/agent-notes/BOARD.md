@@ -1,5 +1,40 @@
 # Board
 
+## 全面清理与发布 —— 已完成（D-78）
+
+三个仓库**全部已推送**，且**都带 `deepseek-harness-plugins` 标签**（六个仓库逐一 API 复读确认）。
+
+| 仓库 | 结果 |
+| --- | --- |
+| `ABccgh/dsh-smith` | **+6 提交 → 39**；`refs/heads/main` → `711b8cf`；远端树 `fadcede` **等于**本地树 |
+| `ABccgh/dsh-ck3-modcheck` | **新建**（public, `auto_init:false`）→ 6 文件；8 个标签 |
+| `ABccgh/dsh-agent-memory` | **新建**（public, `auto_init:false`）→ 5 文件；7 个标签 |
+
+**本轮真正的缺陷（本轮之前无人能看见）**：`dsh-ck3-mod/`（5 文件）**从未被 git 跟踪**，而
+`package.json` 的 `files` 白名单**已经列了它**。`check-pack.mjs` 读的是**工作树**打出的 tarball，
+所以本地 **PACK OK**——而 `README.md` 让读者 `git clone` 后跑 `node bin/install.mjs --preset dsh-ck3-mod`，
+**任何 fresh clone 都没有这个 preset**。这正是本仓库自己的笔记称为「唯一无法靠运行自己发现」的那一类失败，
+而它是真实存在的。
+
+**修好后的证明（不是「推送没报错」）**：从 **codeload 下载分支 tarball**（不走 git）→ 解压 → 断言
+5 个 preset 路径**都在**，且**下载下来的那份自己能跑通 `check-pack` 与技能 lint**。
+外加：远端递归清单与 `git ls-files` **双向零差异**（各 48 个 blob）、无重复路径段。
+
+**推送路径本身值得记下来（D-78）**：对一个**只有一个根提交**的新仓库，`-Init` / `-Force` /
+`-RemoteOnlyParent` **三种都结构性地不适用**，每一种都被 `-DryRun` 提前拦下而不是半途失败。
+真正可行的是让远端那个空根**与本地对象可达**（bootstrap → 本地 `commit-tree` 一个空树、
+父为 bootstrap → `refs/hashtag/` 挂锚点 → 走普通配对路径）。另有两个 PowerShell **序列化**陷阱：
+`git log --format=%B` 返回**字符串数组**，被 `ConvertTo-Json` 发成 `"message": [...]` → `422 is not a string`；
+以及**引用一个从未上传的 tree** → `422 Tree SHA does not exist`（本地有 SHA ≠ 远端有这个对象）。
+
+**没做的事，以及为什么**：`tools/ck3wiki/` **没删**（规则 7：它是某些已取消工作的唯一副本）；
+CI **没加** `preflight --preset dsh-ck3-mod`（那条排除有理由，且规矩是**排除＋写明理由**，不许 `continue-on-error`）；
+两个插件**没搬进本仓库**（规则 7 的边界，它们各自独立成仓）。
+
+**未验证、不声称**：`git clone` / `git push` 在本机是否仍被 TLS 层挡住（笔记记录为
+`CRYPT_E_NO_REVOCATION_CHECK`）。本轮的推送走 GitHub REST API，**没有测试 git 自身**，
+所以「git 仍然不通」是**继承的结论**，不是本轮复测的。
+
 ## 经验层（agent-memory）—— 已交付并**正在生效**（D-76）
 
 用户问「可以实现经验吗」。答案是：**模型权重学习做不到，但「有界、保证被检索的记忆管线」可以，而且已经建好。**

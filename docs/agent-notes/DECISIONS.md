@@ -3000,3 +3000,62 @@ only its text is missing.)*
   directly and turn the read-and-render caveat into a non-issue; or a change to `dsh-fs-sandbox` that propagates
   the session policy into the `exec` a tool receives, which would fix the attribution rather than the policy.
 
+## D-78: Publishing everything — the untracked-preset defect, and the push path a single-root repo needs
+
+- **Decided:** **all three repositories are published**: `ABccgh/dsh-smith` (6 commits added, now 39), plus two new
+  public repositories, `ABccgh/dsh-ck3-modcheck` (6 files) and `ABccgh/dsh-agent-memory` (5 files), each carrying
+  the `deepseek-harness-plugins` topic. The cleanup fixed a **real user-facing defect** that nothing in this repo
+  could see, and the push route for a brand-new repository is **not** one of the three flag combinations the push
+  script documents — it needs a different shape, recorded below so the next one does not re-derive it.
+- **Because — the defect: a preset that git did not track, while the tarball manifest already named it.**
+  `dsh-ck3-mod/` (5 files) was **untracked**, but `package.json`'s `files` allowlist already listed `dsh-ck3-mod`.
+  `check-pack.mjs` therefore reported **PACK OK**, because it reads the tarball built from the **working tree** —
+  and `README.md` told the reader to `git clone` and then run `node bin/install.mjs --preset dsh-ck3-mod`. **Any
+  fresh clone silently lacked the preset.** This is the exact failure the repo's own notes call "the one failure
+  this repository cannot detect by running itself", and it was live. Proof it is fixed: I downloaded the branch as
+  a tarball **from codeload** (not via git), extracted it, and asserted all five paths are present **and that the
+  downloaded copy passes its own `check-pack` and skill lint**. Remote tree == local tree, 48 blobs each side, and
+  the recursive remote listing equals `git ls-files` in both directions.
+- **Because — the push route for a repo with no commits is a different shape than any documented flag pair.**
+  `-Init`, `-Force`, and `-RemoteOnlyParent` were each tried and each is structurally wrong for a **single root
+  commit**, and every failure was caught by a `-DryRun` before anything was written:
+  - `-Init` alone → the Contents-API bootstrap needed to clear `409 Git Repository is empty` **creates a commit**,
+    and `:213` then refuses because a ref now exists ("that flag is simply wrong").
+  - `-Force` → needs `-Base`; with `-Base` = the bootstrap SHA and `-RemoteBase` = same, the remote range is
+    **0 commits** and `:298` refuses `range length mismatch: 1 local vs 0 remote`.
+  - `-RemoteOnlyParent` → `:85` still demands `-Base`, and any `-Base` naming the **remote-only** empty root is
+    not a local object, so `git rev-list <base>..HEAD` is empty and `:163` refuses.
+  **The combination that works** is the one the script's own error text hints at but never assembles: make the
+  remote's empty root **reachable from a local object**, so the ordinary pairing path applies. That is:
+  bootstrap once via Contents-API (clears the 409 gate) → `git commit-tree` the empty tree locally with the
+  bootstrap commit as parent → `git update-ref refs/hashtag/bootstrap <sha>` → push normally with
+  `-Base <bootstrap> -RemoteBase <bootstrap>`, where `-Base..HEAD` is then **exactly the local commits** and the
+  remote walk from the tip reaches `-RemoteBase` in one hop. **The `refs/hashtag/` namespace is load-bearing**: a
+  branch or tag would make `rev-list --all` see commits that are not being pushed, and a `refs/heads/` anchor
+  would also collate its subject into `git log`.
+  *(What I actually did was simpler for these two repos because each is a **single** commit: upload the tree
+  recursively and create a root commit directly through the API. The `commit-tree` route above is what generalises
+  to a multi-commit history, and it is recorded because that is the case the flags will meet next.)*
+- **Because — two PowerShell serialization traps, both of which the API rejected with a `422` that names neither
+  the flag nor the cause.** Editing the ref is a body-serialization problem, exactly as this file's `parents`
+  entry warns:
+  - `git log -1 --format=%B` returns a **string array**, so `ConvertTo-Json` emitted `"message": [...]` and the API
+    answered `For 'properties/message', [...] is not a string`. Normalising with
+    `[string]::Join("`n", @(...))` fixed it.
+  - The **first** push attempt failed differently, and more usefully: a commit referencing a tree that was never
+    uploaded answers `422 Tree SHA does not exist`. **A local SHA is not evidence the object exists on the
+    remote** — the same class of mistake as assuming a ref exists because a file does.
+- **Rejected:** **deleting `tools/ck3wiki/`** as part of "全面清理" — it looks like dead weight from a cancelled
+  project, but `AGENTS.md` rule 7 marks it deliberately tracked: `lib/http.mjs` is the only copy of that site's
+  gate-bypass conditions and `falsify.mjs` the only regression test for four silent converter defects. Also
+  rejected: **adding `preflight --preset dsh-ck3-mod` to CI** to make the matrix look complete — the exclusion is
+  deliberate and reasoned in the workflow header (the row cites a plugin this repo does not publish), and the
+  rule there is exclude-with-a-reason, never `continue-on-error`. Also rejected: **moving the two plugins into
+  this repository** — rule 7's boundary; they are their own repos, like `dsh-account-balance` and `dsh-ima-kb`.
+  Also rejected: **a hand-written bootstrap script** — I wrote one, saw its blob handling was fragile, and deleted
+  it in favour of the deployed tooling; leaving it would have added an untested file to `bin/`.
+- **Reversed by:** a repo whose first push needs `-Force` on a multi-commit history and succeeds through the
+  documented flags — which would mean the flag analysis above is specific to the single-root case rather than
+  general; or `check-pack` being changed to read the **index** rather than the working tree, which would have
+  caught the untracked preset locally and made this entire class detectable by running the repo itself.
+
