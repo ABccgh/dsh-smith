@@ -133,6 +133,25 @@ vanilla localization file produces zero findings.
    knowing before writing the next one: it **symlinks** the package, so the plugin's own **bare**
    specifiers fail to resolve from the link's real path (`ERR_MODULE_NOT_FOUND`), while relative
    imports among its own files are unaffected (D-35).
+   **A fourth out-of-repo plugin now exists: `$DSH_HOME/plugins/dsh-inbox`** (measured 2026-09-17) —
+   a durable inbox for the Web GUI, mounted by one `insert:` row in the same `cordis.patch.yml`. It is
+   **installed and composed but not mounted** until the Host is restarted (see the bullet below).
+   Two defects found while building it are *general* facts about host-plane plugin rows here, not
+   facts about this plugin, and both are recorded in its own `NOTES.md`:
+   1. **A row's `Config` must be a Standard Schema.** The loader resolves it with
+      `runtime.Config['~standard'].validate(config)` (`cordis/lib/index.js:957-961`), so a `Config`
+      shaped like a JSON Schema throws during config resolution and **the row never mounts** — with no
+      message naming the plugin. `bin/preflight.mjs` cannot see this: it reads an exported `Config`
+      only when that export is a *function*, so it reports the working shape as
+      `skip … (exports no usable Config schema)`. All four earlier out-of-repo rows already export the
+      Standard Schema form.
+   2. **The tool-schema subset rejects per-property `required: true`.** `required` must be an array of
+      property names on the object (`dsh-tools/lib/index.js:153-157`); per-property `true` is
+      author-DSL syntax that `defineTool` compiles away, which a no-import host plugin cannot use. A
+      schema outside the subset throws while projecting schemas **at prompt assembly**, so it breaks
+      every session in the process, not just the offending tool. This also corrects the omission rule
+      stated above: omitting `parameters` is not "a tool that registers and shows the model nothing"
+      — it is a hard throw on both projection paths, and an omitted `output` throws at `register()`.
    **Two more were built for `dsh-ck3-mod` and one of them has already been retired (measured).**
    `$DSH_HOME/plugins/dsh-ck3-modcheck` validates a mod against the real vanilla installation and is
    **live** — one `insert:` row in the web profile (to be written by `dsh plugin --profile web add`).
@@ -150,8 +169,12 @@ vanilla localization file produces zero findings.
    injected it — because that shape recurs and is worth copying. Two facts from it generalize and
    survive the removal: a plugin may hand-implement the helpers a bare import would have supplied
    (it carried a parameter-spec → JSON Schema compiler and a `defineTool` stand-in, because
-   **`output.schema` and the compiled `parameters` are both consumed at registration** and their
-   omission is a tool that registers and shows the model nothing), and compile-time brands are
+   **`output.schema` and a wire-format `parameters` are both consumed at registration** and an
+   omission there is a hard throw rather than a quiet degradation — an omitted `parameters` throws
+   while schemas are projected at prompt assembly, and an omitted `output` throws at `register()`
+   itself. *(The wording this sentence used to carry — "a tool that registers and shows the model
+   nothing" — was measured false and is superseded by the corrected rule in the `dsh-inbox` bullet
+   above.)* Compile-time brands are
    **identity functions with no runtime trace** (`dsh-brand/lib/index.js` —
    `brandString(value) { return value }`), so a plugin with no imports can still satisfy a branded
    contract with plain literals. **Do not rebuild it without reading D-47–D-50 first**; they hold the

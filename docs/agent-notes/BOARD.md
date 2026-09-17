@@ -1,5 +1,81 @@
 # Board
 
+## 2026-09-17（晚）—— 持久待办收件箱已挂载并验收；两个未决问题
+
+**结论先说：`dsh-inbox` 已在活宿主上挂载并验收通过，用户亲自完成了两条验收条目。**
+它由 web profile 的 `cordis.patch.yml` 一行挂载、**不发布任何服务**；`PROJECT.md` 有它的小节，
+`NOTES.md`（九节）持有部署级细节，`DECISIONS.md` 是 D-84。
+
+**验收的证据形状值得记住：挂载只能由活宿主证明，而「界面能用」只能由用户证明。**
+`inbox_add` 落盘带着 `rev` 与 `sessionId`；用户在面板里**看到、回复、并标记完成**；
+`inbox_list` 读回 `[answered] … you replied: 存在`。任何 HTTP 状态码都替代不了第三条。
+
+### 未决 1 —— `ask_user_question` 的提问是否进收件箱
+
+插件以 `{ global: true }` 监听 `user-questions/request` 瀑布，但**顺序决定覆盖面**：Cordis 让
+先注册的监听器在链首。我的监听器若在前，每条提问都进收件箱；若在后，只有现有 UI 让出的那些才进。
+**两种顺序都不会坏**（既有答复器要么自己答、要么让出，不会重复捕获），差别只在覆盖面。
+
+**定论方法（一次即可）**：在 GUI 里正常让它问一个问题，然后看
+`$DSH_HOME/inbox/inbox.json` 里是否多出一条 `"source": "question"`。**在此之前一律按「未测量」记。**
+
+### 未决 2 —— 升级 DSH 后要扫一眼「两个 `todos` 投影单元」
+
+`dsh-base` 的 `tool-todo` 行（`allowParallelInProgress`）当前被 `dsh-web-app` 以
+`disabled: true` 关掉，`todo_write` 由各 preset 自己挂。**若它在某次升级后被重新启用**，
+会出现**两个都叫 `todos` 的投影单元**：一个渲染本插件的持久清单（来自 `inbox.json`），
+另一个渲染每轮 `turn/start` 就清空的 `todo_write`。两者会争同一个键，症状是面板内容莫名变化。
+
+### 已闭环 —— 本插件的仓库卫生
+
+四个兄弟插件都有 `.git`（分支 `main`、树 clean），它此前**什么都没有**。本会话补齐：
+`git init -b main`、与 agent-memory/ck3-modcheck 同形状的 `.gitignore`、身份**本地**设为
+`ABccgh <167974914+ABccgh@users.noreply.github.com>`（本机无全局身份，该值取自本仓库的实际提交者）、
+一个根提交 `a98ecb4` / **13 个受跟踪文件**。
+
+**未设 remote、未尝试 push** —— 本网络下 `git push` 必然因吊销端点不可达而失败，设一个推不上去的
+remote 只会造出假的「该推了」提示。是否公开是一个独立决定，需要用户建仓库 + 走 AGENTS.md 里那条两步路线。
+
+## 2026-09-17 —— CK3 两处「工具说假话」的缺陷已修，附一个改变结论的实测
+
+**先说结论：`ck3_mod_status` 读错了启动器数据库，而它给出的「0 个模组 / 没有不一致」是假的。**
+本机同目录有三个库：`launcher-v2.sqlite`（工具在读，mods=0）、`launcher-v2_openbeta.sqlite`
+（启动器真正在写的，**mods=7 / playset 7 行全 enabled**）、`launcher-v2_openbeta-backup.sqlite`
+（mods=3）。插件那条 SELECT 在 openbeta 上返回全部 7 行——**错的只是文件名**。现在工具探测所有
+`launcher-v2*.sqlite`、按「有 mod 记录 → playset 是活动的 → 最新」排序取值，并打印全部候选与理由。
+
+**第二个发现比第一个更重要：游戏自己的日志推翻了「启动器说了算」。** 同一次运行
+（2026-09-16 23:16–23:26）的 `debug.log` 里有一张 mod 表（8 行，2 行 `Enabled`）＋
+`Mounted Data: D:/CK3Mods/jtdx` ＋ `>=== NAMESPACE > 'jtdx' is set to #3520000` ＋
+`Loaded [6] events from 'events/jtdx_events.txt'`。也就是说**本工坊的 jtdx 确实被游戏加载过、
+事件被注册过**（`D:\CK3Mods` 现在已空，产物不在了，证据还在日志里）。而 `mod/jtdx.mod`
+**既不在启动器数据库里、也不在 `dlc_load.json` 里**；同一份日志 7 个 workshop mod 只有 2 个 `Enabled`，
+`dlc_load.json` 列 7 个。**三个来源矛盾，权威的是游戏自己那份带时间戳的单次运行日志。**
+
+**日志是每次运行的**：D-75 引用的 `debug.log:5594 event_queue` 现场已被后续运行覆盖，
+当前 `debug.log` 只剩 `gold 5000`。所以任何跨运行的归因都不成立；`console_history.txt` 是唯一累积的那个。
+
+**还改了什么**（每一条都测过、都在套件里有会失败的断言）：
+`compareLauncherToDisk` 注释承诺三类分歧、代码只做两类 → 补上 `launcher-mod-unregistered`；
+错误去重把 **1,780 条 E 行折叠成 43 条「不同错误」**（其中 1,562 条是同一句外壳 `Script system error!`，
+真实内容在下一行）→ 外壳与续行合并并显式报数；四个工具的说明移进 `TOOLS_META` 以便断言
+（此前 `apply()` 从不被套件调用，**没有任何描述可以被测到**）；`ck3_modcheck` 零检查时不再打印
+「every check that ran passed」；传非目录的 `modPath` 改为报输入错误（此前 `README.md` 会得到
+「1 mod validated / errors: 3」和三段错误建议）；`CODES.TAG_UNKNOWN` 直接删除（没有任何检查会产生它）；
+每个报告末尾加**代码回执**（PID / 启动时间 / `lib/*.js` mtime）。
+
+**套件：121 → 151 条**，且每个新类别都用**植入法**反证过（去掉 availability 守卫 → 红；
+关掉续行合并 → 4 条红；去掉描述限定语 → 红；排序只看 mtime → 选错文件）。
+
+**只能由你做的两件事（我没有代劳）**：
+1. **新开一个由 `dsh-ck3-mod` 服务的会话**，读工具表确认专家是 `expert_modd` ＋ `expert_verifier`
+   ＋ `expert_chronicler` 且**没有** `expert_architect`（四个 `ck3_*` 是宿主平面、每个会话都可见，不可用作判据）。
+2. **在游戏里跑一次 `event_counts`**（`-debug_mode` → 载入一局 → 控制台）——它是 D-75 唯一没量过的同族命令。
+   **要当次读日志**：下一次启动会把它们重写。
+
+**需要重启宿主**：插件代码改动要重启才在运行中的宿主里生效（当前 PID 16872 启动于 2026-09-17 19:08:13）。
+回执行会把这件事变成每次调用都看得见的读数。
+
 ## 全面清理与发布 —— 已完成（D-78）
 
 三个仓库**全部已推送**，且**都带 `deepseek-harness-plugins` 标签**（六个仓库逐一 API 复读确认）。

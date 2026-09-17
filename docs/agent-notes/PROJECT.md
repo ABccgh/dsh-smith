@@ -589,6 +589,87 @@ same "count, do not estimate" lesson this file records elsewhere.*
 changes as people join, and **nothing in this record depends on that number**. It is carried as an open
 observation, not as a discrepancy in the tool.
 
+### A durable todo inbox for the Web GUI, mounted outside this repository (added this session)
+
+> **Scope, first line, for the same reason the ima section gives it: this plugin is NOT in this
+> repository.** It lives at `$DSH_HOME/plugins/dsh-inbox`, the convention `dsh-account-balance` and
+> `dsh-ima-kb` established, and `AGENTS.md` rule 7 is untouched by it. Its own `NOTES.md` (nine
+> sections) carries the deployment-level facts; this subsection records only what belongs to *this*
+> repository's record, and deliberately does not restate that file.
+
+**What it is.** The user asked for the durable half of "a todo list": everything that needs *them* —
+a decision, a credential, a file only they have — becomes a queue item they can edit, answer and
+close, surviving across turns and sessions. It is one `insert:` row in the web profile's
+`cordis.patch.yml`, and it **publishes no service at all** — it only registers into the host's
+existing `ctx.tools` (three tools: `inbox_add`, `inbox_list`, `inbox_replies`) and one exact route on
+`ctx.connection.fetch`. So it needs no `isolate` realm and can collide with no host registration.
+
+**It is a host-plane row, and that is the same judgement the ima plugin records.** The list is one
+account-level document shared by every session; a preset row is one instance per session and is
+unwound with it, so the list would fragment per session and vanish on exit. State lives at
+`$DSH_HOME/inbox/inbox.json`, re-read on every access — which is what makes a human edit in a text
+editor take effect with no watcher — and published by atomic replace.
+
+**The one cross-cutting behaviour change, recorded here because a later session will otherwise read
+it as a defect.** The plugin listens on the host's `user-questions/request` waterfall with
+`{ global: true }`, which bypasses the scope filter (`cordis/lib/index.js:263`), and therefore
+applies to **every** session: an `ask_user_question` call can be queued into the single global inbox
+instead of only appearing as a transient composer card. That is the design intent (one inbox), not
+overreach — but it is a deployment-wide effect, and it belongs in the record rather than in a surprise.
+
+**Two defects found while building it are general facts about host-plane rows here, not facts about
+this plugin**, and both are recorded in `AGENTS.md` rule 7 as well:
+
+1. **A row's `Config` must be a Standard Schema.** The loader resolves it as
+   `runtime.Config['~standard'].validate(config)` (`cordis/lib/index.js:957-961`), so a `Config`
+   shaped like a JSON Schema throws during config resolution and the row **never mounts** — with no
+   message naming the plugin. `bin/preflight.mjs` cannot see this: it reads an exported `Config` only
+   when that export is a *function*, so the working shape reports as
+   `skip … (exports no usable Config schema)`.
+2. **The tool-schema subset rejects per-property `required: true`** and rejects type arrays. A schema
+   outside the subset throws while projecting schemas **at prompt assembly**, which breaks every
+   session in the process rather than the offending tool. The nullable spelling is
+   `oneOf: [{type:'string'},{type:'null'}]`. This also corrected the omission rule this file's sibling
+   documents carried: omitting `parameters` is a hard throw, not a tool that "shows the model nothing".
+
+**Verified on the live Host, and the shape of the evidence matters.** Mounting requires a Host
+restart, which the user performed; the restart is not optional and no pre-restart static check can
+substitute, because the module scan and the row's fiber both happen at boot. After it:
+
+| Reading | What it establishes |
+| --- | --- |
+| three `inbox_*` tools in the agent's tool table | the row **mounted** — the only evidence that requires a live Host |
+| `inbox_add` → `$DSH_HOME/inbox/inbox.json` with `rev` and the calling `sessionId` | the agent's write path and provenance capture work on real data |
+| the user saw the item in the panel and **replied**; `inbox_list` returned `[answered] … you replied: 存在` | visibility, editability and the reply round trip — which **no HTTP status could show** |
+| the user later marked both acceptance items `done` | the complete/edit path, by their own action rather than by my inference |
+
+**One defect was found only after mounting, by exercising the tool rather than by reading it.** An item
+carries `reply: null` until answered, but the output schema declared `reply` as a bare `string`. That
+schema is *legal* — it passes registration and passes `assertSupportedJsonSchema` — because output
+validation runs **per call**, not at registration. So the agent's read tool threw on the first
+unanswered item while every static check stayed green, and the same call succeeded again once the item
+was answered: **a green result would have concealed it.** Fixed by the `oneOf` spelling above, then
+confirmed on a restarted Host by reading back an item that was deliberately still unanswered.
+`test/schema.mjs` now asserts the *relationship* — every field that is actually `null` in a real item
+must be declared to accept `null` — rather than a spelling.
+
+**Seven checks, all runnable without a live Host except where noted:** `falsify.mjs` (data layer, a
+planted bad value per behavioural assertion), `wiring.mjs` (`apply()` against a fake context plus the
+real route handler end to end, including that a panel reply settles a pending `ask()`),
+`schema.mjs` (the registry's own subset gate, plus the nullable relationship), `config-schema.mjs`,
+`dump-config.mjs` (the loader's own composition), `client-discovery.mjs` (every requirement of the
+client scan) and `patch-check.mjs`.
+
+**Its own repository now exists — initialised this session, and it is local-only.**
+`git init -b main` with the same `.gitignore` shape `dsh-agent-memory` and `dsh-ck3-modcheck` use
+(`node_modules/` plus secrets and editor noise), identity set **locally** to match this repo's
+(`ABccgh <167974914+ABccgh@users.noreply.github.com>`) because there is no global git identity on this
+machine, and one root commit `a98ecb4` over **13 tracked files**. **No remote is configured and no push
+was attempted** — `git push` cannot complete on this network (the revocation-endpoint defect recorded
+in `AGENTS.md` and in "How a push actually gets out of this machine" above), so a remote that can never
+be pushed to would only manufacture a false "this needs pushing" signal. Publishing it is a deliberate
+later step and needs the working two-step route plus a repository the user creates.
+
 ### GitHub events, tools and checks (added this session) — **REMOVED, see D-51**
 
 > # ⛔ THIS WHOLE SECTION DESCRIBES SOMETHING THAT NO LONGER EXISTS
@@ -1058,16 +1139,19 @@ service**, so it needs no realm:
 
 | Tool | Reading |
 | --- | --- |
-| `ck3_modcheck` | 36 check codes over a mod on disk; read-only unless `fix: true` |
-| `ck3_mod_init` | generates a loadable skeleton, then validates what it wrote |
-| `ck3_mod_status` | reads `launcher-v2.sqlite` read-only via built-in `node:sqlite` |
+| `ck3_modcheck` | **39** check codes over a mod on disk; read-only unless `fix: true`. Answers a `modPath` that is not a directory as an input error, and a run in which nothing was examined prints 「no check ran」 rather than 「every check that ran passed」 |
+| `ck3_mod_init` | generates a loadable skeleton, then validates what it wrote (the self-report is bound to `ck3_modcheck`'s actual static scope) |
+| `ck3_mod_status` | reads the launcher's **discovered** database (D-79) read-only via built-in `node:sqlite`, prints every candidate and why it was passed over, and reports `.mod` files the registry does not know about |
+| `ck3_mod_evidence` | reads the per-run runtime logs, dates the reading to a run, merges `Script system error!` shells with their continuation lines, and ends every report with a dated code receipt |
+
+All four descriptions live in an exported `TOOLS_META` table so `test/falsify.mjs` can assert
+them — before 2026-09-17 they were inline literals in `apply()`, which the suite never calls, so no
+description could be tested at all.
 
 **Verification state as of this writing:**
 
-- `node test/falsify.mjs` → **97/97 assertions**, including two calibrations asserted permanently:
-  the encoding check reports **0 findings over the whole vanilla tree** (2,536 `common` ＋ 536 event
-  scripts) and the namespace check reports **exactly 20 over 536 vanilla event files** (19 mismatches
-  ＋ 1 missing) — which independently reproduces the `516 of 536 conform` census.
+- `node test/falsify.mjs` → **151/151 assertions**（2026-09-17 复测；本轮新增 30 条，覆盖数据库候选选择、未注册 `.mod`、日志外壳行合并、四个工具的描述与回执）。含两条永久校准：
+  编码检查对**整个原版树 0 findings**（2,536 `common` ＋ 536 event 脚本），namespace 检查对 **536 个原版事件文件恰好 20 条**。
 - `node bin/preflight.mjs --preset dsh-ck3-mod` → `validated: 16   skipped: 9   failed: 0`.
 - `node bin/lint-skills.mjs --preset dsh-ck3-mod` → 3/3 clean. `check-pack.mjs` → `PACK OK`.
 - `dsh --profile web --dump-config` composes the `ck3-modcheck` row with all four config keys and
@@ -1124,13 +1208,22 @@ install) with **no canonical list anywhere on disk** — it is fetched over the 
 
 **Known gaps, deliberate:**
 
-- **The runtime evidence plane is not implemented.** `logs\error.log`, `logs\database_conflicts.log`
-  and `logs\event_log.csv` are the only way to see reachability failures — an event that never fires
-  — and they are unreadable here because **the game has never been launched** (`logs\` does not
-  exist). A reader would have to be written blind, and the log needs a no-mod baseline to diff
-  against. The smallest check that would unblock it: **one launch**.
-- **Field-level schema validation is deliberately not derived from `_*.info` files.** Measured: only
-  **6 of 162** contain a parseable `Valid <thing>:` list — they are prose documentation.
+- **The runtime evidence plane is readable but the reachability signal is not.** `logs\` now holds
+  **18** files (game launched several times), so `error.log` / `setup.log` / `database_conflicts.log`
+  are readable; the tool reports counts and raises a finding only for reachability. That one needs
+  `event_log.csv`, which **this build never creates** (`event_queue` runs, writes `debug.log`, and
+  writes no file — D-75/D-80) — so the check is implemented, tested, and **has never fired on real
+  data**. `event_counts` (same binary help dump, offset 68114472) has still never been run; no code
+  depends on it.
+- **The logs are per run** (D-80). Any reading must be dated, and attribution needs a same-run
+  difference with and without the mod. `console_history.txt` accumulates; `logs\*` does not.
+- **The game's own log beats the launcher database** when they disagree (D-80): measured, the log
+  lists a workspace mod (`mod/jtdx.mod`) that is in neither the launcher database nor `dlc_load.json`,
+  and marks 2 of 7 workshop mods `Enabled` where `dlc_load.json` lists 7.
+- **Field-level schema validation is deliberately not derived from `_*.info` files.** The figure this
+  file used to carry (**6 of 162** contain a parseable `Valid <thing>:`) **could not be reproduced**:
+  over 162 `_*.info` files, 69 contain `Valid` at all and 1 matched a `^\s*Valid\s+\S+:\s*$` line. The
+  conclusion stands (they are prose, not schemas) but the number is retired until its pattern is found.
 - **`ck3_modcheck` cannot prove the game loads a mod**, and does not claim to. Its report says so.
 
 **CK3-specific stale claims** *(the repository-wide list is the next section; these are only the ones

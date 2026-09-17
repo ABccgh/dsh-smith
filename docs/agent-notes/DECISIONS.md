@@ -3059,3 +3059,217 @@ only its text is missing.)*
   general; or `check-pack` being changed to read the **index** rather than the working tree, which would have
   caught the untracked preset locally and made this entire class detectable by running the repo itself.
 
+## D-79: Which launcher database should `ck3_mod_status` read — and what did the hardcoded name cost?
+
+- **Decided:** **the file is discovered, not assumed.** `readLauncherState` now probes every
+  `launcher-v2*.sqlite` in `launcherDir`, ranks the candidates by evidence (readable → has registered
+  mods → its playset is the active one → newer mtime → filename), reads the winner, and returns the
+  full candidate list so `ck3_mod_status` can print which file it read and why it passed over the
+  others. The ranking is a **rank record compared as a whole**, not a chain of pairwise booleans.
+- **Because:** the hardcoded `path.join(launcherDir, 'launcher-v2.sqlite')` produced a **false
+  statement**, not a missing feature. Measured on this machine: `launcher-v2.sqlite` (mtime
+  2026-09-15 20:05) holds **0** mods and an empty playset, while `launcher-v2_openbeta.sqlite` (mtime
+  2026-09-16 23:44, the file the launcher is actively writing) holds **7** mods and **7** playset rows
+  with `isActive=1`; a third, `launcher-v2_openbeta-backup.sqlite`, holds 3. The tool reported
+  「启动器眼中的模组（0 条）」 and 「没有发现启动器与磁盘之间的不一致」 while `<launcherDir>\mod\` held
+  seven `.mod` files (all with `gameRegistryId = mod/ugc_<id>.mod`), `dlc_load.json` listed seven
+  `enabled_mods`, and the game's own log listed all seven — with two of them `Mounted Data`.
+  The plugin's own `SELECT` (unchanged) returns all seven rows from the openbeta file, so only the
+  **file choice** was wrong. Two design points were forced by measurement rather than taste:
+  (a) ranking by mtime alone is not enough — a `-backup` is a full copy, so it can be newer than the
+  live database and would win; the rank record puts "has registered mods" and "playset is active"
+  above recency; (b) the first comparator was a chain of `(a.x > 0) !== (b.x > 0)` tests, which is not
+  a total order — the suite now asserts that all six orderings of the same three candidates agree.
+- **Rejected:** **reading all databases and merging them** — the launcher's rows carry ids that would
+  have to be reconciled across files, and a merge would invent a registry neither file contains.
+  Also rejected: **picking the newest file** (the `-backup` wins that contest on this machine).
+  Also rejected: **a hand-written SQLite parser for `launcher-v2.sqlite`** — D-71 already recorded that
+  `node:sqlite` refuses that one file while accepting its siblings, and `ck3_mod_status` reads them
+  fine, so a second reader would be one more thing to keep in step.
+- **Reversed by:** a launcher version that keeps exactly one database (the probe then finds one
+  candidate and the ranking is inert), or a session in which the chosen file is not the one the
+  launcher's UI shows — the candidate table in the report is what makes that falsifiable in one look.
+
+## D-80: The game's own log contradicts both the launcher database and `dlc_load.json` — which one is authoritative?
+
+- **Decided:** **the game's own single-run log is the strongest of the three, and the tool must not
+  present the launcher database as the verdict.** `ck3_mod_status` now distinguishes "read 0 rows"
+  from "there are no mods" (the launcher's own `mod\` folder is checked before either sentence is
+  printed) and its "no disagreement" line says 「没读到」 rather than 「没问题」 when the registry was
+  empty. `ck3_mod_evidence` is where the game-log side surfaces.
+- **Because:** three sources disagree on the same machine, at the same time, measured in one session:
+
+  | Source | What it says |
+  | --- | --- |
+  | `<launcherDir>\logs\debug.log`, run of 2026-09-16 23:16–23:26 | a `Mod:` table of 8 rows with 2 marked `Enabled`; `Mounted Data: D:/CK3Mods/jtdx`; `>=== NAMESPACE > 'jtdx' is set to #3520000`; `Loaded [6] events from 'events/jtdx_events.txt'` |
+  | launcher DB (openbeta) | 7 registered mods, playset `enabled=1` for all 7 |
+  | `dlc_load.json` | `enabled_mods` = 7 workshop entries |
+
+  The only mod the game demonstrably **loaded and ran events from** is `mod/jtdx.mod` — a workspace
+  mod under `D:\CK3Mods` — and it appears in **neither** the launcher database nor `dlc_load.json`.
+  `D:\CK3Mods` is empty today, so the artifact is gone while its evidence survives in the log. This is
+  also the first observation that a mod authored in this workspace was actually loaded by the game.
+- **Also settled here, and it retires a sentence that was in three documents:** the logs are **per
+  run** — the `event_queue` evidence D-75 quoted (`debug.log:5594`, `Total items in queue: 2107`) is
+  no longer in `debug.log`, which now contains only `gold 5000` console lines from a later run. So
+  "the log" is never a durable record; every reading must be dated, and cross-run arithmetic is void.
+  `console_history.txt` is the exception: it accumulates across runs, which means D-68's "it holds only
+  `event_queue`" was a point-in-time reading, not a property.
+- **Rejected:** **treating `dlc_load.json` as the record of what loaded** — measured against the game's
+  own log, it lists 7 while the log marks 2 enabled, and it omits the one mod the log proves was
+  mounted. Also rejected: **parsing the game's eight-row `Mod:` table into findings now** — its columns
+  are unmeasured in any specification, and D-67's rule is that a probe must report what it can read;
+  what this entry establishes is which source wins when they disagree.
+- **Reversed by:** a run in which the game's log, the launcher database and `dlc_load.json` agree, or a
+  launcher/`.mod` layout in which the game-log table names mods the database also lacks — which would
+  make the table itself the best available record rather than merely the best available *evidence*.
+
+## D-81: The error count that was reported as "43 distinct errors" was a count of log SHELLS
+
+- **Decided:** **a shell line is merged with its continuation lines before deduplication, and the
+  number that used to be presented as an error count is now labelled as a count of message kinds.**
+  `readRuntimeEvidence` keys `Script system error!…` entries on shell + continuation, reports
+  `count` per entry, and prints how many raw E lines were folded into how many entries.
+- **Because:** measured on a modded run, `error.log` held **1,780** E-level lines and **43** distinct
+  messages — a number the tool printed as 「去重后不同的错误只有 43 条」. Of those lines, **1,562** were the
+  identical shell `Script system error! (while building tooltip/description)` and 59 more were
+  `Script system error!`, with the actual fault on the following, non-timestamped line:
+  `  Error: Undefined event target 'liege'` / `  Script location: file: common/script_values/00_court_position_values.txt line: 779`.
+  The key was the message text alone, so **1,621 real errors collapsed into two entries** and the
+  reader was handed 43 as if it were a total. The old behaviour was not a display bug: it made the
+  whole `error.log` plane look quiet. The merge is deliberately scoped to shell lines — appending
+  continuations to every message would break the **cross-sink** deduplication D-67 established
+  (one message in three logs counts once), which the suite pins with a fixture where the same
+  shell + continuation appears twice and must stay one entry with `count = 2`.
+- **Rejected:** **dropping continuation lines entirely** (they are the only place the fault is named),
+  and **counting every raw E line as a distinct error** — that would reintroduce the 3× sink inflation
+  D-67 measured. Also rejected: **presenting `raw − Σcount` as "suppressed errors"** — that number is
+  0 whenever the entries' counts sum to the raw line count, which is the normal case; what a reader
+  needs is the two totals (lines, entries), which the report now prints.
+- **Reversed by:** an `error.log` whose shell lines carry their own detail on the same line (the merge
+  then has nothing to join, and `count` stays 1 for every entry), or a future build whose shell text
+  changes — the regex is anchored on `^Script system error!?$`-ish text, so a renamed shell would show
+  up as a jump in the entry count rather than as silence.
+
+## D-82: Does the CK3 preset ship a contradiction about the localization version counter?
+
+- **Decided:** **no — the two texts answer different questions, and neither is wrong.** `ck3-mod-authoring`
+  (`SKILL.md:106-118`) says the counter is a **version marker** whose non-zero value means
+  "needs retranslation"; the persona (`agent.cordis.yml:171-180`) and the `expert_modd` persona
+  (`:491-499`) say it is **optional and deprecated for modders**. "Optional" is a claim about the
+  **format** (you may omit it; omitting it is not a defect) and "version marker" is a claim about the
+  **semantics when present** — the plugin's own pattern (`LOCALIZATION_ENTRY`, counter optional) plus its
+  comment (`rules.mjs`: "a value greater than 0 makes the game report the entry as needing
+  retranslation") hold both at once, and the vanilla corpus shows the mechanism in use (11,944 entries
+  with counter `1`, 1,723 with `2`, 436 higher). A 2026-09-17 adversarial review reached the same
+  verdict independently and measured the same counts.
+- **Because:** an earlier reading of mine treated the skill's sentence as contradicting the persona's and
+  proposed deleting it. Three measurements stopped that edit: the skill's sentence says nothing about
+  required-ness, the persona's says nothing about non-zero, and the plugin's shipped pattern was
+  **already** `(?:\d+)?` while its comment asserts the retranslation meaning — i.e. the project has
+  always held both. **What was wrong was a different number, in the persona:** `742 vanilla entries omit
+  it` is not a count of counterless entries (the same corpus has **25,431**, which the prefix already
+  stated correctly); 742 is unreproducible from the pattern it was attached to and is 34× too small.
+  Measured today: 744 lines fail the shape printed in the old code's message, **742 of them carry a
+  trailing `#` comment**, 717 of those also lack a counter, 27 carry one, and exactly 2 fail on an
+  apostrophe in the key. The plugin contradicted itself on the same fact
+  (`rules.mjs`: 742; `README.md`: 25,431). So the edit that shipped is: the persona's 742 → 25,431, the
+  plugin's comment rewritten to state what 742 actually measures, and **the skill's sentence kept**, with
+  its non-zero semantics marked as **not verified in the engine** rather than asserted. Editing the skill
+  would also have invalidated the preset's own attestation that it is unmodified from its predecessor.
+- **Rejected:** **deleting the skill's retranslation sentence** (it is true as far as the plugin's own
+  comment goes, and the only evidence against it was a wiki sentence about the format).
+  Also rejected: **editing it to match the persona's wording** — that would have replaced a
+  semantics claim with a format claim and lost the one piece of guidance about **not** writing a
+  non-zero counter on changed text.
+- **Reversed by:** a source that shows the counter's non-zero value has no effect (then the skill's
+  sentence becomes false and must be withdrawn), or a measurement of counterless entries that lands on
+  742 — which would make the old number right and this correction wrong.
+
+## D-83: What did the 2026-09-17 audit of the CK3 pair actually change, and what did it deliberately leave alone?
+
+- **Decided:** the following, all measured in that session:
+  1. **`ck3_mod_status` reads a discovered database** (D-79) and no longer prints "nothing registered"
+     as a fact when it read an empty file.
+  2. **The missing third disagreement class from `compareLauncherToDisk`'s own comment is implemented**
+     as `launcher-mod-unregistered`, in a separate pure comparator, fed by a new
+     `listLauncherModFiles`. It reports a `.mod` file in the launcher's own `mod\` folder with no row in
+     the launcher's database. It correctly reports **nothing** on this machine (all seven files are
+     registered) — its falsifier is synthetic, and the `available: false → []` contract that
+     `falsify.mjs` already described is now actually exercised.
+  3. **`ck3_mod_evidence` dates its reading to a run** and no longer says "the previous run"; the
+     shell/continuation merge is D-81.
+  4. **Descriptions are pinned by the suite.** The four tools' names and descriptions moved into an
+     exported `TOOLS_META` so `test/falsify.mjs` can assert them; before this, `apply()` was never
+     called by the suite and no description could be tested — which is how one description came to
+     promise an `event_log.csv` signal the same tool's output declared never to be written.
+  5. **Zero-check reports no longer read as passes.** `renderReport` prints 「**no check ran**」 when
+     `modsScanned === 0` instead of 「every check that ran passed」.
+  6. **A `modPath` that is not a directory is answered as an input error.** Measured before the guard:
+     `ck3_modcheck README.md` reported "1 mod validated, errors: 3" with three suggestions to create
+     files under a `README.md\` folder. A wrong argument produced three findings and three pieces of
+     bad advice.
+  7. **`CODES.TAG_UNKNOWN` was removed entirely** rather than left in the table. The vocabulary check
+     was retired by measurement long ago, so the key named a code no check can produce — a coverage
+     claim with nothing behind it, and the suite now asserts the name is absent.
+  8. **A dated receipt replaces a staleness verdict.** Every report ends with the process id, its start
+     time, and the mtimes of `lib/index.js` and `lib/rules.mjs`, read through `node:fs` from
+     `import.meta.url` (deliberately **not** through the sandboxed `fs`). What it is *not* is a claim
+     that the running code is stale: an adversarial review pointed out that mtime-vs-boot is
+     non-diagnostic in both directions, and D-73 already records this project rejecting that inference.
+     The receipt is a fact the reader can act on; no sentence says "the code is stale".
+  9. **The preset's own contradictions were fixed** (persona counts, the two skills' `path=`/`key=value`/
+     project-root rules, the doc's three different assertion counts) — and **`ck3_mod_init`'s
+     self-report** now binds its zero-finding verdict to `ck3_modcheck`'s actual scope.
+- **Because:** every item above is a case of the same failure — a claim, a count, or a check that no
+  longer matched what the code does, none of which any test noticed. The suite went **121 → 151**
+  assertions, and each new class was proven by planting its defect back: removing the availability
+  guard turns `launcher-mod-unregistered` into 1 finding on an unreadable database; disabling the
+  shell-continuation merge turns 4 assertions red; removing the description qualifier fails the
+  description assertions; changing the database ranking to recency alone selects the wrong file.
+- **Rejected:** **editing a shipped preset or any `~/.dsh/profiles/**` file** (the profile row and its
+  four config keys are untouched; no row was added to any composition, and the preset's 24 leaf rows
+  are unchanged). Also rejected: **deleting `tools/ck3wiki/`** while cleaning up, for rule 7's reason.
+  Also rejected: **`docs/verification/vanilla-idiom-citation-notes.patch`** — an untracked file that
+  predates this session and belongs to a different piece of work.
+- **Reversed by:** a session in which `test/falsify.mjs` passes while one of the nine behaviours is
+  absent (that is the failure mode the planted-defect runs exist to catch), or a change to the
+  launcher's database layout that makes the candidate ranking select a file its UI does not show.
+
+
+## D-84: 待办清单该放宿主平面还是 preset，以及它凭什么能跨轮次跨会话？
+
+- **决定：** `$DSH_HOME/plugins/dsh-inbox` 作为一个 host 面插件，由 web profile 的
+  `cordis.patch.yml` 里一行 `insert:` 挂载；清单存 `$DSH_HOME/inbox/inbox.json`，**每次访问重新读取**，
+  写入用 `node:fs` 的原子替换（临时文件 + rename），**不使用 `ctx.storage`**。
+- **为什么：**
+  1. **平面由共享决定，不由「像不像 agent 的东西」决定。** 清单是账号级的**单一事实源**，跨会话共享；
+     preset 行是每会话一份、随会话卸载，放进去会让清单按会话碎片化。该行**不发布任何服务**——只往宿主
+     既有的 `tools` 注册表登记三个工具、往 `ctx.connection.fetch` 注册一条路由——所以不需要 `isolate`
+     realm，也不会与宿主服务撞名。
+  2. **`ctx.storage` 出局的原因是可测的，不是风格。** `dsh-storage-json` 打开单元时**只读一次**文件，
+     之后 `loadAll()` 一律回答内存里的 `this.state`（`lib/index.js:178-214`），而且没有任何
+     reload/refresh/invalidate 成员。于是「人手改文件」要么看不见、要么被下一次机器写入静默覆盖。用户明确要
+     的是「可手改的 JSON」，所以内存态存储直接不满足需求；每次访问重读使 (b) 由**构造**满足，而不是靠一个
+     可能悄悄死掉的 watcher。
+  3. **写盘绕开 `ctx.fs` 缝。** `fs` 缝是**沙箱**提供者，宿主行不带 session 调用时拿的是**部署默认**
+     （`dsh-sandbox-policy/lib/index.js:141-148`），而部署默认的 workspace 根不含 `$DSH_HOME`。这不是推断：
+     本会话里 `memory_remember`（宿主插件 → `ctx.fs.writeText`，未传 policy）写 `~/.dsh` 被拒
+     `file access denied under workspace-write mode`，而同一路径用 `write` 工具与 pwsh 都成功。`node:fs`
+     也是本部署其它宿主插件（`dsh-agent-memory:41`、`dsh-client-modules:3`）的既有做法。
+  4. **路由必须走 `ctx.connection.fetch`，不能用 `ctx.webServer` 的 exact 路由。** webserver 的 `match()`
+     先查 exact 表再查 prefix 表（`dsh-host-webserver/lib/index.js:321-331`），而 `/api` 的浏览器认证是一条
+     **prefix** 路由——一条 exact 的 `/api/inbox` 会**绕过认证**却看起来「在 /api 之下」。
+  5. **提问转待办接在 `user-questions/request` 瀑布上。** `ask_user_question` 最终走
+     `ctx.waterfall(...)`（`dsh-user-questions/lib/index.js:52-79`），Cordis 让**先注册的监听器在链首**
+     （`cordis/lib/index.js:258-264,318-324`）。本插件注册 `{global:true}` 监听器把提问排队，面板回复经
+     `/api/inbox` 解析**同一个挂起的工具调用**，回给模型的答案形状与既有答复器一致。
+- **被否决：** 改任何 shipped preset；用 `ctx.storage`/`ctx.settings` 承载清单（前者读一次、后者会把任务清单
+  变成 Web 设置页渲染的配置命名空间）；把 agent 的回复合成进会话历史（`Session.append` 对消息类事件要求
+  `SurfaceIntent`，伪造对话历史的风险不值得）；在本会话里替用户重启 Host（用户明确选择自己重启）。
+- **被推翻的条件：** 若某次重启后 `$DSH_HOME/inbox/inbox.json` 不生成、或 `inbox_add` 不出现在工具表里，
+  则「宿主平面 + 这一行」的结论为假；若 `dsh-storage-json` 将来获得 watcher 或 reload 成员，则第 2 条的
+  取舍需要重估；若 `/api` 认证不再是一条 prefix 路由，则第 4 条的理由消失。
+- **状态：** 已写成、已安装、已被真实 loader 的 `--dump-config` 证明进入合成树；
+  **尚未挂载**——插件挂载需要重启 Host，那一步由用户执行，因此「GUI 里可见可编辑、重启后仍在」这一半
+  在本条写下时**仍未验证**。
