@@ -267,10 +267,40 @@ vanilla localization file produces zero findings.
   `git clone https://github.com/...` fails with `CRYPT_E_NO_REVOCATION_CHECK (0x80092012)`, the
   same revocation-endpoint defect recorded above, while the GitHub **HTTPS API and codeload are
   reachable**. Anything that needs GitHub repository content should fetch it over `fetch`
-  (the API, or a `codeload` tarball) rather than shelling out to `git clone`. Note this is a
-  *different* defect from the one that blocks Node's `fetch` to `api.github.com`
-  (`UNABLE_TO_VERIFY_LEAF_SIGNATURE`, fixable with `NODE_OPTIONS=--use-system-ca`); do not conflate
-  them.
+  (the API, or a `codeload` tarball) rather than shelling out to `git clone` — with a caveat measured
+  2026-09-19: `codeload` verifies from Node, the **API does not**, and `curl.exe` is a **third victim**
+  of the same schannel defect as `git` — it cannot fetch a GitHub release asset at all
+  (`curl: (35) schannel: … CRYPT_E_NO_REVOCATION_CHECK`, three retries, no file); the client that does
+  work is .NET's `Invoke-WebRequest`. That API failure is a *different* defect — Node's **bundled**
+  CA store lacks an intermediate GitHub's hosts need (`UNABLE_TO_VERIFY_LEAF_SIGNATURE`) — so do not
+  conflate them, and **do not assume it is fixed:** `NODE_OPTIONS=--use-system-ca` is a fix that
+  *exists*, not one in force (D-51 reverted the user-level value). Two process-local equivalents, both
+  measured on Node v26.8.1: pass the flag in **argv** (`node --use-system-ca …`), or call
+  `tls.setDefaultCACertificates(tls.getCACertificates('system'))` (85 certs) — either turns the same
+  call into `HTTP 200`, and each binds only the process that runs it.
+- **The working route for GitHub *API* access from a session is the `mcp-github` host row** in
+  `profiles/web/cordis.patch.yml`: `@deepseek-ai/dsh-mcp-client` → GitHub's own **Go** binary
+  (`$DSH_HOME/plugins/dsh-github-mcp/`, tools `mcp__github__*`). Go reads the Windows root store and
+  performs no CRL/OCSP check, so **neither TLS defect above applies to it** — that is why the row works.
+  Its token comes from `$DSH_HOME/.env` via `node --env-file`, never from the composition.
+  **Posture, measured 2026-09-19:** at the user's explicit request ("全面放开") the row runs
+  `--toolsets all` **without** `--read-only` → **90 tools, 53 of them writes, visible to every session
+  and every delegated child**. The credential was then upgraded, and **writes work**: `push_files` and
+  `create_pull_request` answered 2xx (so did a close-PR call), and `create_or_update_file`,
+  `create_branch`, `actions_run_trigger`, `issue_write`, `add_issue_comment`, `merge_pull_request` all
+  reached the API and failed only on the bogus arguments they were given. Still 403: `create_repository`
+  (account-level — needs a **GitHub App**: `--app-id`/`--app-installation-id`/`--app-private-key-path`),
+  star/unstar, and the reads `list_notifications`, `projects_list`, `list_code_scanning_alerts`,
+  `list_dependabot_alerts`.
+  **Two traps that cost real state here, both worth knowing before probing permissions:**
+  (i) **"Point the write probe at something that does not exist" is NOT a safe rule** — `push_files`
+  *creates* its target branch, so the next probe in the list (`create_pull_request`) found a real head and
+  opened a real PR. That artefact could only be closed, not deleted, because GitHub exposes no way to
+  delete a pull request; `main` was never touched. (ii) **A 404 from a write probe aimed at a nonexistent
+  object proves only that the *read* path was authorized** — GitHub answers 404 for a missing resource and
+  403 for a real one you cannot touch, so only calls that reach a write endpoint settle anything.
+  **"The tools are listed" and "the tools can act" remain separate claims — keep them separate.**
+  None of this moves `git`: whole-history pushes still go through `bin/push-api-ref.ps1`.
 - **`bin/push-api.ps1` is the fallback when git's TLS layer is blocked but the HTTPS API is not.**
   It reproduces `git push` over REST: blobs → trees (bottom-up) → commits → ref, with
   `-DryRun` to inspect and `-Force` to rewrite the ref. Run it as

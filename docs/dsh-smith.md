@@ -107,7 +107,7 @@ DeepSeek Harness（DSH）里没有独立的配置语言：**每一项能力都�
 
 ### 刻意排除的能力（不是缺陷）
 
-- **`@deepseek-ai/dsh-mcp-client`** —— 已安装，但基础组合与 web-app 组合都没挂载它。MCP 支持是一条独立的信任面（外部进程、它自己的凭据与工具面），本预设不替使用者打开。需要就在 profile 补丁层自行加行。
+- **`@deepseek-ai/dsh-mcp-client`** —— 已安装，但基础组合与 web-app 组合都没挂载它。MCP 支持是一条独立的信任面（外部进程、它自己的凭据与工具面），本预设不替使用者打开。需要就在 profile 补丁层自行加行。（**2026-09-19 补记**：本部署的 web profile 补丁层现在**有**一行 `mcp-github` —— 连 GitHub 官方的 Go 二进制，**90 个工具（含 53 个写，权限已实测可用）**；只读/可写由**那一行的配置**决定（`--read-only` 与 `--toolsets`），不是 preset 的属性。见 `PROJECT.md` 的 GitHub 小节与 `$DSH_HOME/plugins/dsh-github-mcp/NOTES.md`。上面这句话仍然成立：那是 **profile 补丁层**的行，不是任何 preset 或 bundle 挂的，本预设也没有因此多出 MCP 工具。）
 - **`@deepseek-ai/dsh-tool-subagent-report`** —— 结构化子代理报告。**这个包在本部署里是坏链**：`node_modules` 下的目录指向安装缓存中不存在目标，看起来装了、其实导不进来。所以它不能作为依赖；判断包是否存在必须查**内容**而不是查名字。
 
 ## 验证状态

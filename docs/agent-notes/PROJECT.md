@@ -112,6 +112,140 @@ prints each request body and is the instrument to reach for if it returns.
 > local one **exactly** (`e3d9a98` on both sides), which is the sharpest available statement that
 > "API commits get different SHAs" is about metadata differing, not about the transport. See **D-33**.
 
+### GitHub 访问：MCP 路线与当前状态（实测 2026-09-19）
+
+**一句话：** `git` 传输（以及 `curl.exe`）在本机是死的，Node 到 `api.github.com` 默认也是死的，
+PowerShell/.NET 与**官方 Go 二进制**是活的；据此加了一行宿主行（工具面见下节；2026-09-19 晚已按用户
+明确要求从"25 个只读"放到"90 个含写"）。
+**范围要说清：** 已实测的是"宿主已挂载 + 子进程在跑 + 真实 API 数据"三件；**尚未实测任何会话的
+工具表里出现 `mcp__github__*`** —— 命名契约来自源码（`publicToolName` = `mcp__<serverName>__<rawName>`，
+`dsh-mcp-client/lib/index.js:120-126,730`），可见性需要一个新会话去枚举才能算数。
+
+| 路线 | 2026-09-19 实测（命令 → 读数） | 可用 |
+| --- | --- | --- |
+| PowerShell / .NET（schannel，默认不查吊销） | `Invoke-RestMethod /repos/ABccgh/dsh-smith` → `HTTP OK`；**取 release 资产成功**：8 480 261 B / 708 s ≈ 11.7 KiB/s | **是** |
+| `codeload.github.com` | `Invoke-WebRequest …/tar.gz/refs/heads/main` → `HTTP 200` | 是 |
+| Node `fetch`（无 flag） | `fetch('https://api.github.com/…')` → `UNABLE_TO_VERIFY_LEAF_SIGNATURE` | **否** |
+| Node `fetch` + **argv** 里的 `--use-system-ca` | 同一调用 → `HTTP 200`；进程内等价写法 `tls.setDefaultCACertificates(tls.getCACertificates('system'))`（85 张）同样 200 | 是 |
+| `git`（`ls-remote`，与 `clone`/`fetch`/`push` 同一传输） | exit 128 `schannel: … CRYPT_E_NO_REVOCATION_CHECK (0x80092012)` | **否** |
+| `curl.exe` | **同一条 schannel 缺陷**（下载上面那个 zip 时实测，`curl: (35)`） | **否** |
+| **匿名** API 额度（本行用 PAT，不受此限） | `x-ratelimit-limit: 60 / remaining: 0`（重置 23:21:13）—— 匿名会话在这台机器上读不了多少东西 | 已耗尽 |
+
+**新增的能力（本次唯一一处宿主组合改动）：** `profiles/web/cordis.patch.yml` 追加一行 `id: mcp-github`
+（`@deepseek-ai/dsh-mcp-client`，`serverName: github` → 工具名 `mcp__github__*`；**工具面大小与
+凭证权限是两件事，见本节末的"全面放开与权限矩阵"**）。
+它连的是 **GitHub 官方的 Go 二进制** `github-mcp-server` v1.12.2（Windows x86_64，sha256
+`c08872e6…cab673`，在使用点复核过），放在 `$DSH_HOME/plugins/dsh-github-mcp/`；同目录 `NOTES.md`
+记了下载/校验、`launch.mjs` 的三个失败分支和健康检查。**Go 读 Windows 根证书、不做 CRL/OCSP，
+所以上表那两条 TLS 缺陷对它都不适用** —— 这正是这条路成立的原因；`get_me`（302 字节，`login=ABccgh`）
+与 `get_file_contents ABccgh/dsh-smith package.json`（`successfully downloaded text file (SHA: e0a1fed1…)`）
+都已取到**真实数据**，不是"没报错"。
+
+**两条容易踩的坑，都已做成具名报错：** ① 令牌**值**不进组合文件（31-32 行那条规则约束的是凭证值），
+由 `node --env-file=$DSH_HOME/.env` 取、`launch.mjs` 转交子进程 —— 本文件里出现的是 `.env` 的
+**路径**，而那个路径会出现在子进程命令行里（同用户可见，不是秘密，别把它当空气）；
+② 那个 `.env` 若存成**带 BOM** 的 UTF-8，Node 会给键名加前导 U+FEFF：按真名读是 `undefined`，
+**被改名的那条键里值其实还在**。前缀个数取决于文件是怎么写的，两种都实测过 —— 字节
+`EF BB BF` 得 **1 个**、`EF BB BF EF BB BF` 得 **2 个**；第一版只剥一个，于是第二种形状被误报成
+"没配令牌"。现在剥**所有**前导 BOM 并报出个数，且 `selftest.mjs` 把每条分支的**消息文本**变成断言
+（用回退成"只剥一个"的那份跑同一套断言，`two BOMs` 用例实测 FAIL）。
+
+**边界，别读过头：** 这不修 `git clone/fetch/push`，也不替代 `bin/push-api-ref.ps1` 的整历史推送；
+MCP 覆盖的是 **API 面**。D-56 的推送路线与其实测不变。
+
+**一条把推断推进为实测的证据：** `profiles/web/package.json` 声明 `patchReload: "live"`，本次拿到
+**直接**读数 —— 宿主进程先起（21:47:59），补丁文件后写（22:48:04），行**当场激活**：其子进程与文件
+写入**同一秒**出现，父子链完整（host → node launcher，命令行即该行的 argv → `github-mcp-server.exe`），
+无重复。（写下时的 PID 是 `21780` / `8424` / `4492` —— **重启即变，别把它当状态**；要复现就看
+"文件 mtime 与子进程创建时间同秒"这一条。）D-43 当时把这一点记为"推断而未隔离"；这条读数把它变成
+实测。（仍是单例，**不要**推广成"任何宿主行都无需重启"——D-42 的克制仍在。）
+
+> **顺带记一条探针假阳性，因为它刚发生过：** 用
+> `Get-CimInstance … | Where-Object { $_.CommandLine -like '*launch.mjs*' }` 数子进程时得到 **2**，
+> 其中一个是**执行这条查询的 runner 自己**——它的命令行里含有 `launch.mjs` 这个字面量。
+> 换成按父进程链计数（host 的直接 node 子进程）后是 1 —— **两个口径量的不是一回事**（命令行子串 vs
+> 父子关系），别把它们读成互相矛盾。**按命令行模式数进程时，先假定会数到自己。**
+
+> **顺带记一条探针假阳性，因为它刚发生过：** 用
+> `Get-CimInstance … | Where-Object { $_.CommandLine -like '*launch.mjs*' }` 数子进程时得到 **2**，
+> 其中一个是**执行这条查询的 runner 自己**——它的命令行里含有 `launch.mjs` 这个字面量。
+> 换成按父进程链计数（host 的直接 node 子进程）后是 1 —— **两个口径量的不是一回事**（命令行子串 vs
+> 父子关系），别把它们读成互相矛盾。**按命令行模式数进程时，先假定会数到自己。**
+
+#### 全面放开与权限矩阵（2026-09-19 晚，实测）
+
+用户看过四档工具数后明确选择"全面放开"。这一行因此从 `--read-only --toolsets context,repos,issues,pull_requests`
+（25）改成 `--toolsets all` 且**不带** `--read-only`：
+
+| 配置（同一份二进制，`tools/list` 的读数） | 工具数 |
+| --- | --- |
+| `--read-only` + `context,repos,issues,pull_requests` | 25 |
+| 同四个 toolset 去掉 `--read-only` | 42 |
+| `--toolsets all` + `--read-only` | 56 |
+| **`--toolsets all` 可写（本行现状）** | **90**（31 读 + 53 写） |
+
+生效方式与上次相同：补丁 **22:58:34** 写入，宿主（21:47:59 起）**当场换进程** —— 新 launcher →
+新 server（argv 为 `stdio --toolsets all`，已无 `--read-only`），旧子树被释放，**仍是 1 个 server**。
+
+**但"工具在列"与"工具能干活"是两件事。** 第一轮读数（**凭证仍是只读时**，2026-09-19 22:5x）如下；
+判别法是"**403 = 凭证权限不够** vs **404/422 = 已过授权、输在参数**"：
+
+| 族 | 实测 | 缺的是 |
+| --- | --- | --- |
+| `get_me` · `list_gists` · `actions_list`（读）· `list_discussions` · `list_repository_collaborators` | **通** | — |
+| `create_or_update_file` · `push_files`（走到 `POST /git/refs`） | **403** | Contents: **write** |
+| `create_pull_request`（`POST /pulls`） | **403** | Pull requests: **write** |
+| `actions_run_trigger`（`POST …/dispatches`） | **403**（读已通） | Actions: **write** |
+| `create_repository`（`POST /user/repos`） | **403** | 账号级；细粒度 PAT 未必开得了 → 正规解法是 GitHub App |
+| `star_repository` / `unstar_repository` | **403** | Account/Starring（细粒度是否开放待确认） |
+| `list_notifications` · `projects_list` · `list_code_scanning_alerts` · `list_secret_scanning_alerts` · `list_dependabot_alerts` | **403** | Notifications / Projects / Security events / Secret scanning alerts / Dependabot alerts（均 Read） |
+| `create_branch` · `issue_write` · `add_issue_comment` · `merge_pull_request` | **404（输在不存在的对象上）—— 不能当作写权限已通** | 同族 write，仍需上表那些权限 |
+
+**一条方法论，值得留着：** 拿"不存在的目标"做写入探针时，404 只证明**读**路径通了 —— GitHub 对
+不存在的资源回 404、对存在但无权的资源回 403。所以"过没过授权"必须由**真正到达写端点**的那几条
+（`create_or_update_file`/`push_files`/`create_pull_request`/`actions_run_trigger`/`create_repository`/
+star）来判，它们一致回 403 才是"凭证仍只读"的证据。
+
+**未验证：** Copilot 那两个工具（`assign_copilot_to_issue`/`request_copilot_review`）没探；
+`label_write` 与 `create_repository_ruleset` 被服务端**本地**挡在 `missing required parameter`，
+连 API 都没到（探针构造的必填项不全，属于探针的问题，不是权限读数）。
+
+**第二轮读数（23:1x，用户补完权限并换了 token 之后）：**
+
+| 族 | 实测 | 说明 |
+| --- | --- | --- |
+| `push_files` · `create_pull_request` · `update_pull_request`（关闭 PR） | **2xx，真的写成了** | 写权限已到位 |
+| `create_or_update_file` · `create_branch` · `actions_run_trigger` · `issue_write` · `add_issue_comment` · `merge_pull_request` | 404（**过了授权**，输在不存在的目标/参数上） | 与第一轮的 403 对比，这就是"权限已通"的判据 |
+| `list_secret_scanning_alerts` | 2xx（**由 403 转通**） | Secret scanning: read 已补 |
+| `create_repository` | **仍 403** | 账号级；要它得走 GitHub App |
+| `star_repository` / `unstar_repository` | **仍 403** | Account/Starring（细粒度可能根本没有这一项） |
+| `list_notifications` · `projects_list` · `list_code_scanning_alerts` · `list_dependabot_alerts` | **仍 403** | 对应的读权限没补 |
+
+> **⚠️ 这一轮探针真的改到了远端 —— 记下来，因为教训比读数值钱。** 探针设计把"目标不存在"当作
+> "不会写入"，但 **`push_files` 会自己创建目标分支**：它 2xx 地建了分支
+> `dsh-probe-branch-that-does-not-exist` 并推了一个 `PROBE.md`，紧随其后的 `create_pull_request`
+> 于是找到了**真实 head**，把 **PR #1 开在了公开仓库上**。处置：分支已用 API 删除
+> （`DELETE /git/refs/heads/…` → 204；**工具目录里没有删分支的工具**），PR 因 head 分支被删而自动
+> 变为 closed，而 **GitHub 不提供删除 PR 的接口 —— 它作为一条已关闭记录永久留下**（已改写标题与正文
+> 说明它是探针产物、可忽略）。**`main` 未被动过**（tip `bc87ad5`，提交时间仍是 09/15 13:12:22，
+> 最近三条历史都在 09/15 之前）。教训：**"拿不存在的目标做安全探针"这条规则，对任何会创建自己目标的
+> 工具都失效** —— 下探针之前先问一句"这个工具会不会把它的参数变成现实"。
+
+**换 token / 改配置的生效规则（实测）：** 子进程在**启动时**就把 `.env` 读走，之后只改 `.env` 不生效；
+而给 `cordis.patch.yml` 改**注释**也不会让这一行重挂（loader 按**配置差异**决定是否重建子树）——
+要让新 token 生效必须改到**配置值**（本次是 `toolCallTimeoutMs: 120000 → 180000`，随后 server 由
+`17264` 换成 `4436`）。
+
+**会话可见性：已闭合（2026-09-19 23:2x，会话内直接读数）。** 这曾是唯一没测的暴露面，现在本会话的
+工具表里就有全部 `mcp__github__*`，并**从会话内直接派发成功**：`mcp__github__get_me` 返回真实身份；
+`mcp__github__list_secret_scanning_alerts`（补权限前是 403）现在回 `[]` —— 后者同时证明**宿主那个子进程
+已经用的是新 token**，不只是探针脚本。
+
+**90 vs 89：差额来自一次分组重复计数，不是上游增删。** 会话内逐名枚举（**工具表是权威**）= **90**，
+与探针 `tools/list` 的 90 一致；那份 89 的清单把 `custom_properties_read` 列了**两次**（一次在 Projects、
+一次在"规则集/自定义属性"，原文自己还标了"另见下条"），去重后正好差 1。
+**教训（与 D-26/D-27 同族）：按名字计数就要数**唯一的**名字 —— 分组散文里的计数会把同一件事算两遍。**
+
 ### The balance plugin is its own repository now (added this session)
 
 `https://github.com/ABccgh/dsh-account-balance` — public, root commit `e3d9a98`, 7 files, topics
@@ -1258,6 +1392,62 @@ this work created or corrected)*:
 - A persona's **interim** message is not evidence of its final shape: the expert call's interim
   summary opened `# 1. DECISION` with a condensed core, while its final report was exactly the
   five contracted blocks. Judge a persona's contract on the final report only.
+- **`stat` 不是 containment，而且这一点被一次活探测抓到了（2026-09-19）。** 新插件
+  `dsh-video-player` 的路由最初把 `sandboxPolicy.workspaceRoot` 当作「解析不到会话」的回退，
+  于是 `?session=<任意字符串>&path=…` 返回 200 并服务**宿主启动目录**下的文件。
+  `workspaceFiles` 本身允许读工作区之外（`dsh-api-workspace-files/lib/types/index.d.ts:113`），
+  所以**扩展名白名单不是访问控制**；`ctx.fs.contains` + 路径级 `lstat`（拒 `symlink`）才是。
+  改动后未知 session = 404。详见 D-89 第 3 点。
+- **插件本体与部署事实的完整记录在本仓库之外**：`dsh-video-player` 住在
+  `C:\Users\曦曦\.dsh\plugins\dsh-video-player\`（本仓库只放 preset，规则 7），
+  它的设计故事在 `DECISIONS.md` D-88/D-89/D-90，部署级事实在 `BOARD.md` 的 2026-09-19 节。
+  本文件**不复制**那些内容，只留这条指针——上一次把插件细节写进本文件的地方已经过时。
+
+## 视频播放（`dsh-video-player`）—— 已交付、已验收（2026-09-19；激活条件见"当前状态"）
+
+**这是什么**：在 DSH Web GUI 的**右侧边栏**里播放会话工作目录内的视频文件，带浏览器原生控件与拖动。
+
+**组件地图**（一行一个职责）：
+
+| 路径 | 职责 |
+| --- | --- |
+| `~/.dsh/plugins/dsh-video-player/lib/index.js` | 宿主半：在 `ctx.connection.fetch` 注册 `GET/HEAD /api/video/stream`，`Range` → 206/416/400/403/404/415 |
+| `~/.dsh/plugins/dsh-video-player/lib/client.js` | 浏览器半：`sidebarRightTabs` 上一个 `extension` 带 tab 类型 + body（`<video src>`），以及一个 turnTail 的「播放视频」路径输入框 |
+| `~/.dsh/plugins/dsh-video-player/test/{falsify,route,audit,fixture}.mjs` | 25 条 bundle/纯函数断言、16 条活 handler 断言、8 个变异审计、43 KB VP8/WebM 夹具（内嵌 base64 + sha256 自校验） |
+| `~/.dsh/profiles/web/cordis.patch.yml` 末尾 `insert: - id: video-player` | 宿主平面的挂载点（不发布服务，故无 realm） |
+| `~/.dsh/profiles/web/package.json` 的 `"dsh-video-player": "link:…"` | 由 `dsh plugin --profile web add` 写入（不许手改） |
+
+**架构（已核实，每条都写明来源）**：
+
+- `ctx.connection.fetch` 的路由位于 `/api` **prefix 认证之后**：`/api` 的 handler 先 `requestRejection`
+  （Host/Origin 围栏 + 签名 Cookie），再由 `createSharedFetchHandler` 查 exact 表
+  （`dsh-client-connection/lib/index.js:33-110,32058`）。**`webServer` 的 exact 路由则在认证之前**
+  （exact 表先于 prefix 表匹配）。
+- `bridge()` 原样透传响应 status 与**全部**响应头、按背压逐块转发响应体 → 206 + `content-range` 可用。
+- 浏览器侧取地址：**`props.useTabInfo()` 的 `tab.navigation.address`**；这是 pane 交给 body 的座位之一
+  （实测的完整 props 键列表见 D-88）。**本插件不声明任何 `children` 座位**——声明
+  `sidebar.right.tab.document` 会让**文档预览插件**的 boot 以 `is already declared` 失败。
+- 地址格式：`dsh-resource://file/session/<sessionId>/<percent-encoded segments>`；
+  会话 scope 才带 session id，absolute scope 被 `canOpen` 否决。
+- 访问控制 = `ctx.fs.contains`（会话 workspaceRoot 之内）+ `lstat.type === 'file'`（拒符号链接与目录）
+  + 扩展名白名单（只收窄用途，不承担安全）。
+
+**当前状态**：三套测试全绿（25/25、16/16 + 1 SKIP、8/8 变异被抓），
+**在另起的 `--port 63737` 实例上用真 Cookie 打完 14 组 HTTP 探针**，
+**并用 Playwright 在真浏览器里完成了端到端播放与 seek**（读数见 BOARD 的 2026-09-19 节）。
+行与依赖已就位。**旧说法"只差宿主重启（`patchReload: live` 对新增行不生效）"已被实测推翻**：
+宿主平面的行在**补丁写入那一刻**即生效 —— 2026-09-19 的 `mcp-github` 行 22:48:04 写入、其子进程
+**同秒**出现，而宿主进程 21:47:59 就在运行（见本文件 GitHub 小节）。所以本插件的**宿主半**早已随之
+生效；**未实测**的是浏览器半（客户端产物是否需要重建并刷新页面）——那是另一个问题，别把它当已解决。
+
+**已知缺口（刻意的，不是疏漏）**：
+
+- 工作目录**之外**的视频被 403 挡住 —— 这是安全边界；要放开必须由用户明确给出根白名单。
+- `.mkv`/`.avi`/`.ts` 在 Chromium 里通常放不了；播放器会给出「换 mp4/webm 或用系统播放器打开」的提示，
+  而不是白屏。
+- 那个 <3.2 秒的测试夹具会被浏览器一次取完，所以**这一次**的 seek 不产生第二个 Range 请求；
+  Range 通路本身由 HTTP 探针独立证明（206 + `content-range`）。
+- NOTES.md / README.md 未写全（`dsh-inbox` 的 NOTES 有九节，是此处要追平的样板）。
 
 ## CK3 Wiki → ima 知识库 —— **项目已取消，镜像与知识库均已交付**（本节为历史记录）
 

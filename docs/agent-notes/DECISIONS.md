@@ -3273,3 +3273,530 @@ only its text is missing.)*
 - **状态：** 已写成、已安装、已被真实 loader 的 `--dump-config` 证明进入合成树；
   **尚未挂载**——插件挂载需要重启 Host，那一步由用户执行，因此「GUI 里可见可编辑、重启后仍在」这一半
   在本条写下时**仍未验证**。
+
+## D-85: AI 视频变现该走即梦的哪条通道，以及「两次读数相同」为什么不构成两次验证
+
+**问题：** 用户要做 AI 视频变现（①风格化图生视频 ②地方旅游宣传片），希望用 DSH + 即梦完成。
+即梦有至少三条可调用通道：官方 CLI、官方 API（火山方舟 Ark）、以及第三方反代
+（`jimeng-free-api-all` 一类，用网页 sessionid 当 token）。选哪条，决定整个工作台的形状与法律风险。
+
+**决定：** 走**即梦官方 CLI（`dreamina`）**；工作台 = `D:\AIVideo` 工作区 + `dsh-aivideo` preset
+（从 shipped `standard` 拷贝后裁剪）+ `tools/qc-images.mjs` 质检器。**不写 host 插件、不改 profile、
+不重启 Host**——生成能力由外部可执行文件提供，`tool-pwsh` 直接调用即可。
+
+**依据（每条都读自运行时或磁盘）：**
+
+1. **即梦 CLI 是官方工具，不是反代。** 安装脚本在 `https://jimeng.jianying.com/cli`（即梦官方域名），
+   二进制来自 `lf3-static.bytednsdoc.com`（字节自有 CDN），官方文档在 `bytedance.larkoffice.com` wiki。
+   CLI 自述 *"即梦 official AIGC CLI tool"*。`version.json` = **1.4.18 / 2026-09-10**，
+   release notes 为 `视频生成支持比例控制。` —— 一周前仍在更新。
+2. **它用官方 OAuth Device Flow**（`verification_uri`/`user_code`/`device_code`），**不需要交出 sessionid**。
+   这正是不选第三方反代的实质理由：反代要求把网页 session 交给第三方代码，并违反即梦用户协议
+   §5.1（禁止任何插件/外挂/自动化程序访问）、§3.5（禁止出借账号），§7.1 的处置是限制功能、
+   **永久关闭账号、禁止重新注册**。用户的账号是生产资料，不能用它冒险。
+3. **DSH 本身没有任何图像/视频生成能力。** 枚举 npx checkout 全部 **240 个 `@deepseek-ai/*` 包**，
+   匹配 `video|image|media|generat` 的只有附件/文件管理类。所以「生成必须发生在 DSH 之外」是**构造性**的，
+   官方 CLI 恰好补上了这个缺口。
+4. **`sharp` 无需安装即可用于质检。** 本机实测 sharp **0.35.4 / libvips 8.18.6**，用 `createRequire`
+   从 npx checkout 加载后测得 1080×1920 的 ratio 正好 **0.5625**。注意 `file://` 拼绝对路径会被
+   sharp 的 exports map 拒绝（`ERR_MODULE_NOT_FOUND`）——这是实测出来的唯一可行写法。
+5. **技能无需重启即被发现（再次实测）。** 把官方 SKILL.md 放到 `~/.dsh/skills/` 后，**同一会话**的
+   技能目录立刻多出 `dreamina-cli`，随后 `skill` 工具成功返回正文。这是对既有记录的独立复现；
+   同时顺带纠正了一个我自己的错误——我一度把文件写到 `C:\Users\曦曦\.dsh\.skills`
+   （**一个名为 `.dsh.skills` 的目录**），provider 永远发现不了它。
+   路径本身写错时，「技能没出现」会被误判成 provider 的问题。
+
+**方法学教训（本条最值得留下的一条）：**
+
+排查登录失败时，我直接请求了授权接口，得到 `{"error_code":22,"description":"非法应用"}`。
+我几乎据此宣称「官方 CLI 的授权流程被服务端拒绝」。**但我补做了对照：用一个乱填的 `user_code`
+请求，返回了逐字节相同的错误。** 于是那条报错的身份立刻改变——它只是「一个没有浏览器会话的请求
+拿到通用错误」，**对流程是否损坏零信息**。
+**两个读数相同，只有在两次输入不同时才构成独立验证；输入相同或缺少对照时，它是同一个事实读了两遍。**
+这与仓库既有的 D-26（两种「独立」检查其实读同一张 `view(scope).visible`）是同一族错误。
+
+**被否决：** 第三方即梦反代（ToS + 封号风险，且要交出凭据）；火山方舟 Ark API（个人开发者能否开通
+**至今未证实**，官方定价页与注册页均为 JS 渲染/登录墙；且它的计费是另一套，与用户已付的即梦会员重复）；
+把质检写成 host 插件（会引入「需要重启 Host」这一新失败模式，而收益为零）；为这个用途新建 host 行或改 profile。
+
+**被推翻的条件：** 若 `dreamina login` 在用户完成浏览器授权后仍不写入凭据，则「官方 CLI 是可用通道」为假，
+需要回到 Ark API 并重新面对「个人能否开通」这个未证实项；若即梦停止维护该 CLI（`version.json` 长期不再更新）
+或明确限定白名单，则第 1、2 条的依据需要重估；若日后确实需要 Veo3/Sora2 等其它厂商模型，
+官方 CLI 只覆盖即梦/Seedance 系，届时要另做通道决策。
+
+**状态：** CLI 已安装并验证可运行（`dreamina -h` 与各子命令 `-h` 全部读到）；
+`dsh-aivideo` preset 已写成，**YAML 解析通过**（13 entry / 17 row id）、**15 个行的包全部解析成功**
+（0 失败）、6 个技能 frontmatter 全部校验通过；`qc-images.mjs` 已做反向证伪
+（植入 4 类缺陷各自被抓到，退出码 0/2/3/4 四态）。
+**但整条链路的门 —— 登录 —— 尚未打通**：`dreamina user_credit` 报「未检测到有效登录态」，
+日志为 `等待登录超时` + `load: store: not found: auth record not found`，即从未写入任何凭据。
+因此**真实积分消耗率仍未测量**，`manifest.json` 的 `creditRateMeasured` 保持 `null`，
+且**在它非 null 之前不对外报价**。另外 `standingKeyFor` 是唯一的挂载检查但它需要 `cordis_*` 工具
+（本会话没有），所以 preset「能挂上」这一半**仍未验证**，只能由用户在 GUI 里建一个
+`dsh-aivideo` 会话来确认。
+
+## D-86: 浏览器抽帧能否取代「视频画面只能由人目视」——能，但只取代一半
+
+**问题：** D-85 与 `D:\AIVideo\PROJECT.md` 都写着一句结论：**「agent 无法解码 H.264，
+所以跨镜头人物一致性只能由人目视」**。该结论是那条工作流的硬边界之一。
+本部署新增浏览器能力后，这句话是否还成立？
+
+**决定：** **不成立，已实测推翻 —— 但只推翻一半。** 分层：
+- **agent 能独立完成**：比例与真实像素尺寸、画面内容、跨镜头人物一致性、构图/崩坏判断。
+- **仍必须由人完成**：动作是否自然连贯、音频与节奏、动态模糊是否可接受。
+  **一帧看不出动作连贯性，也听不到声音** —— 不要因为"我能看到画面了"就顺手把这两项也认下来。
+
+**依据（全部本次实测，逐项可复现）：**
+
+1. **能力来自自写插件，不是官方包**：`~/.dsh/plugins/dsh-playwright-mcp`
+   （内部 `node_modules/@playwright/mcp`），由 `dsh-mcp-client` 注入 `mcp__playwright__*` 工具。
+2. **浏览器身份**：进程命令行实测为
+   `@playwright/mcp/cli.js --browser msedge --headless --user-data-dir C:\Users\曦曦\.dsh\playwright-profile --idle-timeout 300000`。
+   即 **Edge、headless、持久 profile** → 登录态可跨会话留存。
+   但**不含用户的即梦会话**：打开画布页显示「登录以打开您的画布」，而这个 profile 是插件自己的。
+3. **`file:` 协议被禁**：`Access to "file:" protocol is blocked` → 本地产物必须经 HTTP。
+   自写 `tools/serve.mjs`（只读、绑 127.0.0.1、防目录穿越）解决。
+4. **截图确实包含视频像素**：`tools/frames.html`（`<video>` + seek + `pause`）在
+   `?t=2` / `?t=3` / `?t=4.5` 三个时间点截出**三组不同**的真实画面。
+   **这是本决定的核心证据** —— 若三个时间点得到同一张图，就只能证明"截到了海报"而非"截到了帧"。
+5. **两条独立路径互证尺寸**：浏览器 `videoWidth/videoHeight` = `720×1280`，
+   与自写 MP4 `tkhd` 解析器（`tools/probe-video.mjs`）的读数**完全一致**。
+   两条路径读的是不同东西（浏览器解码 vs 容器头部），所以这是真的两个证据。
+6. **负例必做**：用不存在的文件名 → 标题不是 `FRAMES-READY`、页面报
+   `某个视频加载失败`。**"它会失败"才是"它不会把失败伪装成通过"的证据。**
+   这条是本条最该留的部分：一个永远能截出好看图片的抽帧器，等于没有验证。
+7. **冷启动可复现**：杀服务 → 端口释放 → 页面不可达 → 重启 → `FRAMES-READY` 复现。
+
+**已知的操作坑（会影响复现）：** `job_kill` 请求取消后**子进程可能存活**并继续占用端口
+（本次为 PID 3452），于是"重启服务"实际报 `EADDRINUSE`，而**旧进程仍在用旧代码应答** ——
+表现为"改了代码但行为没变"。规程：重启前先查 `Get-NetTCPConnection -LocalPort <port>`。
+
+**被否决：**
+- **用 `make-qa-pack.ps1`（Windows 缩略图 API）代替抽帧。** 实测 4 条视频返回**同一张
+  bilibili 品牌图** —— 那是内嵌缩略图，不是解码帧。已在该文件头标注废弃并保留原因。
+  这与 D-75 同族：「看起来像证据」的产物比没有产物更危险。
+- **用浏览器替用户完成即梦 OAuth 授权。** 技术上可能（持久 profile + 可导航到回调页），
+  但要处理账号密码与手机验证码 —— 不越这条线。授权仍是账号持有人的动作。
+- **把抽帧写成 host 插件。** 它是这一个 agent 的质检手段，不是进程级共享资源；
+  写成插件要改 profile、要重启 Host，且会给每个会话（含无关会话）都装上。
+
+**被推翻的条件：**
+若浏览器工具被撤下或 `dsh-mcp-client` 不再注入（则回到"画面只能人看"）；
+若 `msedge` 不再支持 headless 截取视频元素（则抽帧失效）；
+若某个浏览器版本开始在截图里对 `video` 输出黑帧或海报帧而不是当前解码帧
+（则第 4 条需要重测，且必须用"不同 t 得到不同图"来判，不能只看"截出来了"）。
+
+**状态：** 实测通过 V1–V6；`style-image-to-video` 技能第 8 步与交付自查表已改为三层
+（比例 / 画面 / 动作），`订单会话启动单.md` 第六节已改，`make-qa-pack.ps1` 已标废弃。
+**仍未验证**：抽帧对运动与音频无效这一点无法通过抽帧本身验证（逻辑上成立，非实测）；
+单帧放大是否足以看清手指/文字细节**未测**。
+
+## D-87: 一方式一画布，以及「1080p/30 秒 = 1920 积分」推翻了计划里的成本外推
+
+**问题一：** 用户要求"每个变现方式都要有 1 张专用画布"。而此前一张画布混装模板、样片与实验，
+用户删除 `d4894b08-…`「视频创作」后，`订单会话启动单.md` 里写死的该 id 立即变成假信息，
+实测任何操作返回 `service.20009 "The requested canvas was not found."` ——
+**长得像参数错，实际是身份错**。
+
+**问题二：** 方式 3（AI信息流视频）的 SOW 要求 **1080×1920 + 30–60 秒**，这在本预算下是否可达？
+
+**决定：**
+
+1. **每个变现方式一张专用画布**，命名 `变现<N>-<短名>`，并建 **`D:\AIVideo\canvas-registry.json`**
+   作为 projectId 的**唯一来源**。任何文档/脚本/会话不得另行写死画布 id。
+2. **方式 3 的 1080p/30 秒规格不可行**，按路线 A（720p 生成 → 剪映放大到 1080×1920）执行，
+   并在报价阶段就与客户说明"成片由后期放大"。
+
+**依据（全部本次实测）：**
+
+- **`canvas create --project-id <UUID>` 是幂等键**：schema constraints `UUID`，
+  描述为"客户端生成的画布 UUID；重试时复用同一值"。**实测**用同一 UUID 重跑 create →
+  返回 `ok:true` 且**不产生重复画布**（总数仍 4，该名仍 1 张）。三个 projectId 与本地生成的 UUID **逐一相同**。
+- **`canvas ls` 是分页的**（`--limit` 1..100 默认 50 + `cursor`）→ **只看第一页会漏画布**。
+- **`canvas` 只有 `create` / `ls`，没有 delete** → 删除只能由人在网页做，agent 无法代做也无法检测。
+- **`successData.localStorageWarning` 存在**（画布可服务端建成而本地草稿写失败）—— 本次三次创建**均未出现**。
+- **画布 `node find` 可读性检查有判别力**：三个新画布 `ok=true`，而已删的 `d4894b08` 仍返 `20009`。
+  （**"检查通过"必须配一个已知会失败的对照**，否则证明不了什么。）
+
+**最要紧的一条 —— 计划里的成本外推错了 3 倍：**
+
+| 配置 | 计划里的外推 | **实测 `node quote`** |
+| --- | --- | --- |
+| 720p/5s（含 seedance2.5） | — | 100 |
+| 720p/10s / 15s / 30s | 140 / 210 / 420 | **200 / 300 / 600** |
+| 1080p/5s / 10s / 15s / 30s | — | **320 / 640 / 960 / 1920** |
+
+**1080p/30 秒真实价 1920 积分 = 月产能 725 的 265%**，而我原先外推的是 630。
+**外推不仅偏低 3 倍，还错在结构上：单价不是线性的**（1080p 相对 720p 的倍率高于 720p 自身），
+所以"按秒数乘"从根上不成立。**这条应作为规则记住：视频单价一律 `node quote`，不估算。**
+
+**audio 几乎免费（这条改变了优化方向）**：TTS **1 积分**、音乐 30 秒 **6 积分**，
+而视频 70–1920。**成本 99% 在视频上** → 优化只值得花在选分辨率与时长，省配音音乐毫无意义。
+
+**被否决：**
+- **把外推值写进技能。** 630 若被当成事实，会直接导致报价亏损——这是一次真实的"估计值伪装成读数"。
+- **直接按 SOW 的 1080p/30s 报价。** 一条就超月产能 2.6 倍，交付日必然爆掉（违约而非退款）。
+- **在用户的「图像创作」画布上做实验。** 已记入登记表的 `notInScope`。
+- **用外部下载的音乐。** SOW 明令禁止侵权素材；平台内生成的音乐正好规避这条。
+
+**被推翻的条件：** 若会员升级使月产能大幅提高（1080p/30s 变成月产能的一小部分），则第 2 条作废；
+若 `canvas` 将来提供 delete 或 rename，则登记表的"以服务端为权威"约定需要重写；
+若某次创建出现 `localStorageWarning`，则"创建成功即已持久化"的假设需要重估。
+
+**状态：** 三张画布已建成并逐一验证（`ls` + `node find` + 与登记表比对，名字与 id 全一致）；
+`canvas-registry.json` 已写入；`订单会话启动单.md` 第四节已改为"从登记表取 id"并列出三张画布；
+新技能 `infeed-video/SKILL.md` 已写（8 个技能全部 frontmatter 合规）。
+**未做（需用户决定）**：方式 3 的画布里有 12 个探针节点（视频/音频），**已被报价但从未 run**
+——其中 1080p/30s 一个就 1920 积分，超出当前余额，因此**我没有执行任何生成**。
+TTS 的真实音色输出、300 字符上限是否服务端强制、以及 720p 放大到 1080×1920 的实际观感，均**未实测**。
+
+## D-88: 右侧边栏的 tab body 到底从哪里拿到自己的地址？
+
+**Decided:** 直接从 pane 交给 body 的 **`props.useTabInfo`** 取，**不要**为本插件声明
+`children: { 'sidebar.right.tab.document': { inject: { hooks: { tabInfo: … } } } }`。
+
+**Because:** 这是在一次真实加载里**测量**出来的，不是读文档推出来的。往 `VideoBody` 里临时塞一个
+`console.log(Object.keys(props))` 后，pane 交给 body 的座位列表是：
+`["usePanelInfo","useSessions","useSessionPendingInteraction","useWorkspaces","useResource","sessionId","inputActions","useSession","useConversation","useInput","useTrajectory","useChat","useProjection","useTabInfo"]`
+—— **`useTabInfo` 本来就在里面**，`props.sessionId` 也在。
+而先前按「子座位 + 自带 hook factory」的写法，造成的后果是**另一件事坏掉**：
+
+```
+Error: failed to apply loader entry (@deepseek-ai/dsh-client-ui-sidebar-documentpreview): slot
+"sidebar.right.tab.document" is already declared (by an entry in "sidebar.right.pane.tab" (Z8))
+```
+
+即**文档预览插件整个 boot 失败**——因为我声明了一个它已经拥有的子座位。
+「一个 tab 类型不许声明自己不属于的座位」因此是硬约束：一个插件多声明一行，坏的是**别人的**插件。
+
+**Rejected:** 把 `hookContext.tabId` + `hookContext.useTabNavigation` 重新实现一遍
+（`sidebar-right` 的 `tabInfoFactory` 没有对外 subpath，包名也不在 shell 的 seed 表里）。
+它在类型上看起来更「正统」，代价却是与文档预览抢座位；而 `useTabInfo` 已经由 pane 免费提供。
+
+**Reversed by:** 某次升级后 `useTabInfo` 不再出现在 body 的 props 里（探针就是那一次 `console.log`），
+或者 `sidebar.right.tab.document` 换了 owner 使嵌套声明不再冲突。检查方式：给 body 加一行 props 探针，
+或看 boot 日志里有没有 `is already declared`。
+
+## D-89: 视频播放这条路走 `connection.fetch` + `<video src>`，不走文档预览 body
+
+**Decided:** 新插件 `dsh-video-player` 由 web profile 的 `cordis.patch.yml` **一行**挂载；
+宿主侧在 `ctx.connection.fetch` 上注册 `GET/HEAD /api/video/stream`（带 HTTP Range），
+浏览器侧注册一个 `sidebarRightTabs` 的 **`extension` 优先带 tab 类型**，body 里就是一个 `<video src>`。
+
+**Because（四条，全部实测）：**
+
+1. **文档预览这条路是死的**：它的 owner 交给 body 的是累计文本页或**整文件 base64**
+   （`document/contract.d.ts:15-46`），而整文件读取上限 `maxFileBytes` 默认 32 MB 且**超限拒绝而非截断**
+   —— 大视频永远进不来。
+2. **`/api` 认证在 prefix 路由里，exact 路由会绕过它**：`bridge()` 把响应的 status 与**所有**响应头原样写出、
+   按背压逐块转发响应体（`dsh-client-connection/lib/index.js:33-110`），所以 206 + `content-range` 能透传；
+   实测 43 KB 夹具 `Range: bytes=0-1023` → `206` + `content-range: bytes 0-1023/43235`，
+   `Content-Range`/`Content-Length`/`Accept-Ranges` 三个头齐全，**body 前 10 字节与文件逐字节相同**
+   （`1a45dfa39f4286810142`）。`<video src>` 是浏览器同源请求，签名 Cookie 自动带上——
+   媒体元素无法附加自定义头，这是**唯一**可行的认证路径。
+3. **扩展名白名单不是访问控制**：`workspaceFiles` 本身**允许读工作目录之外**的文件
+   （`dsh-api-workspace-files/lib/types/index.d.ts:113`），所以插件解析会话 workspaceRoot 后用
+   `ctx.fs.contains` 判 containment，并由路径级 `lstat` 把符号链接判为 `symlink` 而拒绝。
+   **一次活的探测抓到了真缺陷**：原先还回退到 `sandboxPolicy.workspaceRoot`，于是
+   `?session=<任意>&path=…` 会服务宿主启动目录下的文件 → 已删掉该回退，未知会话现在是 **404**。
+4. **播放这件事本身在真浏览器里验收通过**：43 KB 的 VP8/WebM 夹具（`test/fixture.mjs` 内嵌 base64 + sha256 校验，
+   校验不匹配就抛；本机没有 ffmpeg，夹具是用浏览器自己的 `MediaRecorder` + canvas 录出来的）
+   在 GUI 右侧栏的 tab 里 `readyState=4`、`videoWidth=320`、`duration=3.186176`，
+   暂停后 `currentTime = 0.4` **精确落点**，恢复播放后 `currentTime` 继续前进。
+
+**Rejected:**
+- 用 `ctx.webServer.register({kind:'exact'})` 注册 `/api/video/stream` —— **会绕过认证**
+  （exact 表先于 prefix 表匹配，`dsh-host-webserver/lib/index.js:321-331`），本机看不出来，
+  `--host 0.0.0.0` 就是 LAN 任意读文件。
+- 新建一个「通用文件流」路由 —— 越权面更大且与既有 `/api/file` 重复；收窄到视频后缀是刻意的。
+
+**Reversed by:** 某次升级让 `connection.fetch` 不再位于认证之后（检查：无 Cookie 请求该路径应得 401，
+若得到 206 就是回退）；或 `bridge()` 不再透传 `content-range`（检查：`Range` 请求应得 206，若退化成 200 则 seek 会失效）。
+
+## D-90: 「不能失败的测试」这次是用**变异审计**来保证的
+
+**Decided:** 新插件带三套测试，其中 `test/audit.mjs` 是**元测试**：它把插件**复制到临时目录**、
+在副本里逐个植入真缺陷、再要求指定的那条断言变红；**植入缺陷却没变红 = GAP，进程非零退出**。
+
+**Because:** 本仓库已有「107/107 全绿而生成器在产出六个真缺陷」的教训（D-70/D-73），
+而这次的缺陷**确实都被自己抓到过**，各由一条具体断言：
+
+| 植入的缺陷 | 被哪条抓住 |
+| --- | --- |
+| 丢掉 `*.mp4` 模式 | `every claimed extension has a pattern` |
+| 把 body 注册到 `kind` 而不是定义 `id` | `stage 2 registers the tab body under the definition ID` |
+| 声明 `sidebar.right.tab.document` 子座位 | `the body takes its address from the seat's own useTabInfo prop` |
+| 接受 absolute-scope 地址 | `an absolute-scope address is vetoed` |
+| `bytes=N-` 丢掉 open-ended | `MEASURED bytes=100- stays open-ended` |
+| 反向区间当合法 | `a reversed range is refused` |
+| `start >= size` 返回 range 而非 416 | `a start past EOF is 416` |
+| 模式丢掉 `*.` 前缀 | `every claimed extension has a pattern` |
+
+另外两套：`falsify.mjs`（25 条，纯函数 + 用**真 `__ModuleLoader__` 契约**驱动 bundle）与
+`route.mjs`（16 条，用真临时目录驱动**活的 handler**，含工作区外路径、`..` 逃逸、目录、缺失文件）。
+`route.mjs` 对 Windows 拒绝创建符号链接这件事**报 SKIP 而不是 PASS**——
+「读不到」必须与「没问题」在输出上不同（D-67/D-69）。
+
+**Rejected:** 只写断言不复核。`audit.mjs` 首跑就抓到一条 **VOID**：植入锚点因行尾（CRLF/LF）与缩进变化
+而匹配不到 —— **一个证明不了任何事的变异被如实报成 VOID，而不是悄悄算作通过**。
+
+**Reversed by:** 某条断言改到 `audit.mjs` 的锚点失效（会报 VOID，非零退出）；或植入的缺陷不再被抓住（报 GAP）。
+
+## D-91: AI信息流视频该扩产能还是降规格，以及「模型」是价格的一个被我漏掉的维度
+
+**问题（两问）：** ① 用户新提的变现方式 3（AI信息流视频，SOW 要 **1080×1920 + 30–60 秒 + 配音 + 音乐**）
+在现有会员档位下是否可行？② 用户选择"先扩产能"，那该扩到哪一档？
+
+**决定：**
+
+1. **先不升级，在 69 档验证需求**；**升级触发条件 = 一个周期内接到第 2 个付定金的客户**。
+2. 方式 3 在 69 档的可行规格 = **30 秒成片，`seedance_2.0_vip` 两段 × 15s = 434 积分**。
+   **60 秒与 1080p 原生在当前档位都做不到**；要 1080×1920 只能 720p 生成 + 剪映放大，
+   **且必须在报价前告知客户**。
+
+**依据（实测，全部可复现）：**
+
+- **价格阶梯（`node quote`）**：`2.0vip` 720p = 70 / 140 / 210（5/10/15s）**且 30s 被拒 `service.2`**；
+  `2.5` 720p = 100 / 200 / 300 / **600**；`2.5` 1080p = 320 / 640 / 960 / **1920**；
+  TTS = **1**、音乐30s = **6**。
+- **档位（唯一权威来源：用户账单与订阅页截图）**：现状 **69元/725** = 0.0952 元/积分；
+  标准会员 **199元/2210** = 0.0900 元/积分（截图 `¥1=11积分` 与 199÷2210 互证，差 1% 来自取整）。
+- **升级不省钱**：单位成本仅降 **5.4%**；回本需真用掉 **25356 积分 = 该档额度的 1147%** → 算术上不可能。
+- **额度在运行时读不到**：`dreamina user_credit` 失效（全 0）；canvas `auth account` 只回
+  `{userId, isVip, vipLevel}`；canvas schema 的 9 个子命令**无** credits/quota。
+  → 实际已用只能靠 `node quote` 报价累加近似（**先记账、后花钱**）。
+
+**本条最该留下来的两条教训：**
+
+1. **「模型」是价格的独立维度，我漏了它，于是产生了一个看起来像"矛盾读数"的东西。**
+   同一规格 720p/10s：`2.0vip` 是 **140**，`2.5` 是 **200**。启动单写 140、阶梯表写 200 ——
+   **两个都对**，是两个模型。我一度把这当成"两个会话测出矛盾"，实际是我的表缺了一列。
+   **报价必须同时说清 模型 + 分辨率 + 时长**，只说时长会报错价。
+2. **单价不是线性的，也不是"每秒单价的简单乘法"。** 长片要按段数算，而段数受**单次时长上限**约束：
+   `2.0vip` 上限 15 秒 → 60 秒片要 **4 段**（868）；`2.5` 上限 30 秒 → 只需 **2 段**（1214）。
+   **"每秒更便宜"不等于"每条更便宜"** —— 多段会吃掉单价优势。
+   （此前 1080p/30s 被外推成 630、真实 1920，是同一族错误的另一次出现。）
+
+**另一个必须记住的读数陷阱**：**`vipLevel` 不能用来判断升级是否生效** ——
+它与订阅页档位名**同名**（都是 `standard`），升级后很可能不变。
+我原计划把它当信号，**已从计划与文档中删除。**
+
+**被否决：**
+- **直接按 SOW 的 1080p/30 秒定价**：1920 积分 = 月产额度的 265%，一条就违约。
+- **一次跳到更高档**：按真实数字算，199 档要每月 2 条才划得来；只接 1 条净利仅 +100 元。
+- **用公开档位表定价**：公开资料（79/239/649）已被用户截图证伪（真实 199/2210），
+  且检索到[「即梦一月三轮涨价、积分缩水超六成」](https://watcha.cn/discuss/5935)。
+- **用 `vipLevel` 判断升级生效**：同名，不可靠。
+
+**Reversed by:** 若某档位额度大幅提高使 1080p/30s 变得可承受（检查：`node quote` 后能否在额度内交付），
+则第 1 条作废；若即梦给 `2.0vip` 放开 30 秒单次（检查：同参数 `node quote` 是否从 `service.2` 变成返回报价），
+则段数模型需要重算；若运行时将来能读额度（检查：`auth account` 是否出现额度字段），
+则"靠报价累加记账"这条纪律可以简化。
+
+**状态：** 三张画布与登记表已建（D-87）；技能已按真实数字改（`cost-gate` 的单价表补了模型维度、
+`infeed-video` 的规格决策改为"先验证需求"、`ai-video-money` 的锚点表换成实测值）；
+`tools/capacity-plan.mjs` 已写并用三个模式自证（含"模型"维度与段数）。
+**未做**：升级动作本身（用户决定暂不升级）；**未实测** TTS 的真实音色输出、
+音乐 30 秒是否够 60 秒片（当前 60 秒片本身就不在额度内）、以及 `2.0vip` 在 `service.2` 之外是否有别的 30 秒路径。
+
+## D-92: 给测试留一个注入点，不要给测试留一个"改回来"的约定
+
+**问题：** `D:\AIVideo\tools\batch.mjs` 的成本闸门只吃 manifest 的**单一标量单价**，
+所以一批里混投不同时长/分辨率时会**低估成本**。这条早已写进待办，本轮去修，
+并顺手给这个一直没有测试的脚本补了反向证伪套件。
+
+**决定：**
+1. **修掉"低估"这条缺陷本身**：每条任务可带 `credit`（取自画布 `node quote` 的免费读数），
+   manifest 的标量降级为**有作用域**的兜底（`creditRateMatch` 结构化声明；缺声明 = 不适用）。
+2. **测试不得写生产数据**：`batch.mjs` 新增 `DSH_BATCH_MANIFEST` / `DSH_AIVIDEO_WORKSPACE`
+   注入点，套件的夹具只写临时账本，并把"生产账本运行前后逐字节一致"作为**最后一条断言**。
+3. 伴生的 `dreaminaPath()` 也补 `DSH_DREAMINA_BIN` 注入点，理由是**没有它就无法测行为**。
+
+**依据（全部本轮实测）：**
+
+- **低估是真的，而且比记录的更严重**：三条任务单价 140/200/200（合计 **540**），
+  旧闸门按标量 70 算成 **210** —— 不是"估不准"，是**算出一个偏低的数并据此放行**。
+  修后 `batch.test.mjs` 49 条全绿。
+- **变异审计给出判别力证据**：4 条真缺陷各被植入副本一次，分别让套件红 **9 / 3 / 1 / 2** 条，
+  且每次都是**该缺陷自己的断言**变红。第一版审计有一个**空操作变异**（锚点替换后文件未变），
+  三条缺陷读数完全一致 —— 那说明测的是审计自己；已加"替换后必须与原件不同"的自检并报 **VOID**。
+- **判据必须同时成立才有意义**：`isBrokenCreditShape` 用 `total_credit=0` **且** `user_id=0`
+  **且** `user_name=""`。把它放宽成只看第一个，套件里那条"真实 0 余额"的**对照用例**立刻变红 ——
+  **能抓住放宽的，是正例；只写反例的判定等于没有判定。**
+- **`scalarApplies` 第一版对任何任务都返回 `false`**（把 `duration:[5,10]` 与 `job.duration`
+  一律按字符串比），即兜底静默失效，而所有"应当拒绝"的用例照样绿。抓住它的同样是**正向用例**。
+
+**这次真正付了学费的一条（数据损失，已恢复）：**
+
+为了让测试能换账本，`MANIFEST` 起初是**写死**的，于是套件只能去改**生产账本**再恢复。
+一次审计运行里恢复**没有成功**，`D:\AIVideo\products\image-to-video\manifest.json`
+从 **228 行 / 17573 字节**的真实测量账本被覆盖成 71 字节的空壳
+（`{schemaVersion:1, entries:[], creditRateMeasured:null}`）—— 10 条 entries、
+`userCreditCommandBroken`、`accountBaseline` 全部消失。
+
+**救回它的是哈希，不是小心**：当晚为排查一处输出用 `Copy-Item` 存过一份备份，
+其 sha256 `9465db21…` 与套件多次打印的"运行后 sha256"逐字节一致，
+核对内容（10 条 entries、credits745 等）后原样恢复，恢复后再核对为同一哈希。
+
+**根因是设计而非疏忽**：一个需要"改生产数据再改回来"才能测的模块，迟早会把生产数据改坏。
+**可推广的规矩：给测试留一个注入点，不要给测试留一个"改回来"的约定。**
+
+**被否决：**
+- **保持"备份+恢复"的做法，只把恢复写得更稳。** 那仍然把生产数据的正确性押在
+  异常路径的执行顺序上；而这次恰恰是异常路径没走到。
+- **把 `credit` 做成必填。** 现存任务文件会全部失效；改成"缺 credit 时标量兜底**仅在声明的作用域内**成立"，
+  既不破坏旧文件，也不再默默套用。
+- **用"更聪明的估算"替代逐条声明。** 单价依「模型 + 分辨率 + 时长」而变（D-91），估不准；
+  声明 + 批准比估算可靠。
+
+**被推翻的条件：** 若 `manifest` 的标量将来能表达完整的价格矩阵（模型 × 分辨率 × 时长），
+则 `credit` 字段可以退回可选；若 `node quote` 将来能对**一批**任务直接报价，
+则"逐条写 credit"这一步可以由脚本自动完成；若某次套件运行后生产账本哈希变化，
+则第 2 条（注入点）失效，需先修套件再谈别的。
+
+**状态：** 已修并自证。`tools/batch.mjs`（注入点 + 作用域兜底 + 失效形态识别 + spawn 错误上报）、
+`tools/credit-scope.mjs`（带正/反自测）、`tools/batch.test.mjs`（49 条全绿）、
+`tools/audit-batch.mjs`（变异审计，4/4 抓住，0 VOID）。
+**未验证**：审计脚本本身只覆盖 4 条植入缺陷，不是"套件没有盲区"的证明；
+`quantify` 之外的真实批量生成路径（真的要花钱那一段）依然没有端到端跑过。
+
+## D-93: 会话怎么拿回 GitHub 访问 —— MCP 宿主行，还是别的什么？
+
+**决定：** 用**一行宿主平面的 MCP 行**恢复会话的 GitHub **API** 访问：`profiles/web/cordis.patch.yml`
+里的 `mcp-github`（`@deepseek-ai/dsh-mcp-client`，`transport: stdio`）连 **GitHub 官方的 Go 二进制**
+`github-mcp-server` v1.12.2（`$DSH_HOME/plugins/dsh-github-mcp/`），只读 25 个工具
+（`--read-only --toolsets context,repos,issues,pull_requests`，与该 PAT 的权限一一对齐）。
+令牌经 `node --env-file=$DSH_HOME/.env` 由 `launch.mjs` 转交子进程，**组合文件里只有路径**。
+`git` 传输**不在本次范围内**：`git clone/fetch/push` 仍然死，整历史推送照旧走 `bin/push-api-ref.ps1`。
+
+**因为：** 本机有**两条互不相同**的 TLS 缺陷，而 Go 二进制把两条都绕开了 —— `git` 与 `curl.exe` 走
+schannel，失败于 `CRYPT_E_NO_REVOCATION_CHECK`（吊销端点不可达，**与凭证无关**）；Node 的 `fetch` 走
+**捆绑** CA，失败于 `UNABLE_TO_VERIFY_LEAF_SIGNATURE`；而 Go 读 Windows 根证书、不做 CRL/OCSP。
+实测：`get_me` 返回 `{"login":"ABccgh",…}`（302 字节文本）、`get_file_contents` 取到真实文件
+（`successfully downloaded text file (SHA: e0a1fed1…)`）；`--read-only` 下工具数正好 **25**，
+与服务端 `list-scopes` 的输出对照后选定工具面。匿名 API 只有 **60 次/小时**且当日已用尽（0/60），
+这也是必须带令牌的原因之一。
+
+**被否决的选项，每条带理由：**
+1. **远程托管端点**（`https://api.githubcopilot.com/mcp/`，实测 `401` 可达、**从 Node 就 TLS 通**）——
+   它唯一的认证通道是组合文件里的**字面 header**，与该文件自己的规则（31-32 行：凭证只写引用名）冲突。
+2. **Docker** —— 本机没装（`docker: NOT installed`）。
+3. **已弃用的 npm 服务端** `@modelcontextprotocol/server-github@2025.4.8`（registry 上标着
+   *"Package no longer supported"*）—— 仅作下载失败时的回退，不作首选。
+4. **放进 preset** —— 与 `docs/dsh-smith.md:110` 记录的立场冲突（MCP 是独立信任面，preset 不替使用者
+   打开），且 preset 行是每会话一份、`bin/install.mjs` 还会把它散播到每台安装。
+5. **为它写一个 GitHub 插件**（D-47–D-51 那条路的复活）—— 用户已取消过；MCP 行不需要新插件代码，
+   只需要一个令牌桥。
+
+**一处刻意的取舍：** `failOnStartupError: true` + 启动器在缺令牌时**拒绝启动** —— 宁可挂载时响亮失败，
+也不要"工具在、每次调用都 401"的静默形态。代价：令牌被删或被撤销后，下一次重载会失败，恢复是一次
+编辑加重启。
+
+**被推翻的条件：** (i) Node 的捆绑 CA 问题被上游修好，或本部署重新给宿主设 `NODE_OPTIONS` —— 那时纯
+Node 客户端也能直连，这条 Go 绕行不再是必需；(ii) 用户要求会话内**写** GitHub（`--read-only` 要放开，
+权限面要重审，而 D-50 当时判断会话内不需要写工具）；(iii) 远程端点出现非字面 header 的认证通道；
+(iv) 官方 Go 二进制停更或 Windows 资产消失。
+
+**状态：** 行已挂载并激活（**写补丁那一刻生效，未重启** —— 2026-09-19 22:48:04 写入，子进程同秒出现，
+而宿主 21:47:59 就在运行），子进程在跑，25 个工具可列，`get_me`/`get_file_contents` 已取到真实数据；
+`selftest.mjs` 把启动器每条分支的消息文本变成断言。**未验证：** 任何**会话**的工具表里是否出现
+`mcp__github__*`（命名契约来自源码 `publicToolName`，可见性需要一个新会话去枚举）；Go 的 CRL/OCSP
+行为是**推断**（由"能通"推出），本机没有工具链去直接构造吊销失败。
+
+**（指针，不改上文：本条的"状态"行已由 D-94 与 D-96 取代 —— 行现在是 `--toolsets all` 可写的 90 个工具，
+会话可见性也已实测闭合。原文作为"当时的决定与理由"保留。）**
+
+## D-94: 「全面放开」之后，工具面与权限面各自停在哪一步？
+
+**决定：** 按用户明确要求，把 `mcp-github` 行从"25 个只读工具"改成 **`--toolsets all` 且不带
+`--read-only`**（90 个工具，53 个写），宿主平面、对所有会话与子代理可见；**并把"工具在列"与"工具能
+干活"分开记账** —— 凭证（细粒度 PAT，仍只有 Contents/Issues/PRs 的 Read）是当前的天花板。
+
+**因为（全部实测）：** 同一份二进制四档 `tools/list` 读数 = 25 / 42 / 56 / **90**；改行后补丁
+22:58:34 写入、宿主当场换进程（新 launcher → 新 server，argv 已无 `--read-only`，旧子树被释放、
+仍是 **1 个 server**）。权限矩阵用"**403 = 无权限** vs **404/422 = 过了授权、输在参数**"判别，
+探针全部指向不存在的分支/issue/PR：
+
+- **通**：`get_me`、`list_gists`、`actions_list`（读）、`list_discussions`、`list_repository_collaborators`
+- **403（写被拒）**：`create_or_update_file`、`push_files`（走到 `POST /git/refs`）、
+  `create_pull_request`（`POST /pulls`）、`actions_run_trigger`（`POST …/dispatches`）、
+  `create_repository`（`POST /user/repos`）、`star_repository`/`unstar_repository`
+- **403（连读也缺）**：`list_notifications`、`projects_list`、`list_code_scanning_alerts`、
+  `list_secret_scanning_alerts`、`list_dependabot_alerts`
+
+**一条方法论，这条最容易骗人：** 拿"不存在的目标"做写入探针时，返回的 **404 只证明读路径过了授权**
+—— GitHub 对不存在的资源回 404、对存在但无权的资源回 403。所以 `create_branch`/`issue_write`/
+`add_issue_comment`/`merge_pull_request` 的 404 **不能**当作写权限已通；能判定的只有那些真正到达写
+端点的调用。这与本文件 405/503/401 那条是同一推理：**找一个只有处理器才能给出的响应。**
+
+**待办（用户侧）：** 给该 PAT 补 **Contents: Read and write**、**Pull requests: Read and write**、
+**Issues: Read and write**、**Actions: Read and write**、**Workflows: Read and write**（改
+`.github/workflows/` 下的文件另需此项），以及读权限 **Security events / Secret scanning alerts /
+Dependabot alerts / Projects / Notifications**。`create_repository` 的 403 是账号级的 —— 要它就得走
+**GitHub App**（本二进制原生支持 `--app-id`/`--app-installation-id`/`--app-private-key-path`）。
+
+**被推翻的条件：** (i) 补完权限后同一套探针开始返回 404/422 —— 那时"凭证仍只读"这条结论必须改写；
+(ii) 用户要求收窄（改回 `--toolsets` 白名单，或加 `--exclude-tools`/`--read-only`）；
+(iii) 细粒度 PAT 在 UI 上确实没有 Starring/Notifications 这两项，那两族就只能靠 App 或放弃。
+
+**状态：** 行已换成 90 工具的可写配置并在跑，凭证仍拒绝一切写。**未验证：** Copilot 两个工具；
+`label_write` 与 `create_repository_ruleset` 被服务端**本地**以 `missing required parameter` 拦下，
+连 API 都没到 —— 那是探针参数不全，不是权限读数。
+
+## D-95: 权限补完之后实际通了什么 —— 以及一次探针真的改到了远端
+
+**决定：** 记两件事，并把它们当作**方法**而不是结论：(i) 换 token 后**写权限已生效**（判据是同一套探针
+由 403 转为 404/2xx）；(ii) **"拿不存在的目标当安全探针"这条规则被证伪** —— 对任何会创建自己目标的工具
+都失效，本次因此在一个公开仓库上真的建了分支、开了 PR。
+
+**因为（实测）：** 第二轮权限矩阵 —— `push_files`、`create_pull_request`、`update_pull_request`（关闭 PR）
+回 **2xx**（真的写成了）；`create_or_update_file`、`create_branch`、`actions_run_trigger`、`issue_write`、
+`add_issue_comment`、`merge_pull_request` 回 **404**（过了授权、输在不存在的目标/参数上）；
+`list_secret_scanning_alerts` 由 403 转通。**仍 403**：`create_repository`（账号级 → 要 GitHub App）、
+`star`/`unstar`（Account/Starring）、`list_notifications`、`projects_list`、`list_code_scanning_alerts`、
+`list_dependabot_alerts`。
+
+**探针事故与处置：** `push_files` **会创建它的目标分支**，于是探针里那个"不存在的 head"在下一个调用
+（`create_pull_request`）之前已经真实存在 —— 分支 `dsh-probe-branch-that-does-not-exist` 与 `PROBE.md`
+被推上去，**PR #1 开在了 `ABccgh/dsh-smith` 上**。分支经 API 删除（`DELETE /git/refs/heads/…` → 204；
+**工具目录里没有删分支的工具**），PR 随 head 分支删除自动 closed，而 **GitHub 没有删除 PR 的接口，
+所以它永久留下**（标题与正文已改写为"探针产物、可忽略"）。**`main` 未被动过**（tip `bc87ad5`，提交时间
+仍是 09/15 13:12:22）。同一轮里更早的一次误读是：把第一轮的 `failed to create branch from default`
+当成了"这条路径不会写"，而那句话恰恰在说它**会**创建分支。
+
+**两条可复用的操作事实：** ① 子进程在**启动时**读走 `.env`，换 token 必须让行**重挂**；而改
+`cordis.patch.yml` 的**注释不会**触发重挂（loader 按**配置差异**重建子树），要改到**配置值**才算
+（实测：`toolCallTimeoutMs` 120000→180000，server PID 由 17264 变成 4436）。② 探针的安全判据不是
+"目标是否存在"，而是"**这个工具会不会把参数变成现实**"。
+
+**被推翻的条件：** (i) 有人给出一套对"会创建目标的工具"也安全的只读探针写法并验证；(ii) GitHub 开放
+删除 PR 的接口，本次残留可清；(iii) 用户补上剩余读权限或改用 GitHub App，则"仍 403"那几行要改写。
+
+**状态：** 行 = `--toolsets all` 可写（90 工具），凭证 = 已换的新细粒度 PAT，**写实测可用**；残留 =
+`ABccgh/dsh-smith` 上一条已关闭、名为 `MCP write-test artefact (safe to ignore — head branch deleted)` 的
+PR #1。**未验证：** `label_write` 与 `create_repository_ruleset`（探针参数不全，被服务端本地拦下）、
+Copilot 两个工具。
+
+## D-96: 90 还是 89 —— 工具表怎么数，以及最后一条未测暴露面的闭合
+
+**决定：** 会话可见性这条暴露面**闭合**，并把"工具数"的权威口径定死：**数唯一的工具名，以工具表
+为准**；分组散文里的计数不算读数。
+
+**因为（同一次会话内的直接读数）：** 本会话的工具表里就有全部 `mcp__github__*`，并**从会话内派发成功**
+—— `mcp__github__get_me` 返回真实身份（`login=ABccgh`）；`mcp__github__list_secret_scanning_alerts`
+（补权限前实测 403）现在回 `[]`，后者同时证明**宿主那个子进程已经换成了新 token**，而不只是探针脚本。
+逐名枚举 = **90**，与探针 `tools/list` 的 90 一致。
+
+**89 那个数的来源，查清了：** 那份分组清单把 `custom_properties_read` 列了**两次**（一次在 Projects、
+一次在"规则集/自定义属性"，原文自己还标了"另见下条"），去重后正好 90 − 1。**不是** `--toolsets all`
+上游增删 —— 那条推测没有依据，也不需要。
+
+**方法（与 D-26/D-27 同族）：** "工具在表里"必须由一个**会话自己枚举**来证；而枚举时**只数唯一名字**，
+因为分组散文会把同一件事算两遍 —— 这正是本次 89 的成因，也是"两份读数不一致时先怀疑读数方式"的又一例。
+
+**被推翻的条件：** (i) 某个工具因 schema 不被宿主接受而被**静默丢弃**（那样 `tools/list` 会是 90、
+会话表是 89）—— 本次两个面一致，故不成立，但值得在工具数变化时复检；(ii) `--toolsets all` 在升级后
+改变集合（那就以新会话的表为准，并记录版本）。
+
+**状态：** 已闭合。宿主 1 个子进程（PID 4436，持新 token）+ 会话表 90 个 `mcp__github__*` + 会话内
+派发成功；残留只有 `ABccgh/dsh-smith` 上那条已关闭的探针 PR（D-95）。
