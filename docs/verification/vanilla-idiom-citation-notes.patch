@@ -1,0 +1,38 @@
+--- a/vanilla-idiom-citation-notes.md
++++ b/vanilla-idiom-citation-notes.md
+@@ -1,5 +1,9 @@
+-Vanilla idiom citations (as proposed by the lead)
++Vanilla idiom citations (corrected against the real installation)
++# Source of truth: D:\Program Files (x86)\Steam\steamapps\common\Crusader Kings III\game
++# Every replacement line below was read verbatim from that path in this session.
++# Verdicts: 9 CONFIRMED, 1 SCOPE MISMATCH, 3 UNVERIFIABLE/WRONG.
+ 
+-1. every_held_title with limit:  game\common\scripted_effects\00_administrative_effects.txt:5
+-2. change_variable ADD form:        (no citation given)
+-3. tier spelling:                   (open question)
+-4. government_has_flag:             game\common\achievements\ep4_achievements.txt:24
+-5. government_type scope:           game\common\great_projects\types\00_great_project_types.txt:690
+-6. has_same_government:             (no citation given)
+-7. any_in_list:                     game\common\activities\activity_types\tour.txt:59
+-8. is_in_list:                      (open question)
+-9. ordered_held_title:              game\common\script_values\_script_values.info:105-112
++1. every_held_title + limit:        CONFIRMED  game\common\casus_belli_types\00_claim.txt:457-459
++                                    (title_tier >= county / limit = { is_noble_family_title = no })
++                                    effect-with-limit also at 00_decisions_effects.txt:1119-1124
++2. change_variable ADD form:        ADD=123 / SUBTRACT=1  over game\common\**\*.txt
++3. tier spelling:                   BOTH legal, different nesting:
++                                    title_tier = county    (210, inside every/any_held_title)
++                                    tier = tier_county     (544, standalone/filter blocks)
++                                    title_tier = tier_county : 0 occurrences - never write this
++4. government_has_flag:             CONFIRMED  achievements\ep4_achievements.txt:24
++                                    activities\activity_types\imperial_examination.txt:6
++5. government_type scope:           SCOPE MISMATCH - see below
++6. has_same_government:             CONFIRMED  scripted_triggers\00_elective_triggers.txt:156
++                                    = scope:holder  (also = root / = liege / = prev / = scope:actor)
++7. any_in_list:                     TOUR.TXT:59 IS WRONG -> every_in_list at tour.txt:58
++                                    pilgrimage.txt:327 is `any_in_list = {`, :328 is its `variable =`
++8. is_in_list:                      EXISTS, 1336 occurrences; 271 under NOT = { ... }
++9. ordered_held_title:              INFO SHAPE CONFIRMED but its example is `ordered_child`
++                                    EFFECT examples: 00_accolades_scripted_effects.txt:19,
++                                    important_actions\00_realm_actions.txt:942
++12. exists = title:                 264 occurrences (game\common)
