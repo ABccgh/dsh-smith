@@ -397,12 +397,18 @@ foreach ($sha in $localShas) {
     throw "local commit $($sha.Substring(0,7)) is a root but the remote already has a tip — refusing to create a second history (pass -Force to replace the branch)"
   }
   if (-not $isRoot -and $null -eq $parent) { throw "local commit $($sha.Substring(0,7)) has a parent but no remote parent is available — the range starts mid-history" }
-  $parentLabel = if ($isRoot) { '(root)' } else { $parent.Substring(0, 7) }
+  $parentLabel = if ($isRoot) { '(root)' } elseif ($parent -like '<will-create:*>') { $parent } else { $parent.Substring(0, 7) }
   "-> $($sha.Substring(0,7))  parent(remote)=$parentLabel  tree=$($tree.Substring(0,7))"
   "   msg type=$($message.GetType().Name) $((($message -split "`n").Count)) lines: $(($message -split "`n")[0])"
   $uploaded = Push-Tree -Sha $tree
   if ($uploaded -ne $tree) { throw "tree id changed: $tree -> $uploaded" }
-  if ($DryRun) { continue }
+  # In -DryRun nothing is created, so there is no new SHA to chain from — but the parent must still
+  # ADVANCE, to a per-commit placeholder. Without this, every row of a multi-commit dry run printed
+  # the same remote tip, which reads exactly like "these commits will be siblings, and all but the
+  # last will be orphaned" — a false plan in the one mode a person consults before an irreversible
+  # push. Measured 2026-09-19 on a 5-commit batch: five identical `parent(remote)=<tip>` rows, while
+  # the real run is unaffected (`$parent = $commit.sha` below chains it correctly).
+  if ($DryRun) { $parent = "<will-create:$($sha.Substring(0,7))>"; continue }
   $commitBody = @{
     message   = $message
     tree      = $uploaded
