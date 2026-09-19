@@ -595,13 +595,20 @@ and `dsh-forge` (software delivery) — and those two directories are the whole 
    inheritance. D-26 records the correction this forced on D-17's wording.
 2. **`bin/verify.mjs` cannot reach the roster from any session** (D-24). Corrected in its text;
    making it a real check would need it to attach to a live runtime instead of booting a bare one.
-3. **The local commits are unpushed.** A workspace fact, not a preset defect. **This repo right
-   now:** `origin` is configured (`github.com/ABccgh/dsh-smith`) and `main` has **no upstream**
-   (`git rev-parse main@{upstream}` → *no upstream configured*), so the four commits this session
-   made — `e3ec4a4`, `a980f67`, `0016c18`, `b6ecb19` — are local-only; the remote's state was
-   **not** queried, because git's transport is dead from this machine (below). **The push-tooling
-   gap is CLOSED *and now measured*:** `bin/push-api-ref.ps1` gained `-RemoteOnlyParent` for a
-   range whose first parent exists only on the remote and `bin/push-api.ps1` errors cleanly instead
+3. **The local commits were unpushed — CLOSED on 2026-09-19 (late): pushed, and verified against the API.**
+   `bin/push-api-ref.ps1 -RemoteOnlyParent` uploaded **six** commits chained from the old remote tip:
+   `refs/heads/main` moved `bc87ad5` → **`355f3e0`**, the six-step parent walk lands exactly on `bc87ad5` (so it
+   was a fast-forward, no `-Force`), the remote tree equals `git rev-parse HEAD^{tree}`
+   (`c59d9484…`), the 49 remote paths equal `git ls-files` with **zero** doubled segments, and every commit
+   message survived. `main` still has **no upstream configured** (`git rev-parse main@{upstream}` → *no
+   upstream*), which is expected for this route — the transport is REST, not `git push`. The push tooling
+   itself gained a fix on the way: `-DryRun` printed the same remote tip for every row of a multi-commit
+   batch, which reads as "five sibling commits, four orphaned" — it now advances the parent per row
+   (`6dc0554`). **Original text, kept as history:** the four commits an earlier session made — `e3ec4a4`,
+   `a980f67`, `0016c18`, `b6ecb19` — were local-only at the time, and `bin/push-api-ref.ps1` gained
+   `-RemoteOnlyParent` for a range whose first parent exists only on the remote and `bin/push-api.ps1`
+   errors cleanly instead of crashing on an empty range (**D-48**), with the flag's happy path pushed for
+   real and five checks taken **against the API** (**D-56**).
    of crashing on an empty range (**D-48**), and the flag's happy path was then pushed for real,
    with five checks taken **against the API** (**D-56**) — the "unproven in a real push" reading
    this item used to carry is superseded.
