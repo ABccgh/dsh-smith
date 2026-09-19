@@ -3800,3 +3800,120 @@ Copilot 两个工具。
 
 **状态：** 已闭合。宿主 1 个子进程（PID 4436，持新 token）+ 会话表 90 个 `mcp__github__*` + 会话内
 派发成功；残留只有 `ABccgh/dsh-smith` 上那条已关闭的探针 PR（D-95）。
+
+## D-97: 推送路线的记录靠什么成立，以及一个仓库的「内容一致」为什么不等于「同一个提交」
+
+**决定：** 分五件事记，前两件是方法，后三件是读数。
+
+(i) **`-Force` 就是新仓库的正确入口，而它曾被一次编辑弄成不可达**；修复保留了
+`-AllowUnrelated` 的原判据，只把它从"唯一豁免"改成"两个豁免之一"。
+
+(ii) **`-Base` 永远指"本地那个其内容已被推送过的提交"，绝不给远端 SHA。**
+
+(iii) **远端与本地 SHA 不同这件事本身不构成任何问题** —— SHA 由元数据（父提交、提交者、
+时区）决定，内容由 **tree** 决定，所以"内容一致"要用 tree 证明，不能用 SHA 证明。
+
+(iv) 本机**九个项目位置现在全部在 GitHub 上**（下表）。
+
+(v) `create_repository` 要 **Administration: write**，而它的**目标是账号级**；确认授权最省的办法
+是**故意制造重名碰撞**，不是建一个真仓库。
+
+**因为（实测）：** ① **回归。** `bin/push-api-ref.ps1` 在 `bf4c2ad`（"stop treating a first-parent miss
+as proof of divergence"）给 first-parent 走查加了守卫 `if (-not $AllowUnrelated) { throw … }`
+（现第 268 行附近），于是 **`-Force` 变成不可达**：单独 `-Force` 在该行抛错；`-Force -AllowUnrelated`
+在后面的空 `-RemoteBase` 上抛错；再加 `-RemoteBase <tip>` 则抛 `range length mismatch`。这**静默
+废掉**了 D-33 记录的那条路线（本文件 905 行：`pwsh -File bin/push-api-ref.ps1 -RemoteRepo <repo> -Force`）
+—— 它在 `bf4c2ad` **之前**实测可用，也是 D-78 不得不手工绕开旗标、为单个根历史单独处理的原因。
+修法：守卫改为 `if (-not $AllowUnrelated -and -not $Force) {`，覆盖提示改为条件式，并给 `-Force`
+的参数注释补上 bootstrap 这一用况。实测：脚本解析 0 错；`-Force -DryRun` 现打印 `mode : FORCE` 与
+`overridden by -Force`；`-RemoteOnlyParent` 的 dry-run 无变化（其 `blobs:`/`trees:` 由 6/3 变 0/0，
+只是因为那些对象现在远端已存在）。
+
+② **三个新建仓库给出反向对照。** API 创建的提交 SHA **等于**本地提交 SHA —— `a98ecb4`、`b1997fb`、
+`4a7b4ea`。也就是说：消息、tree、作者、提交者、父列表都原样往返时，**重编码就是恒等**，SHA 必然相等；
+SHA 一旦不同，就**必然**是某项元数据不同。差别不在传输。
+
+③ **`dsh-ck3-modcheck` 那次推送的对象是一个新提交，不是本地那个。** 远端 tip 由 `0281860` 移到
+`7f5c1e6399d94cfa2369561f409b923c107897f4`，父 = `0281860`，tree = `66567d0` —— 而本地 `670182d`
+的 tree **就是** `66567d0`（本次复核 `git rev-parse 'HEAD^{tree}'`），所以内容 6/6 一致。本地
+`670182d` **不是**那个对象，也永远不会是：父提交那一行在被哈希的字节里，而脚本是**故意**把第一个
+新提交挂在远端 tip 上（`-RemoteOnlyParent`）。准确的句子只能是"**`670182d` 的内容以 `7f5c1e6`
+存在于远端**"。这个形状**先于本次就存在** —— 远端的历史根 `0281860` 与本地根 `cded542`
+**也是同一个 tree、不同 SHA**。**不要去调和两者**：本机 `git` 取不到它（见 ⑥），调和本身也没有意义，
+因为两个历史按构造就该在 SHA 上不同。下次从这个仓库推送时**必须 `-Base 670182d`**。
+
+④ **表（读 `git rev-parse` / `git ls-tree -r HEAD` 与 API 的树）。** 每行都标明 SHA 是**哪一侧**的：
+
+| local | GitHub | SHA | 文件 | 本次 |
+| --- | --- | --- | --- | --- |
+| `D:\DeepSeek Harness` | `ABccgh/dsh-smith` | 本地 `a9ea9f2` ＝ 远端 `6143f6a` | 49 | **内容一致、无需推送**；tree **两侧同为 `4d8da6b8…`** |
+| `D:\dsh-desktop` | `ABccgh/dsh-desktop` | `6f9fe04` | 43 | 未动 |
+| `$DSH_HOME\plugins\dsh-account-balance` | 同名 | `e3d9a98` | 7 | 未动 |
+| `$DSH_HOME\plugins\dsh-agent-memory` | 同名 | `358d869` | 5 | 未动 |
+| `$DSH_HOME\plugins\dsh-ima-kb` | 同名 | `e300cca` | 9 | 未动 |
+| `$DSH_HOME\plugins\dsh-ck3-modcheck` | 同名 | 本地 `670182d` → 远端 `7f5c1e6` | 6 | **1 个提交缺失，已推** |
+| `$DSH_HOME\plugins\dsh-inbox` | `ABccgh/dsh-inbox` | `a98ecb4`（两侧同 SHA） | 13 | **建仓 + 推送** |
+| `D:\CK3Mods` | `ABccgh/cn-dejure-conquest` | `b1997fb`（两侧同 SHA） | 5 | `git init` + 1 提交，**建仓** |
+| `D:\AIVideo` | `ABccgh/ai-video-workbench` | `4a7b4ea`（两侧同 SHA） | 54 | `git init` + 1 提交（98 MB），**建私有仓** |
+
+三个新仓库的可见性按实测记：`dsh-inbox` 公开、`cn-dejure-conquest` 公开、
+**`ai-video-workbench` 私有**（`visibility: private`）。
+
+> **一处与本次简报不一致、值得单记的读数。** 简报说 `dsh-smith`「已经逐字节一致（49 文件），
+> 尚未推送；本记录之后会跟一个笔记提交」。本次实测：本地 `main` 是 `a9ea9f2`（2026-09-19T23:27:36+08:00），
+> **远端 `main` 已经是 `6143f6a`** —— 同一个提交信息、同一时刻（`15:27:36Z`），即那个 notes 提交
+> **已经到远端了**，只是其 SHA 被重编码过（`a9ea9f2` ≠ `6143f6a`，且 `a9ea9f2` 不在远端的对象库里）。
+> **这一点在内容上无关紧要**（tree 两侧同为 `4d8da6b8…`），但它正是本条 (iii) 的又一实例，所以记读数
+> 而不记结论 —— 判断"推送了没有"要用 tree，不要用 SHA。**仍未推送的是 `bin/push-api-ref.ps1` 里那份
+> `-Force` 修复**：远端 `6143f6a` 的 tree 里它还是修复前的 blob `83eb83b8`，而工作区是 `fce5784`（未提交）。
+
+⑤ **权限与建仓：** 给**自己账号**建仓库需要 **Repository permissions → Administration → write**
+（文档自己的层级名；被拒时响应头 `X-Accepted-GitHub-Permissions` 字面就是 `administration=write`），
+推 blob/tree/commit 需要 **Contents: write**（已具备，由第一次成功推送证明）。建仓调用必须
+**显式给 `private`**（工具 schema 默认 `true`，不显式写就会建出私有仓）并给 **`autoInit: true`**
+（否则仓库没有任何提交，git 数据库端点会一直回 `409`）。**确认"建仓是否已被授权"的最省无害读数是
+故意重名碰撞**：先读一次那个已存在的仓库，再拿**它自己的名字**去 `POST /user/repos` —— 授权前回
+**403**，授权后回 **422**（`name already exists on this account`），而 `pushed_at` / `updated_at`
+不变，什么都没被创建。依据：
+<https://docs.github.com/en/rest/repos/repos#create-a-repository-for-the-authenticated-user>、
+<https://docs.github.com/en/rest/git/blobs>。
+
+⑥ **`git` 到 GitHub 仍然不通（本次复测）**，失败在**传输层、与凭证无关**：
+`git ls-remote https://github.com/ABccgh/dsh-smith.git HEAD` → **exit 128**，
+`schannel: next InitializeSecurityContext failed: CRYPT_E_NO_REVOCATION_CHECK (0x80092012)`。
+所有推送都走 REST API（`bin/push-api-ref.ps1`），令牌由流水线表达式从 `$DSH_HOME\.env`
+（`C:\Users\曦曦\.dsh\.env`，文件存在）读进 `$env:GH_TOKEN`，**值不进命令行**；此处也不记录值。
+
+⑦ **`~/.dsh` 下没有被写入。** 文件粒度证据：`dsh-inbox` 推送之后，该仓库 `.git` 下**没有任何文件的
+mtime 晚于 2026-09-17 20:59:42（本地时间）＝ 建仓那一刻**（`refs\heads\main`、`logs\HEAD`、
+`logs\refs\heads\main` 三者同为该时刻）；`HEAD`、`refs/heads/main`（内容 `a98ecb4…`）与 `.git\index`
+（1179 字节，且跨 `git status` 字节稳定）均未变。更早观察到的一次 `.git` **目录** mtime 变动**不是
+文件写入**（目录项元数据），在没有进程运行时不再复现。**任何地方都没有执行过 `git remote add`**，
+`~/.gitconfig` 也没有被编辑 —— 一个可观测的后果是这张表里除 `dsh-smith` 外的本地仓库
+`git remote -v` **都是空的**，所以"内容一致"只能在 API 侧用 tree / 路径集合证明，本地没有 remote 可对照。
+
+⑧ **`core.quotepath = false` 写在 `C:\Users\曦曦\.gitconfig`（本次复核，`--global` 与文件两处都读到
+`false`）**，正是它让中文文件名能活着穿过推送脚本的 `git ls-tree` 正则解析（正则捕获到的是真实 UTF-8
+路径；上线会话在一次性 `%TEMP%` 探针上量过，探针已删）。**若它被改回 `true`**，脚本的
+`POST /git/trees` 返回 SHA 核对会把这次错误编码**变成报错**，而不是一个静默写错的 tree ——
+也就是说，这条设置是"出错时报错"与"出错时安静地写坏"之间的差别。
+
+**被否决的选项：** ① **把本地与远端的历史"调和"成一致** —— 父提交在被哈希的字节里，除改历史外没有
+别的路，而两个历史按构造就该不同；且本机 `git` 取不到远端（见 ⑥）。② **用 `-AllowUnrelated` 代替
+`-Force` 走新仓库** —— 它管的是 first-parent 走查，不是 range 配对，所以在新仓库这个形状上仍然死在
+配对上（D-33 已记）。③ **为了让 `-Force` 通过而放宽整个 first-parent 守卫** —— 修复采取的是"再放行
+一个明确的旗标"，而不是取消守卫，因为一次 force move 不配对 range，走查落空在这种模式下是**预期状态**
+而不是分歧证据。④ **把建仓权限的确认做成"建一个真仓库再删掉"** —— 建仓是账号级动作，重名碰撞能达到
+同样的判别力且**不创建任何东西**。
+
+**被推翻的条件：** (i) `bf4c2ad` 之后有人把守卫改回单条件、或 `-Force` 再次抛错 —— 那时 ① 与 (i) 都要
+重测；(ii) 本机 `git` 的 schannel 缺陷被修好（`CRYPT_E_NO_REVOCATION_CHECK` 消失）—— 那时"整历史必须
+走 API"这个前提消失，`-Base` / `-RemoteOnlyParent` 这套约定要重新审视；(iii) 推送脚本改为**逐提交复用
+远端已有对象**（而不是为第一个新提交在远端 tip 上造父）—— 那么 (iii) 的"内容 vs 身份"区分在多数情况下
+会退化成"两边 SHA 也能对上"；(iv) `core.quotepath` 被改回 `true` 而脚本没有相应报错 —— 那就说明 ⑧ 的
+"会变成报错"这一句错了，必须重测。
+
+**状态：** 九个位置全部已在 GitHub 上，读数为上表；`-Force` 回归**已修但未提交**（工作区 blob
+`fce5784`，远端仍是 `83eb83b8`）。**未验证：** `dsh-desktop`、`cn-dejure-conquest`、`ai-video-workbench`
+三行的本地读数本次直接取自各仓库 `git ls-tree -r HEAD`（43 / 5 / 54 个文件），**没有**重跑上线会话那次
+路径→blob 的双向集合对比；"内容一致"对这三行沿用其读数。

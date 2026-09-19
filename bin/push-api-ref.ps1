@@ -46,11 +46,16 @@ param(
   # comment on that branch for the two-step route that works.
   [switch]$Init,
   # Allow the final reference move to discard commits that are on the remote and not in this
-  # push. Needed exactly once, when a previous -Init run died after its bootstrap write: that
+  # push. Two shapes need it. (a) A previous -Init run died after its bootstrap write: that
   # bootstrap commit is then the branch's root and is unrelated to the local history, so the
-  # branch has no common ancestor to move forward from. The discarded commit's only content is
-  # the bootstrap file this script deletes anyway, so nothing a reader wants is lost — and the
-  # flag is explicit rather than implied, because a force move is not a safe default.
+  # branch has no common ancestor to move forward from. (b) A NEW repository whose remote root is
+  # the bootstrap commit GitHub or the Contents API wrote (`auto_init`, or the first write that
+  # clears `409 Git Repository is empty`): the local history has no remote counterpart to pair
+  # with, so the local range is the WHOLE history and the branch is moved onto it. In both cases
+  # the discarded commit held only the placeholder that made the repository non-empty — it becomes
+  # unreachable and nothing a reader wants is lost. -Force also overrides the first-parent walk
+  # below, because a force move pairs no ranges and a miss there is therefore expected.
+  # Explicit rather than implied, because a force move is not a safe default.
   [switch]$Force,
   # Push onto a remote whose first-parent chain does not reach the local tip even though the
   # caller's -Base/-RemoteBase pair is correct. This is the normal state of a repository whose
@@ -254,10 +259,16 @@ if ($null -ne $tip) {
       "remote first-parent chain reaches the local tip"
     } else {
       "remote first-parent chain does NOT reach the local tip ($($localTip.Substring(0,7)))"
-      if (-not $AllowUnrelated) {
+      # -Force overrides this walk as well, and the reason is structural rather than a convenience:
+      # a force move does not pair ranges at all, so a first-parent miss is the EXPECTED state, not
+      # evidence of divergence. This line used to name -Force in its own error text while refusing to
+      # accept it, which made the flag unreachable for every history whose remote root is a
+      # server-side commit — the very case D-33 recorded as working through -Force, and the case D-78
+      # had to route around by hand. Introduced by bf4c2ad, after that push had succeeded.
+      if (-not $AllowUnrelated -and -not $Force) {
         throw "the remote tip $($tip.Substring(0,7)) does not reach this push's history by first parents — if the pairing is right (API-created commits have no local counterpart), pass -AllowUnrelated; if the histories really are unrelated, pass -Force"
       }
-      "  overridden by -AllowUnrelated: the caller's base pair is taken as authoritative"
+      "  overridden by $(if ($Force) { '-Force' } else { '-AllowUnrelated' }): the caller's base pair is taken as authoritative"
     }
   }
 

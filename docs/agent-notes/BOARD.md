@@ -1,5 +1,39 @@
 # Board
 
+## 2026-09-19（深夜）—— 本机所有项目已上 GitHub：**已交付**；只剩那一个提交没推
+
+**结论先说：九个项目位置全部在 GitHub 上了**，判据不是推送脚本自己的报告，而是**独立的路径→blob SHA
+集合对比**（远端递归 tree 对本地 `git ls-tree -r HEAD`，双向）。完整决策与八条实测见 **D-97**，
+当前状态表在 `PROJECT.md`。
+
+| local | GitHub | SHA | 文件 | 结果 |
+| --- | --- | --- | --- | --- |
+| `D:\DeepSeek Harness` | `ABccgh/dsh-smith` | 本地 `a9ea9f2` ＝ 远端 `6143f6a` | 49 | 内容一致（tree 两侧同为 `4d8da6b8…`） |
+| `D:\dsh-desktop` | `ABccgh/dsh-desktop` | `6f9fe04` | 43 | 本就一致，未动 |
+| `$DSH_HOME\plugins\dsh-account-balance` | 同名 | `e3d9a98` | 7 | 本就一致，未动 |
+| `$DSH_HOME\plugins\dsh-agent-memory` | 同名 | `358d869` | 5 | 本就一致，未动 |
+| `$DSH_HOME\plugins\dsh-ima-kb` | 同名 | `e300cca` | 9 | 本就一致，未动 |
+| `$DSH_HOME\plugins\dsh-ck3-modcheck` | 同名 | 本地 `670182d` → 远端 `7f5c1e6` | 6 | **缺 1 个提交，已推** |
+| `$DSH_HOME\plugins\dsh-inbox` | `ABccgh/dsh-inbox` | `a98ecb4`（两侧同 SHA） | 13 | **建仓 + 推送** |
+| `D:\CK3Mods` | `ABccgh/cn-dejure-conquest` | `b1997fb`（两侧同 SHA） | 5 | `git init` + 1 提交，**建仓** |
+| `D:\AIVideo` | `ABccgh/ai-video-workbench` | `4a7b4ea`（两侧同 SHA） | 54 | `git init` + 1 提交（98 MB），**建私有仓** |
+
+**这件事真正的产出是那条方法：一条记录在案的路线，是对"实现它的那段代码"的断言，而那次编辑可以
+静默地把它变成假的。** `bin/push-api-ref.ps1` 在 `bf4c2ad` 给 first-parent 走查加的守卫让 **`-Force`
+三种旗标组合全都抛错**，于是 D-33 在 `DECISIONS.md:905` 记的
+`pwsh -File bin/push-api-ref.ps1 -RemoteRepo <repo> -Force` **静默失效** —— 而它在 `bf4c2ad` **之前**
+是实测可用的。没有任何检查、测试或脚本读数发现这件事；它是一个**新仓库**需要那个旗标时才暴露的，
+中间隔了一周。已修（守卫改为 `-not $AllowUnrelated -and -not $Force`），但**修复本身还没提交**。
+
+**「内容一致」只能用 tree 证，不能用 SHA 证。** `dsh-ck3-modcheck` 的远端 `7f5c1e6` 与本地 `670182d`
+**同为 tree `66567d0`**，而两者 SHA 不同且本地那个永远不会出现在远端 —— 父提交那一行在被哈希的字节里，
+脚本又是故意把第一个新提交挂在远端 tip 上的。同一个形状也出现在 `dsh-smith`：`a9ea9f2`（本地）与
+`6143f6a`（远端）是同一个提交的两种编码。**别去调和它们**：本机 `git` 到 GitHub 仍然不通
+（`CRYPT_E_NO_REVOCATION_CHECK`），两个历史按构造就该不同。规则：**`-Base` 永远指"内容已被推送过的
+那个本地提交"，绝不给远端 SHA。**
+
+**下一件事就是那一个提交（见下节 Next 第 0 条）。**
+
 ## 2026-09-19（晚）—— GitHub API 接入：已交付、已验收；三项仍开放
 
 **结论先说：** 部署现在**有** GitHub API 能力，走 host 平面的 `mcp-github` 行（`@deepseek-ai/dsh-mcp-client`
@@ -844,6 +878,22 @@ and `dsh-forge` (software delivery) — and those two directories are the whole 
 
 ## Next
 
+0. **IMMEDIATE — push this session's commit to `ABccgh/dsh-smith`, and it is the one thing the
+   milestone did NOT finish.** Everything else is published and verified (see the board's top
+   section). What is still local-only is commit `a9ea9f2` of this repository, whose tree is
+   `4d8da6b8…`, carrying (a) these memory-layer updates — `DECISIONS.md` **D-97**, `PROJECT.md`,
+   `BOARD.md` — and (b) the **uncommitted** `-Force` fix in `bin/push-api-ref.ps1` (working blob
+   `fce5784`; the remote still holds the pre-fix `83eb83b8`).
+   **The route is not the default one, and this is where a session would go wrong:** the remote tip
+   was produced by an API re-encode, so **do not pass a remote SHA to `-Base`**. The rule from
+   **D-97 (ii)** is that `-Base` names the local commit whose *content* was last pushed — and for
+   this repository that is also the safest reading, because the remote tree `4d8da6b8…` already
+   equals the local HEAD tree, so the previous push is accounted for.
+   Verify with the remote tree, never with SHA equality: after the push, the remote tree must equal
+   the new local `git rev-parse HEAD^{tree}`, and the remote path list must equal `git ls-tree -r
+   HEAD --name-only` with no doubled segments (`bin/bin/…`, the D-33 accident).
+   Run it from **this** directory (the script uses `git -C $PWD`), with a **full SHA**, and note that
+   `git push` is still dead here (`CRYPT_E_NO_REVOCATION_CHECK`) — the REST API is the only way out.
 0. **CK3 milestone — CANCELLED, cleaned up and CLOSED (D-57); nothing of it is pending work
    here.** Extraction, ingest, the plugin push and the repository topics were all finished and
    verified, and the cancellation has since removed the generated corpus. What is left is not work

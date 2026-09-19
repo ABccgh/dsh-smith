@@ -259,6 +259,44 @@ and nothing was published. Its local clone has `origin` configured and `core.aut
 `.gitattributes` pinning LF, so the working tree and the stored blobs agree — which matters because
 the push tooling uploads bytes obtained from `git cat-file blob`.
 
+### Every project on this machine is on GitHub (2026-09-19 晚，实测)
+
+**九个项目位置现在全部有 GitHub 远端。** 读法：本地侧 `git rev-parse HEAD` / `git ls-tree -r HEAD`，
+远端侧 API 的 tree。「文件」= `git ls-tree -r HEAD --name-only` 的条数。完整决策与八条实测见 **D-97**。
+
+| local | GitHub | SHA | 文件 | 本次 |
+| --- | --- | --- | --- | --- |
+| `D:\DeepSeek Harness` | `ABccgh/dsh-smith` | 本地 `a9ea9f2` ＝ 远端 `6143f6a` | 49 | 内容一致；**tree 两侧同为 `4d8da6b8…`** |
+| `D:\dsh-desktop` | `ABccgh/dsh-desktop` | `6f9fe04` | 43 | 未动 |
+| `$DSH_HOME\plugins\dsh-account-balance` | 同名 | `e3d9a98` | 7 | 未动 |
+| `$DSH_HOME\plugins\dsh-agent-memory` | 同名 | `358d869` | 5 | 未动 |
+| `$DSH_HOME\plugins\dsh-ima-kb` | 同名 | `e300cca` | 9 | 未动 |
+| `$DSH_HOME\plugins\dsh-ck3-modcheck` | 同名 | 本地 `670182d` → 远端 `7f5c1e6` | 6 | 1 个提交缺失，已推 |
+| `$DSH_HOME\plugins\dsh-inbox` | `ABccgh/dsh-inbox` | `a98ecb4`（两侧同 SHA） | 13 | **建仓 + 推送** |
+| `D:\CK3Mods` | `ABccgh/cn-dejure-conquest` | `b1997fb`（两侧同 SHA） | 5 | `git init` + 1 提交，**建仓** |
+| `D:\AIVideo` | `ABccgh/ai-video-workbench` | `4a7b4ea`（两侧同 SHA） | 54 | `git init` + 1 提交（98 MB），**建私有仓** |
+
+三个新仓库的可见性是实测值：`dsh-inbox` 公开、`cn-dejure-conquest` 公开、
+**`ai-video-workbench` 私有**（`visibility: private`）。
+
+**本节的中心是一条方法，不是一个数字：`-Base` 与「推了没有」都只能由 tree 回答，不能由 SHA 回答。**
+`dsh-ck3-modcheck` 的远端 tip 是 `7f5c1e6`（父 `0281860`），其 tree 与本地 `670182d` 的 tree
+**同为 `66567d0`** —— 内容 6/6 一致，而本地那个提交**不是**远端那个对象，也永远不会是：父提交那一行
+在被哈希的字节里。这个形状先于本次就存在（远端根 `0281860` 与本地根 `cded542` 也是同 tree、不同 SHA）。
+同一枚硬币的另一面是 `dsh-smith`：本地 `a9ea9f2` 与远端 `6143f6a` 是**同一个提交信息、同一时刻**的两个
+SHA，两边 tree 相同，所以内容一致。**不要去调和这些 SHA**：`git` 从本机到 GitHub 仍然不通
+（`CRYPT_E_NO_REVOCATION_CHECK`，见上），而且两个历史按构造就该在 SHA 上不同。下次从这个仓库推送
+**必须 `-Base 670182d`**（`-Base` 指"内容已被推送过的本地提交"）。
+
+**新仓库的入口是 `-Force`，而它曾被一次编辑弄成不可达（D-97 ①）。** `bf4c2ad` 给 first-parent 走查加的
+守卫让 `-Force` 的三种旗标组合**全都抛错**，静默废掉了 D-33 在 `DECISIONS.md:905` 记录的那条路线 ——
+它在 `bf4c2ad` 之前实测可用。修好之后，新建仓库的路线是「API 建仓（`autoInit: true`，并**显式**
+`private`）→ `-Force` 把分支整体移到本地历史上」，bootstrap 的 README 变成不可达，与
+`dsh-account-balance` 的干净收尾相同。建仓权限本身要 **Administration: write**（账号级）。
+
+**仍未完成的只有一件：`bin/push-api-ref.ps1` 里那份修复还在工作区，没有提交也没有推送**
+（远端 `6143f6a` 的 tree 里它仍是修复前的 blob `83eb83b8`，工作区是 `fce5784`）。
+
 ## Architecture (verified)
 
 Every line names how it was established. Session date of record: 2026-09-10.
@@ -1671,7 +1709,10 @@ config 过插件自身 schema、13 个工具的预编译 `parameters` 全被 `ds
 （`git ls-files tools` 实测 8 条；D-57、D-58），所以「仍未 `git add`」只描述当时；
 `data/` 仍在 `.gitignore` 里，重建后不会误入库。本仓库仍只有两个 preset 是「已安装面」，
 `tools/` 不在 `package.json` 的 `files` 白名单里，因此不进已发布的 tarball。
-`D:\DeepSeek Harness` **有** `origin`（指向 `dsh-smith`），但**本次没有推送它**——不在要求范围内。
+`D:\DeepSeek Harness` **有** `origin`（指向 `dsh-smith`）。上面那句「本次没有推送它」**已过时**：
+它的历史此后已经推上去了（走 REST API，不是 `git push`），远端 `main` 现为 `6143f6a`；本机 `git` 到
+GitHub 仍然不通，所以 `origin` 存在这件事与"能不能推"无关。见本节前的「Every project on this machine
+is on GitHub」与 D-97。
 
 ### `%TEMP%` 的累积，与委派子代理越界写盘（本次会话实测）
 
