@@ -68,8 +68,10 @@ Three rules that account for most script errors:
 
 - **Indentation is presentation, not structure.** The game parses braces and whitespace, not
   nesting-by-column. Align anyway — a file a human cannot read is a file a human cannot fix.
-- **`key = value` needs the spaces around `=`.** `key=value` is not the same token stream in
-  every CK3 script context, and the wiki's own examples write it spaced.
+- **Write `key = value` with the spaces.** Most vanilla script and every wiki example are spaced, so
+  match them. This is a **convention, not a requirement**: the tight form `key=value` is read by the
+  game and appears in hundreds of vanilla files (`common\bookmark_portraits\`, `common\dna_data\`),
+  so never report a tight `=` as a defect.
 - **A block that never closes swallows the rest of the file.** When a mod "does nothing",
   count the braces before you change any value.
 
@@ -105,10 +107,15 @@ Four things are load-bearing and all four are easy to get wrong:
   header. One header per file.
 - **One entry per line as `KEY:0 "text"`.** The key must match exactly what the script
   references; a typo produces an untranslated key shown raw in the interface.
-- **The number is a version marker, not decoration.** `0` means the entry is current. A
-  **non-zero** number marks the entry as needing retranslation, so writing `0` on a string
-  you changed is how a stale translation survives with nobody noticing. When you change text
-  that was already translated, that is a deliberate decision — make it deliberately.
+- **The number after the colon is optional, and a missing one is not a defect.** The `Localization`
+  page says it "is optional and it does nothing for modders… completely deprecated", and the measured
+  vanilla corpus agrees — **25,431** of its `localization\english` entries carry no number at all.
+- **When you do write one, write `0`.** `0` means the entry is current, and a **non-zero** number marks
+  the entry as needing retranslation — so writing `0` on a string you changed is how a stale
+  translation can survive with nobody noticing. That non-zero meaning is the semantics this project
+  has **not** verified in the engine: treat it as a convention to follow, never as a claim to assert
+  about what the game does. When you change text that was already translated, that is a deliberate
+  decision — make it deliberately.
 
 ## `ck3_modcheck` runs before delivery
 

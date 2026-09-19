@@ -13,8 +13,11 @@ compaction, and compaction is exactly when it would have been needed.
 ## The four layers
 
 Every path below is relative to the **project root** — the directory the user works in, not
-the preset's own directory. Resolve it the way the workspace does: the outermost directory
-holding an `AGENTS.md` or `MODDING.md` that applies, or the root of whatever the user names.
+the preset's own directory. Resolve it the way the workspace does: walk up from the working
+directory to the **first** directory holding an `AGENTS.md` or `MODDING.md` — the nearest one,
+not the outermost — or use the root of whatever the user names. With nested markers the
+nearest wins, and getting that wrong puts `docs\mod-notes\` one level above the tree the
+loader reads.
 
 | Layer | Path | Lifetime | Contents |
 | --- | --- | --- | --- |
@@ -116,7 +119,15 @@ carries what is true and the board carries what is next.
   rewritten.
 - **Record what the check did and did not cover.** `ck3_modcheck` validates bytes on disk. A
   green report is worth recording as "the files are the shape they should be", never as "the
-  mod loads", and the `path=` format is unverified on this machine — say so where it matters.
+  mod loads". What it cannot tell you is whether the **launcher accepted** a `path=` value —
+  that is the launcher's behaviour, not a property of the file, so say so where it matters.
+  (The three spellings themselves *are* documented, not unverified: an earlier revision of this
+  preset called the format unverifiable and that conclusion was withdrawn — do not repeat it.)
+- **Date every runtime-log reading to its run.** CK3 rewrites `logs\` on each launch, so
+  "the log has no errors from my mod" is only meaningful together with *which* run it came
+  from, and attribution needs a **same-run** difference (with and without the mod). Two
+  different runs cannot be subtracted. (`console_history.txt` is the exception — it
+  accumulates.)
 - **Never record a secret.** No tokens, no account details — a reference to where a value
   lives is the most that belongs in the record.
 - **Keep each layer short.** Length is what makes a memory file stop being read, and an

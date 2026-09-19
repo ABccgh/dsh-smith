@@ -40,7 +40,7 @@
 dsh plugin --profile web add "$DSH_HOME/plugins/dsh-ck3-modcheck"
 ```
 
-这一步只改 profile 的依赖图。**必须重启 Host**，因为那一行是宿主组合在启动时挂载的；不重启，`ck3_modcheck` 工具不存在，本预设的交付律就没有执行者。**本机是否已重启过 Host 未验证**——见「验证状态」最后一条。
+这一步只改 profile 的依赖图。**必须重启 Host**，因为那一行是宿主组合在启动时挂载的；不重启，`ck3_modcheck` 工具不存在，本预设的交付律就没有执行者。**本机已完成过重启**（见「验证状态」挂载检查一节）；插件代码**再次改动之后仍需要下一次重启**——这一点工具自己会在每次报告末尾打印「代码回执」（PID、启动时间、`lib/*.js` 的 mtime），据此判断运行中的是哪一版。
 
 **② 预设本体。** 装它：
 
@@ -92,7 +92,11 @@ node bin/install.mjs --preset dsh-ck3-mod
 
 **`path=` 的格式不再是未知项。** wiki 的 `Mod structure` 页给出三种写法并说明基准：`path="mod/my_mod"` 是「相对，任何系统」且**相对用户文件夹**（不是游戏主目录），完整绝对路径也可用；其 Tips 还专门提醒引号是必需的。所以本条限制已**撤销**——原先「格式未验证」的措辞是在只读了页面一部分时写下的，现已被同一页的 Keys 表推翻。
 
-**真正剩下的运行时盲区（本机无法验证）**：CK3 会把脚本错误写进 `Documents\Paradox Interactive\Crusader Kings III\logs\`（`error.log` 缺本地化键、`database_conflicts.log` mod 冲突、`event_log.csv` 每个事件被检查/被选中的次数），而**本机该目录不存在**（游戏从未启动过）。这三样是比静态分析强得多的证据面，尤其是事件「从未触发」这类可达性失败——静态看文件看不出来。工具**现在不读它们**，读它们需要在游戏至少启动过一次之后再做，且必须用「无 mod 基线」做差。
+**真正剩下的运行时盲区（本机现在有一部分可读了，而且第一次读数就推翻了「启动器说了算」这个假设）**：CK3 会把运行时证据写进 `Documents\Paradox Interactive\Crusader Kings III\logs\`，游戏在本机已经启动过多次，`logs\` 里现在有 **18** 个文件。三条实测：
+
+1. **日志是「每次运行」的**——下一次启动会把它们重写。D-75 那次 `event_queue` 的现场已经不在当前 `debug.log` 里了，所以任何跨运行的归因都不成立；`ck3_mod_evidence` 现在会在报告顶部标出本次运行的起点，并在每次调用末尾附「代码回执」。（唯一的例外是 `console_history.txt`，它跨运行累积。）
+2. **`event_log.csv` 仍然不存在**，而且现在知道它在本 build 里不会被创建（`event_queue` 跑通了、只写 `debug.log`、不写文件）。所以「引用但从不触发的事件」这条检查是**已实现、已测试、未在真实数据上触发过**——缺能力，不是通过。
+3. **「启动器说了算」是错的**——这是最新、也最重要的一条。同一次运行里，游戏自己的 `debug.log` 列出一张 mod 表并写出它**实际挂载**了什么：`Mounted Data: D:/CK3Mods/jtdx`，随后 `>=== NAMESPACE > 'jtdx' is set to #3520000` 与 `Loaded [6] events from 'events/jtdx_events.txt'`。也就是说**本工坊真的产出过一个被游戏加载、事件被注册的 mod**（那是这个工作区里已有的 jtdx mod，而它现在已不在 `D:\CK3Mods`，目录已空）——而它的 `.mod` 文件名 `mod/jtdx.mod` 在**启动器数据库里没有对应行**，`dlc_load.json` 的 `enabled_mods` 里也没有它。同一份日志里，七个 workshop mod 只有两个标 `Enabled`，而 `dlc_load.json` 列了七个、启动器 playset 七个全 `enabled=1`。**三个来源互相矛盾，而权威的那个是游戏自己那份带时间戳的单次运行日志**——`ck3_mod_status` 读的是启动器数据库，属于较弱的一侧，其报告已经改成把「读到 0 条」与「没有模组」分开陈述。
 
 ### 3. 记住项目：三层记忆，机制结论除外
 
@@ -165,9 +169,9 @@ node bin/install.mjs --preset dsh-ck3-mod
 
 | 技能 | 什么时候加载 | 来源 |
 | --- | --- | --- |
-| `ck3-mod-authoring` | 写、改或校验一个 mod 之前 | 与前身预设**逐字节相同**（SHA256 `3376E807…`），本预设内无修改 |
-| `mod-project-memory` | 记录或恢复项目状态、决定刚落定、判断一条结论该不该进记忆文件时 | 由前身的 `ck3-campaign-memory` 改写：留下分层、只追加、机制结论除外；战局／存档概念全部移除，规则文件改为 `MODDING.md`，项目层改为 `docs\mod-notes\` |
-| `dsh-runtime-reference` | 定位包、确认平面归属、查插件 config 面、诊断"挂了但没贡献"的一次行时 | 与 `dsh-smith/skills/dsh-runtime-reference/SKILL.md` **逐字节相同**（SHA256 `7512B611…`） |
+| `ck3-mod-authoring` | 写、改或校验一个 mod 之前 | 源自前身预设的技能，**本预设内已修改**：本地化计数器一节改成「可选、缺了不是缺陷（实测 25,431 条不带）」并标明非零语义**未在本机验证**；`key=value` 的收紧空格从「要求」降级为「惯例」（原版数百个文件用紧凑写法）。前身预设目录已删除，所以旧的「逐字节相同 / SHA256 `3376E807…`」说法**不再成立，也不再可复核** |
+| `mod-project-memory` | 记录或恢复项目状态、决定刚落定、判断一条结论该不该进记忆文件时 | 由前身的 `ck3-campaign-memory` 改写：留下分层、只追加、机制结论除外；战局／存档概念全部移除，规则文件改为 `MODDING.md`，项目层改为 `docs\mod-notes\`。本次另加两条：项目根是**最近的**标记目录（不是最外层），以及「运行时日志读数必须标注是哪一次运行」 |
+| `dsh-runtime-reference` | 定位包、确认平面归属、查插件 config 面、诊断"挂了但没贡献"的一次行时 | 与 `dsh-smith/skills/dsh-runtime-reference/SKILL.md` **逐字节相同**（SHA256 `7512B611…`，两处均已复核） |
 
 ## 验证状态
 
@@ -180,27 +184,29 @@ node bin/install.mjs --preset dsh-ck3-mod
 | 技能 frontmatter | `node bin/lint-skills.mjs --path "D:\DeepSeek Harness\dsh-ck3-mod"` | 3 个技能全部 `ok`，`all 3 skill(s) lint clean`，退出码 0 |
 | 静态预检 | `node bin/preflight.mjs --path "D:\DeepSeek Harness\dsh-ck3-mod\agent.cordis.yml"` | 27 行；**`validated: 16   skipped: 9   failed: 0`**（另有 2 行 disabled 不参与检查），**`PREFLIGHT PASSED`**，退出码 0 |
 | YAML 解析 | 用 `bin/preflight.mjs` 同一个 `yaml` 包（`C:\Users\曦曦\.dsh\profiles\node_modules\yaml\dist\index.js`，带 `!!js` → `{ __jsExpr }` 自定义标签）解析 | `is array: true`；顶层 17 项；具名行 27；group 容器 3（`thinking` / `compaction` / `team`）；组内行数 1 / 3 / 6；专家行 3 条；无解析错误 |
-| persona 模板变量 | 对 `agent.cordis.yml` 全文 grep `{{…}}` | 只有 `{{model}}` 与 `{{cwd}}` 两种名字；`prefix` 内 1 个 `{{model}}`（第 86 行），`suffix` 内 1 个 `{{cwd}}`（第 184 行），另 2 处在第 76、78 行解释这条规则的注释里（含 dsh-forge 同款写法的 `{{…}}`）。无第三个变量名 |
+| persona 模板变量 | `grep -n '{{' dsh-ck3-mod/agent.cordis.yml` | 只有 `{{model}}` 与 `{{cwd}}` 两种名字；`prefix` 内 1 个 `{{model}}`，`suffix` 内 1 个 `{{cwd}}`，另 2 处在解释这条规则的注释里（含 `dsh-forge` 同款写法）。无第三个变量名。**行号不写在这里**——`agent.cordis.yml` 每次改动都会让行号失效，要引用就用 `grep -n` 现场取（本节曾把 `{{cwd}}` 写成第 184 行、把 `!!js` 写成第 240 行，两处都随文件增长而失效） |
 | 禁用内容 | 对整个预设目录 grep 检索名／知识库／战役类词 | 6 处命中，**全部在 `agent.cordis.yml` 的第 11–16、257、806 行**——即文件头说明"被删除的是什么"的血统注释，与 `plan-mode` 注释里说明"为什么从六段变四段"的一句。没有一处是行、config 键或 persona 正文 |
-| 二进制同一性 | `Get-FileHash` 对比两个"逐字复制"的技能 | `ck3-mod-authoring` 6448 B `3376E807…` 与源相同；`dsh-runtime-reference` 8445 B `7512B611…` 与源相同 |
+| 二进制同一性 | `Get-FileHash` 对比「逐字复制」的技能 | `dsh-runtime-reference` 8445 B `7512B611…` 与 `dsh-smith/skills/dsh-runtime-reference/SKILL.md` **仍逐字节相同**；`ck3-mod-authoring` 与 `mod-project-memory` **已被本预设修改**（修改后分别为 `89BE546E…` / `85801768…`），不再有「与源相同」这回事——前身预设目录也已被删除，两个旧哈希`3376E807…`/`940D2415…`只作为历史留在这里 |
 
 ### 那条**预期**失败已经消失（因为插件已经装上了）
 
 写这个预设时，`tool-ck3-modcheck` 的包 `dsh-ck3-modcheck` 还没进 profile，静态预检报 `Cannot find package: dsh-ck3-modcheck`——**这正是这一行按包名解析、而非被本仓库 shipping 的直接后果**，也正是 `dsh-ima-kb` 的形状。**该前置条件随后被满足**：本机 `profiles/web/package.json` 现在有 `"dsh-ck3-modcheck": "link:C:/Users/曦曦/.dsh/plugins/dsh-ck3-modcheck"`，`cordis.patch.yml` 里有对应的 `ck3-modcheck` 行（带 `modDir: 'D:\CK3Mods'`）。所以上表里那一次预检是**唯一一次** `failed: 0` 的运行，**这也意味着「装插件」这个前置条件不再阻塞**——但**仍需重启 Host** 才能让宿主挂载那一行（该重启已完成，见 `docs/agent-notes/BOARD.md`），而本节里那条真正的挂载检查**当时**还没跑——它已在后续一次出厂 `cordis` 会话里跑过，读数见下面的「挂载检查」一节。
 
-要按字面读的是这一句：**每一条具名行都解析成功**。9 行"跳过"不等于通过，它们逐类是：3 个 group 容器（`thinking`、`compaction`、`team`，无包可解析）、1 行 config 含未求值 `!!js` 表达式（`skill-filesystem` 的 `customSkillDirs[0]`，第 240 行）、5 行不导出**函数式** `Config` schema 的包（`plan-mode`、`command-compact`、`tool-subagent-control`、`tool-subagent-control/list-agents`，以及 `dsh-ck3-modcheck` 自己）。另有 2 行（`tool-bash`、`tool-pwsh`）因 `disabled` 是未求值的平台表达式而不参与检查——其中恰好只有一行会在任何给定平台上激活。
+要按字面读的是这一句：**每一条具名行都解析成功**。9 行"跳过"不等于通过，它们逐类是：3 个 group 容器（`thinking`、`compaction`、`team`，无包可解析）、1 行 config 含未求值 `!!js` 表达式（`skill-filesystem` 的 `customSkillDirs[0]`，行号用 `grep -n '!!js' agent.cordis.yml` 现场取）、5 行不导出**函数式** `Config` schema 的包（`plan-mode`、`command-compact`、`tool-subagent-control`、`tool-subagent-control/list-agents`，以及 `dsh-ck3-modcheck` 自己）。另有 2 行（`tool-bash`、`tool-pwsh`）因 `disabled` 是未求值的平台表达式而不参与检查——其中恰好只有一行会在任何给定平台上激活。
 
-### 插件自己的检查（51/51）
+### 插件自己的检查（153/153）
 
 `dsh-ck3-modcheck` 的 config 面**不被本仓库任何脚本读过**：它导出的是**普通对象** Standard Schema（与 `dsh-ima-kb` 一致），而 `bin/preflight.mjs:178` 只在 `Config` 导出是**函数**时才用它（`typeof Schema !== 'function'` → 打印 `skip … (exports no usable Config schema)`）。它的 config 来自 profile 那一行（本机写的是 `modDir: 'D:\CK3Mods'`），而**校验这些字段的代码只住在插件自己的测试里**。实测：
 
 ```text
 node "$DSH_HOME/plugins/dsh-ck3-modcheck/test/falsify.mjs"
-→ 51/51 assertions passed
+→ 153/153 assertions passed
 → FALSIFICATION PASSED
 ```
 
-跑的时候它自己报告的三条，都是本文件其它地方引用的依据：六个植入缺陷**逐个被点名**（不是"有错"而是"错在哪"）；`vanilla probe: a real vanilla localization file produces ZERO findings`；`vanilla probe: the real file really does start with the UTF-8 BOM / first bytes: ef bb bf`。本次另外单独实测：`game\localization\english` 下 **122 个 `.yml`，122 个以 `EF BB BF` 开头**，第一个文件是 `achievements_l_english.yml`。
+跑的时候它自己报告的三条，都是本文件其它地方引用的依据：六个植入缺陷**逐个被点名**（不是"有错"而是"错在哪"）；`vanilla probe: a real vanilla localization file produces ZERO findings`；`vanilla probe: the real file really does start with the UTF-8 BOM / first bytes: ef bb bf`。本次另外单独实测：`game\localization\english` 下 **122 个 `.yml`，122 个以 `EF BB BF` 开头**，第一个文件是 `achievements_l_english.yml`；同一批 122 个文件里 `checkLocalizationFile` 报 **0 findings**，**25,431** 条条目不带版本计数器（条目样行共 **75,936** 条）。
+
+**同一个套件里另有两条读数，说明「测试通过」不等于「读数可信」**（D-64/D-81 的来源）：本地化的旧 pattern 曾把**原版自己的 742 条条目**报成缺陷（修好后同一批文件 0 findings）；日志去重曾把 **1,780 条 E 行折叠成 43 条「不同错误」**，而其中 1,562 条是同一句外壳 `Script system error!`，真实内容在下一行——所以现在外壳会与其续行合并，并显式报告「把 N 条折叠成了 M 条」。
 
 ### 挂载检查（**已经跑过** —— 在一个出厂 `cordis` 会话里，实测）
 
@@ -235,14 +241,16 @@ node "$DSH_HOME/plugins/dsh-ck3-modcheck/test/falsify.mjs"
    > `expert_architect`／`expert_protocol`／`expert_verifier`／`expert_chronicler`。
    >
    > 另外「工具在表里」与「工具能返回真数据」也是两件事——后者已实测过
-   > （`ck3_mod_status` 读出启动器库的 1 个 mod 与 2 条交叉判定；`ck3_modcheck` 零参数跑通
-   > `D:\CK3Mods` 报 0 findings）。
-3. **`ck3_modcheck` 在真会话里的行为未实测**：它的报告格式、`fix: true` 路径的行为、以及在真实 mod 目录上的输出——全部取决于插件自己的实现与测试（上面 105/105 那一节）。
+   > （2026-09-17 从新代码直接驱动四个工具：`ck3_mod_status` 读出 openbeta 库的 **7 个 mod ＋ 7 行 playset**，
+   > `ck3_mod_evidence` 读出本次运行起点 `23:16:57` 与 18 个日志文件，`ck3_modcheck` 对空的 `D:\CK3Mods`
+   > 报「**no check ran**」而不是「every check that ran passed」）。
+3. **`ck3_modcheck` 在真会话里的行为未实测**：它的报告格式、`fix: true` 路径的行为、以及在真实 mod 目录上的输出——全部取决于插件自己的实现与测试（上面 153/153 那一节）。**本节曾把这里写成 105/105，而同一文件另一处写 51/51 与 51/51，三处数字互不一致**；现在统一为插件套件的实测读数，改这个数要重跑 `node "$DSH_HOME/plugins/dsh-ck3-modcheck/test/falsify.mjs"`。
 4. **三条 persona 真的到达子代理、`deny: [write, edit]` 在运行时成立**——这需要在真会话里委派一次并读回工具表，本仓库做不到。
 5. **`path=` 的格式已不再是未知项**，这一条在本次会话被**推翻**：wiki 的 `Mod structure` 页 Keys 表给出三种写法并写明基准——`path="mod/my_mod"` 是「相对，任何系统」、相对**用户文件夹**（不是游戏主目录），完整绝对路径亦可，且 Tips 专门提醒引号必需。所以预设的 persona 现在**允许**引用这三种写法。仍然不允许的是声称**启动器接受了**某个值——那是启动器的行为，不是文件的属性，只有一次真实启动能判定。
 6. **`agent-instructions` 的三个候选真的会在用户工作区里被找到**——机制读自 `dsh-agent-instructions/lib/index.js:578`（root-to-cwd 链上逐目录探测），但没有在用户的实际工作区里端到端验证过。
-7. **本预设的技能是否真的被 `skill-filesystem` 加载**：`customSkillDirs` 用 `!!js` 表达式在运行时求值，静态预检因此跳过该行；它只可能由真会话的工具表证明。
-8. **`tool-ck3-modcheck` 那一行的 config 面从未被本仓库的任何脚本读过**——即使它现在能解析：它导出的是普通对象 Standard Schema，`bin/preflight.mjs:178` 的 `typeof Schema !== 'function'` 分支把它报成 `skip … (exports no usable Config schema)`。它的 config 校验只住在插件自己的 `test/falsify.mjs` 里（上面 51/51 那一节）。
+7. **本预设的技能是否真的被 `skill-filesystem` 加载**：`customSkillDirs` 用 `!!js` 表达式在运行时求值，静态预检因此跳过该行；它只可能由真会话的工具表证明。**2026-09-17 拿到一条更强的证据，但仍不是端到端**：用真包（`cordis-plugin-include` 的 schema、`cordis-plugin-loader` 的 `interpolate`、一个带 `baseUrl` 的真实 `cordis` Context）实测该表达式求值为 `…\.agent-presets\dsh-ck3-mod\skills\`，目录存在且三个技能都在；没有 `baseUrl` 时抛 `ReferenceError`——**失败是响的，不是静默的**。缺的只是「活会话的技能目录里确实列出它们」。
+8. **`tool-ck3-modcheck` 那一行的 config 面从未被本仓库的任何脚本读过**——即使它现在能解析：它导出的是普通对象 Standard Schema，`bin/preflight.mjs:178` 的 `typeof Schema !== 'function'` 分支把它报成 `skip … (exports no usable Config schema)`。它的 config 校验只住在插件自己的 `test/falsify.mjs` 里（上面 153/153 那一节）。
+9. **插件代码改动必须重启宿主才生效，而工具现在会自己说这件事**：每个报告末尾有一段**代码回执**（PID、本进程启动时间、`lib/index.js` 与 `lib/rules.mjs` 的 mtime）。它是**回执而不是判词**——不写「代码已陈旧」这种推断，只把两个时间摆出来让人自己比。当前服务本 GUI 的宿主是 **PID 16872，启动于 2026-09-17 19:08:13**，早于本轮插件改动，所以在宿主重启之前，新会话里调这四个工具拿到的仍是旧代码的输出。
 
 ## 升级后
 

@@ -173,8 +173,11 @@
       122** files under `game\localization\english` begin with the BOM bytes `EF BB BF`. The number after
       the colon is **optional**: the `Localization` page says it "is optional and it does nothing for
       modders… completely deprecated", and the vanilla corpus agrees — **25,431 entries carry no number
-      at all** (` build_x: "text"`), so a missing counter is not a defect. Write `0` when you write one;
-      do not invent a rule that a number is required.
+      at all** (that is a count of the no-counter shape; of the 75,936 entry-shaped lines in those files,
+      50,505 carry a counter), so a missing counter is not a defect. Write `0` when you write one;
+      do not invent a rule that a number is required. The counter's non-zero semantics — whether a
+      value above 0 makes the game mark the entry for retranslation — is **not verified here**; do not
+      state it either way, and do not build a rule on it.
 
       ## `path=` — the format IS established, and it points at the mod's own folder
 
@@ -492,7 +495,7 @@
             the first line and one `KEY:0 "text"` entry per line. A file without its BOM is read as the
             wrong encoding and its entries do not load, which is invisible in most editors — check the
             bytes, not the appearance. The version counter after the colon is **optional and deprecated
-            for modders** (so the `Localization` page says, and 742 vanilla entries omit it): write `0`
+            for modders** (so the `Localization` page says, and **25,431** vanilla entries omit it): write `0`
             or omit it, never `KEY:"text"` without the space, and do not treat a missing number as a
             defect.
           * PLACEMENT. `common\` for definitions, `events\` for events, `gui\` for interface, `history\`
