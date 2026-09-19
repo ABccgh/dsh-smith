@@ -20,6 +20,11 @@ Thumbs.db
 .vscode/
 *.swp
 
+# Local scratch: browser-acceptance fixtures and one-off probes land here.
+# ANCHORED on purpose — a bare `tmp/` would also match any nested directory of that
+# name (e.g. inside a preset's skills tree), which is not what this rule is for.
+/tmp/
+
 # The `github-worktrees/` rule that stood here was removed with the rest of the
 # dsh-github teardown (D-51, D-57). It guarded checkouts of other repositories
 # fetched by that project's `workspaceRoot`; the directory is gone from disk and

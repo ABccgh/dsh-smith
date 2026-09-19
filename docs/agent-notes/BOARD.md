@@ -1,5 +1,64 @@
 # Board
 
+## 2026-09-19（晚）—— GitHub API 接入：已交付、已验收；三项仍开放
+
+**结论先说：** 部署现在**有** GitHub API 能力，走 host 平面的 `mcp-github` 行（`@deepseek-ai/dsh-mcp-client`
+→ GitHub 官方 Go 二进制，`--toolsets all` 可写 → **90 个工具**、工具名 `mcp__github__*`），令牌经
+`$DSH_HOME/.env` 用 `node --env-file` 注入、**值不进组合文件**。会话内已实测派发
+（`mcp__github__get_me` 从会话直接调通）；写路径已实测（`push_files`、`create_pull_request`、关闭 PR 回 **2xx**）。
+决策链：**D-93**（怎么接）→ **D-94**（全面放开）→ **D-95**（权限补完 + 一次探针事故）→ **D-96**（可见性闭合、
+90/89 的归因）。部署级细节在 `$DSH_HOME/plugins/dsh-github-mcp/NOTES.md`。
+
+**仍开放的三项，只此三条：**
+1. **被换掉的旧 PAT 待撤销**（用户动作）：细粒度 token 的权限不能改，所以换权限＝换 token；旧值若仍在
+   GitHub 上就仍然有效。
+2. **PR #1 残留**：`ABccgh/dsh-smith` 上一条**已关闭**、已改写为自我说明的探针 PR —— GitHub 无删除 PR 的
+   接口，`main` 未被动过（tip 仍是 09/15 的 `bc87ad5`）。
+3. **仍 403 的能力**：账号级 `create_repository`、`star`/`unstar`，以及 `list_notifications`、
+   `projects_list`、`list_code_scanning_alerts`、`list_dependabot_alerts` 四个读；要账号级的那些得换
+   **GitHub App** 凭据（这个二进制原生支持 `--app-id`/`--app-installation-id`/`--app-private-key-path`）。
+
+**一条被本节的读数推翻的旧说法：**「新行只有在宿主重启后才挂上」**是错的** —— 本项目的行 22:48:04
+写进补丁、其子进程**同秒**出现，而宿主 21:47:59 就在运行。本次还顺带量到：改补丁文件的**注释不会**让行
+重挂（loader 按配置差异重建），改**配置值**才会。见 `PROJECT.md` 的 GitHub 小节与 D-95。
+
+## 2026-09-19 —— 视频播放：插件已交付、已验收
+
+**结论先说：GUI 内播放视频已经做完并且在真浏览器里验收通过。**
+
+- 插件：`C:\Users\曦曦\.dsh\plugins\dsh-video-player\`（`lib/index.js`、`lib/client.js`、`test/` 四套）。
+- 挂载：web profile 的 `cordis.patch.yml` 末尾 `insert: - id: video-player`，
+  依赖已用**受认可的写者**装好（`dsh plugin --profile web add …`，symlink + `link:` 已写入 profile 的 `package.json`）。
+- 决策：D-88（地址从 `props.useTabInfo` 取）、D-89（`connection.fetch` + `<video src>`）、D-90（变异审计）。
+
+**激活状态（2026-09-19 晚订正）**：原文写"`patchReload: live` 对新增行不生效、所以要等宿主重启"——
+**这条已被实测推翻**（见本板顶部与 D-95）：宿主平面的行在**补丁写入那一刻**即生效。所以本插件的**宿主半**
+（`connection.fetch` 路由）早已随那次写入生效；**未实测**的是**浏览器半**是否需要重建产物并刷新页面 ——
+那是另一个问题，别因为宿主半生效就把整个能力当成已就绪。
+
+**验收是怎么做的（下次照做）**：不去动用户的宿主，另起一个 `--port 63737` 的实例，
+从它的 stdout 拿**带 token 的 URL**，然后两条证据链：
+
+1. `Invoke-WebRequest` 换 token → Cookie，再对 `/api/video/stream` 打 14 组探针。
+   决定性读数只有 handler 能给出：`Range: bytes=0-1023` → `206` + `content-range: bytes 0-1023/43235`；
+   `bytes=99999-` → `416` + `bytes */43235`；`AGENTS.md` → `415`；工作区外的绝对路径 → `403`；
+   **未知 session → `404`（这一条抓到了真缺陷，见 D-89 第 3 点）**；`POST` → `404`（不拥有的方法）。
+2. Playwright 真浏览器：进 GUI、在 turnTail 的「播放视频」输入框里填 `tmp/clip.webm` 回车 →
+   右侧栏出现 `clip.webm` tab，`<video>` 的 `readyState=4`、`320×240`、`duration=3.186176`，
+   暂停后 seek 到 `0.4` **精确落点**，恢复播放继续走。截图确认：tab 名、原生控件、`0:03 / 0:03`。
+
+**未决 1 —— 工作目录之外的视频仍然进不来。**
+路由的 containment 是「必须在会话 workspaceRoot 之内」（这是 D-89 第 3 点的安全边界，不是疏漏）。
+要让 `D:\somewhere\else.mp4` 也能放，需要一个**明确的**根白名单（例如配置里多一个 `allowedRoots`），
+并由用户决定加哪些。**在它是决定之前不要偷偷放宽 containment。**
+
+**未决 2 —— 已结案（2026-09-19 晚）。**
+`tmp/clip.webm` 与 `tmp/video-fixture/clip.webm` 是上一轮的浏览器验收夹具（43 KB，同一 sha256），
+**已删除** —— 删前查证过插件**不读**工作区文件：`test/falsify.mjs:292` 里 `tmp/clip.webm` 只是断言里的
+字符串字面量，真实夹具是插件内嵌 base64 + sha256 自校验的副本。`.gitignore` 同时加了**锚定的** `/tmp/`
+（锚定而非 `tmp/`，避免匹配任意深度的同名目录），并用探针文件确认规则真的会命中。
+**仍然开放的是插件文档债**：`dsh-video-player` 的 NOTES.md / README.md 还没写全（`dsh-inbox` 有九节）。
+
 ## 2026-09-17（晚）—— 持久待办收件箱已挂载并验收；两个未决问题
 
 **结论先说：`dsh-inbox` 已在活宿主上挂载并验收通过，用户亲自完成了两条验收条目。**
@@ -505,6 +564,10 @@ and `dsh-forge` (software delivery) — and those two directories are the whole 
 (`AGENTS.md` rule 7). What is open, and nothing else:
 
 0. **GitHub integration: CANCELLED and fully torn down (D-51) — this is closed, not pending.**
+   **⚠️ 别把这一项读成"部署没有 GitHub 能力"（2026-09-19 晚补注）：** 这一项说的是那次**入站 webhook
+   集成**被取消并拆除。部署现在**有** GitHub **API** 能力 —— 由 profile 补丁层的一行 `mcp-github` 提供
+   （90 个工具、含写、会话内已实测派发），见本板顶部那一节与 D-93–D-96。**两者是不同的东西**：
+   前者是"GitHub 打进来自动开会话"，后者是"会话反过来调用 GitHub API"。不要互相引用。
    The user cancelled the project, so the deployment no longer carries it: **no**
    `webhook-runtime` / `webhook-github` / `github` rows, **no** `$DSH_HOME/plugins/dsh-github`,
    **no** `GITHUB_WEBHOOK_SECRET` or `GITHUB_TOKEN` ref, `/github` unrouted, the user-level
