@@ -276,6 +276,10 @@ the push tooling uploads bytes obtained from `git cat-file blob`.
 | `D:\CK3Mods` | `ABccgh/cn-dejure-conquest` | `b1997fb`（两侧同 SHA） | 5 | `git init` + 1 提交，**建仓** |
 | `D:\AIVideo` | `ABccgh/ai-video-workbench` | `4a7b4ea`（两侧同 SHA） | 54 | `git init` + 1 提交（98 MB），**建私有仓** |
 
+> **表里 `dsh-smith` 那一行的 SHA 是"写下时"的读数，按构造永远落后远端一位** —— 记录自身的提交只能在写下
+> 之后推送。判断有没有推、内容一不一致，用 tree 相等与九行 9/9 的路径→blob 集合，**不要用那个号码**；要
+> 最新号码就读 API。这样本节不会因为"又推了一次记录"而变假。
+
 三个新仓库的可见性是实测值：`dsh-inbox` 公开、`cn-dejure-conquest` 公开、
 **`ai-video-workbench` 私有**（`visibility: private`）。
 

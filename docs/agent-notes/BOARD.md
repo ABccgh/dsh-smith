@@ -18,6 +18,11 @@
 | `D:\CK3Mods` | `ABccgh/cn-dejure-conquest` | `b1997fb`（两侧同 SHA） | 5 | `git init` + 1 提交，**建仓** |
 | `D:\AIVideo` | `ABccgh/ai-video-workbench` | `4a7b4ea`（两侧同 SHA） | 54 | `git init` + 1 提交（98 MB），**建私有仓** |
 
+> **表里 `dsh-smith` 那一行的 SHA 是"写下时"的读数，它按构造永远落后远端一位** —— 记录自身的提交只能在
+> 写下之后推送，所以远端 tip 比表里的号码新一个提交。**判据是 tree 相等与九行 9/9 的路径→blob 集合，不是
+> 那个号码**；要最新号码就读 API（`GET /repos/ABccgh/dsh-smith/git/refs/heads/main`）。这条是为了让本节
+> 不会因为"又推了一次记录"而变假 —— 写死在表里的 SHA 一定会。
+
 **这件事真正的产出是那条方法：一条记录在案的路线，是对"实现它的那段代码"的断言，而那次编辑可以
 静默地把它变成假的。** `bin/push-api-ref.ps1` 在 `bf4c2ad` 给 first-parent 走查加的守卫让 **`-Force`
 三种旗标组合全都抛错**，于是 D-33 在 `DECISIONS.md:905` 记的
