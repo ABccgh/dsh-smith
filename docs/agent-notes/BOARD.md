@@ -1,6 +1,6 @@
 # Board
 
-## 2026-09-19（深夜）—— 本机所有项目已上 GitHub：**已交付**；只剩那一个提交没推
+## 2026-09-19（深夜）—— 本机所有项目已上 GitHub：**已交付并收尾**（那个提交也已推送，见 D-98）
 
 **结论先说：九个项目位置全部在 GitHub 上了**，判据不是推送脚本自己的报告，而是**独立的路径→blob SHA
 集合对比**（远端递归 tree 对本地 `git ls-tree -r HEAD`，双向）。完整决策与八条实测见 **D-97**，
@@ -8,7 +8,7 @@
 
 | local | GitHub | SHA | 文件 | 结果 |
 | --- | --- | --- | --- | --- |
-| `D:\DeepSeek Harness` | `ABccgh/dsh-smith` | 本地 `a9ea9f2` ＝ 远端 `6143f6a` | 49 | 内容一致（tree 两侧同为 `4d8da6b8…`） |
+| `D:\DeepSeek Harness` | `ABccgh/dsh-smith` | 本地 `671532a` → 远端 `fb3f8d6` | 49 | **本次推了 1 个提交**（`-Force` 修复 + D-97）；tree 两侧同为 `db6d059…` |
 | `D:\dsh-desktop` | `ABccgh/dsh-desktop` | `6f9fe04` | 43 | 本就一致，未动 |
 | `$DSH_HOME\plugins\dsh-account-balance` | 同名 | `e3d9a98` | 7 | 本就一致，未动 |
 | `$DSH_HOME\plugins\dsh-agent-memory` | 同名 | `358d869` | 5 | 本就一致，未动 |
@@ -23,7 +23,8 @@
 三种旗标组合全都抛错**，于是 D-33 在 `DECISIONS.md:905` 记的
 `pwsh -File bin/push-api-ref.ps1 -RemoteRepo <repo> -Force` **静默失效** —— 而它在 `bf4c2ad` **之前**
 是实测可用的。没有任何检查、测试或脚本读数发现这件事；它是一个**新仓库**需要那个旗标时才暴露的，
-中间隔了一周。已修（守卫改为 `-not $AllowUnrelated -and -not $Force`），但**修复本身还没提交**。
+中间隔了一周。已修（守卫改为 `-not $AllowUnrelated -and -not $Force`），并且修复与本节记录**已一起提交推送**：
+本地 `671532a` → 远端 `fb3f8d6`（fast-forward，tree `db6d059…`，49/49 路径一致）。
 
 **「内容一致」只能用 tree 证，不能用 SHA 证。** `dsh-ck3-modcheck` 的远端 `7f5c1e6` 与本地 `670182d`
 **同为 tree `66567d0`**，而两者 SHA 不同且本地那个永远不会出现在远端 —— 父提交那一行在被哈希的字节里，
@@ -32,7 +33,17 @@
 （`CRYPT_E_NO_REVOCATION_CHECK`），两个历史按构造就该不同。规则：**`-Base` 永远指"内容已被推送过的
 那个本地提交"，绝不给远端 SHA。**
 
-**下一件事就是那一个提交（见下节 Next 第 0 条）。**
+**那个提交也已推送**（本地 `671532a` → 远端 `fb3f8d6`；父 = 旧 tip `6143f6a`，即 fast-forward；tree
+`db6d059…` 两侧相同；49/49 路径集合一致，无 `bin/bin/…`；远端那份 `bin/push-api-ref.ps1` 现为修复后的
+blob `fce5784`）。**本节至此闭环**，读数与更正见 **D-98**。
+
+**两处刻意留白（都不影响"已上传"这个结论）：** (a) 三个新仓库**没有 topics**（其余 6 个都带
+`deepseek-harness-plugins` 等），因为加 topics 不在批准的计划范围内；(b) **4 个本地仓库没有 `origin`**
+（3 个在 `~/.dsh` 下，属边界禁区；且加了也没用 —— 本机 `git` 连不上 GitHub），所以"内容一致"只能在
+API 侧用 tree 与路径集合证明。**另记一条工具状态：** `memory_remember` / `memory_consolidate` 在本会话
+**可读、但被文件沙箱拒绝写入**，受管区块是用 `dsh-agent-memory` 自己导出的
+`parseLessons → renderBlock → spliceBlock` 写入的（写入前断言了标记之外字节逐一不变）；要让受管工具路径
+直接可用，需要一个允许写工作区之外文件的会话。
 
 ## 2026-09-19（晚）—— GitHub API 接入：已交付、已验收；三项仍开放
 
@@ -878,22 +889,17 @@ and `dsh-forge` (software delivery) — and those two directories are the whole 
 
 ## Next
 
-0. **IMMEDIATE — push this session's commit to `ABccgh/dsh-smith`, and it is the one thing the
-   milestone did NOT finish.** Everything else is published and verified (see the board's top
-   section). What is still local-only is commit `a9ea9f2` of this repository, whose tree is
-   `4d8da6b8…`, carrying (a) these memory-layer updates — `DECISIONS.md` **D-97**, `PROJECT.md`,
-   `BOARD.md` — and (b) the **uncommitted** `-Force` fix in `bin/push-api-ref.ps1` (working blob
-   `fce5784`; the remote still holds the pre-fix `83eb83b8`).
-   **The route is not the default one, and this is where a session would go wrong:** the remote tip
-   was produced by an API re-encode, so **do not pass a remote SHA to `-Base`**. The rule from
-   **D-97 (ii)** is that `-Base` names the local commit whose *content* was last pushed — and for
-   this repository that is also the safest reading, because the remote tree `4d8da6b8…` already
-   equals the local HEAD tree, so the previous push is accounted for.
-   Verify with the remote tree, never with SHA equality: after the push, the remote tree must equal
-   the new local `git rev-parse HEAD^{tree}`, and the remote path list must equal `git ls-tree -r
-   HEAD --name-only` with no doubled segments (`bin/bin/…`, the D-33 accident).
-   Run it from **this** directory (the script uses `git -C $PWD`), with a **full SHA**, and note that
-   `git push` is still dead here (`CRYPT_E_NO_REVOCATION_CHECK`) — the REST API is the only way out.
+0. **DONE（2026-09-19 深夜）—— `ABccgh/dsh-smith` 已推送、已核对，这一项没有遗留。** 修复 + D-97 的
+   四个文件提交为 `671532a`，经 `-RemoteOnlyParent -Base a9ea9f25f3ecf9ccd579286709a126d3a9fae180`
+   推为远端 `fb3f8d6`：父 = 旧 tip `6143f6a`（fast-forward）、tree `db6d059…` 两侧相同、49/49 路径集合
+   一致、无 `bin/bin/…`（D-33 那次事故的形状）、远端 `bin/push-api-ref.ps1` 现为修复后的 blob
+   `fce5784`；推送后九个位置**全部**重跑了路径→blob 双向集合对比，9/9 IDENTICAL（这同时关闭了 D-97 的
+   "未验证"行）。
+   **路线规则留在这里，不要丢：** `-Base` 永远指"内容已被推送过的那个本地提交"（**D-97 (ii)**），
+   **绝不给远端 SHA**；判断"推了没有"用 tree 与路径集合，**不要用 SHA 相等** —— 本仓库的两次推送都给出过
+   "同内容、不同 SHA"（`a9ea9f2`/`6143f6a`，以及本次的 `671532a`/`fb3f8d6`）。
+   从**本目录**运行（脚本按 `git -C $PWD` 定位仓库），`-Base` 给**完整 SHA**；`git push` 在本机仍是死的
+   （`CRYPT_E_NO_REVOCATION_CHECK`），REST API 是唯一出口。更正读数见 **D-98**。
 0. **CK3 milestone — CANCELLED, cleaned up and CLOSED (D-57); nothing of it is pending work
    here.** Extraction, ingest, the plugin push and the repository topics were all finished and
    verified, and the cancellation has since removed the generated corpus. What is left is not work

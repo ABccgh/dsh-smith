@@ -266,7 +266,7 @@ the push tooling uploads bytes obtained from `git cat-file blob`.
 
 | local | GitHub | SHA | 文件 | 本次 |
 | --- | --- | --- | --- | --- |
-| `D:\DeepSeek Harness` | `ABccgh/dsh-smith` | 本地 `a9ea9f2` ＝ 远端 `6143f6a` | 49 | 内容一致；**tree 两侧同为 `4d8da6b8…`** |
+| `D:\DeepSeek Harness` | `ABccgh/dsh-smith` | 本地 `671532a` → 远端 `fb3f8d6` | 49 | **本次推了 1 个提交**（`-Force` 修复 + D-97）；tree 两侧同为 `db6d059…` |
 | `D:\dsh-desktop` | `ABccgh/dsh-desktop` | `6f9fe04` | 43 | 未动 |
 | `$DSH_HOME\plugins\dsh-account-balance` | 同名 | `e3d9a98` | 7 | 未动 |
 | `$DSH_HOME\plugins\dsh-agent-memory` | 同名 | `358d869` | 5 | 未动 |
@@ -283,10 +283,11 @@ the push tooling uploads bytes obtained from `git cat-file blob`.
 `dsh-ck3-modcheck` 的远端 tip 是 `7f5c1e6`（父 `0281860`），其 tree 与本地 `670182d` 的 tree
 **同为 `66567d0`** —— 内容 6/6 一致，而本地那个提交**不是**远端那个对象，也永远不会是：父提交那一行
 在被哈希的字节里。这个形状先于本次就存在（远端根 `0281860` 与本地根 `cded542` 也是同 tree、不同 SHA）。
-同一枚硬币的另一面是 `dsh-smith`：本地 `a9ea9f2` 与远端 `6143f6a` 是**同一个提交信息、同一时刻**的两个
-SHA，两边 tree 相同，所以内容一致。**不要去调和这些 SHA**：`git` 从本机到 GitHub 仍然不通
-（`CRYPT_E_NO_REVOCATION_CHECK`，见上），而且两个历史按构造就该在 SHA 上不同。下次从这个仓库推送
-**必须 `-Base 670182d`**（`-Base` 指"内容已被推送过的本地提交"）。
+同一枚硬币的另一面是 `dsh-smith`，而本次推送又添了一对新读数：本地 `671532a` 与远端 `fb3f8d6` 是
+**同一个提交、同一个 tree（`db6d059`）**的两个 SHA（上一对 `a9ea9f2`/`6143f6a` 同形，现已是这一对的父）。
+**不要去调和这些 SHA**：`git` 从本机到 GitHub 仍然不通（`CRYPT_E_NO_REVOCATION_CHECK`，见上），而且两个
+历史按构造就该在 SHA 上不同。下次从这个仓库推送**必须 `-Base 670182d`**（`-Base` 指"内容已被推送过的
+本地提交"）。
 
 **新仓库的入口是 `-Force`，而它曾被一次编辑弄成不可达（D-97 ①）。** `bf4c2ad` 给 first-parent 走查加的
 守卫让 `-Force` 的三种旗标组合**全都抛错**，静默废掉了 D-33 在 `DECISIONS.md:905` 记录的那条路线 ——
@@ -294,8 +295,10 @@ SHA，两边 tree 相同，所以内容一致。**不要去调和这些 SHA**：
 `private`）→ `-Force` 把分支整体移到本地历史上」，bootstrap 的 README 变成不可达，与
 `dsh-account-balance` 的干净收尾相同。建仓权限本身要 **Administration: write**（账号级）。
 
-**仍未完成的只有一件：`bin/push-api-ref.ps1` 里那份修复还在工作区，没有提交也没有推送**
-（远端 `6143f6a` 的 tree 里它仍是修复前的 blob `83eb83b8`，工作区是 `fce5784`）。
+**那一件也已完成（2026-09-19 深夜）：** `bin/push-api-ref.ps1` 的修复与本节记录一起提交为 `671532a`，
+推为远端 `fb3f8d6`（父 = `6143f6a`，fast-forward；tree `db6d059` 两侧相同；49/49 路径一致；远端那份脚本
+现为修复后的 blob `fce5784`）。九个位置由此在同一会话内**全部**复核为 IDENTICAL。两处非阻塞留白（三个新
+仓库的 topics、4 个本地仓库没有 `origin`）记在 `BOARD.md` 顶部。
 
 ## Architecture (verified)
 
