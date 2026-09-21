@@ -3952,3 +3952,495 @@ tree `db6d059275d212c18a4f79f2457eca9ebffddd38` **两侧相同**、远端 49 条
 "那个会话的策略"而非工具的缺陷；(ii) `fb3f8d6` 的 tree 被后续推送改掉且与本地不同 —— 那时 ① 的一致要重测。
 
 **状态：** 已闭合。九个位置全部在 GitHub 上并已双向核对；本仓库工作树干净，最新远端 tip `fb3f8d6`。
+
+## D-99: 把短剧做成智能体 —— 一个新 preset，以及它为什么必须停在平台边界之前
+
+**决定：** (i) 在本仓库新增第四个 preset **`dsh-duanju`**（短剧工坊），与用户已有的 `dsh-aivideo`
+**并存**、不碰它；(ii) 出片通道走**有戏AI**（用户指定，且与 `D:\AIVideo\DECISIONS.md` 的 D-02 一致），
+**不引入任何宿主平面插件**；(iii) 流水线由**用户自己的平台评估闸门**切成两段 —— 智能体交付剧本后
+**结束回合**，读数带回来并被判定「满意」之后才写分镜表；(iv) 技能随 preset 发布，但保留一条
+**项目本地可覆盖**的通道。
+
+**因为（实测）：** ① **平台侧那六步是人做的，不是权限设置而是能力边界。** 有戏AI 没有 CLI
+（`D:\AIVideo\tools\` 里没有任何脚本会联系平台）、没有公开 API（`/openapi.json` 与 `/swagger` 404，
+`docs./open./api./developer.` 全 NXDOMAIN），它的私有 app API 每个调用都要从已登录浏览器的
+`localStorage` 读 `token`，而工作区里**没有任何凭证** —— 全树递归搜 `.env*` / `*token*` / `*cookie*` /
+`*credential*` / `*secret*` → **0 个文件**。把这些步骤包成工具，就是在假装一个有戏AI 不提供的接口。
+② **列契约的权威是代码，而三处文档写错了它。** `tools\script-gate.mjs:85-116` 的 `REQUIRED_COLUMNS`
+是 **28** 列，而该文件自己的注释写「吃 20 列」（`:28,33`）、`board-to-xlsx.mjs:3` 写「25 列」、
+`dsh-aivideo` 的 `shotlist` 技能也写 25；`PROJECT.md:541,906` 自己记了这条待办。**更糟的是那份技能里
+有一次方向搞反的「更正」**：它把 13 列的「参考生视频」模板先注对（删的是「站位」与「镜头图片提示词」），
+又「更正」成原文错了 —— 解出来的 xlsx 证明**原文才对**。③ **技能根有优先级，而且项目本地会遮蔽 preset。**
+`dsh-skill-filesystem/lib/index.js:21-25,150-165` 的根是 `<项目根>/.dsh/skills`(100) /
+`<项目根>/.agents/skills`(200) / preset 的 `customSkillDirs`(300) / `~/.dsh/skills`(400)，
+`dsh-skill/lib/index.js:519` 是**升序**比较，所以数字小的赢；重复**只记警告**（`:186-188`）。
+这条支持「工作区单方面更新契约」，也正是技能没有只放工作区的原因 —— 那个根**依赖 cwd**，
+会话在 `D:\AIVideo` 之外起就会**静默丢掉全部短剧技能**。④ 新 preset 目录不进 `package.json`
+的 `dsh.presets` 会被 CI 的**集合比较**抓住，不进 `files` 则只有 `check-pack.mjs` 看得见。
+⑤ 平台读数是**用户在会话里的转述**，`E19b` 只校验自洽，**抓的是转述错字，抓不出整份报告读错**。
+
+**读数（可复跑）：** 技能 lint **8/8 clean**；`preflight --preset dsh-duanju` → `rows: 28`,
+**`validated: 17   skipped: 9   failed: 0`**；`drift-check` → 共享 22 行（5 行有差异）、本 preset 独有 6 行、
+上游独有 9 行，**差异逐条即设计**；`check-pack` → **PACK OK**，`dsh-duanju` **10/10 文件**、
+**8 个技能**在 tarball 里；`install.mjs --preset dsh-duanju` 后 `agent.cordis.yml` 的 SHA256
+**两侧逐字节相同**（`FF3BE7A8…651DB1`）；CI inventory 断言本地复跑 → **inventory matches**。
+
+**被否决的选项：** ① **扩展现有 `dsh-aivideo`** —— 它是用户 preset、不属本仓库，按 `AGENTS.md`
+边界本会话不能写它；且它的组合里已有一处整组删除的理由（上下文预算），与本 pipeline 的四专家团队相冲突。
+② **把 `D:\AIVideo\.dsh\skills` 当作技能的唯一来源** —— 见因为③，会让技能**依赖 cwd** 并静默全丢。
+③ **建一个宿主平面插件把 `script-gate`/`episode-build`/`board-to-xlsx` 包成工具** —— 这些脚本已经自己
+描述自己、已经是三态、已经能出 `--format json`；重实现会造出本工作区**记录最多的那类损失**
+（「同一批事实的第二份副本」，见 `quota-check.mjs:11-15`），而且插件必须 `inject` 宿主 `shell`
+而不是 `child_process`（`dsh-tool-pwsh/lib/index.js:194,221,392,402` 是范本），并会带来一个
+`preflight` 不可达的窗口。**留作 Phase 2，触发条件是 pwsh 调用真的开始出错。**
+④ **逐字复制 `dsh-aivideo` 的 `shotlist`** —— 那会把一个已记录的陈旧契约和一次反方向的「更正」
+一起带进来。⑤ **宿主行收掉 `tool-ask-user`（照抄 `dsh-ck3-mod`）** —— 投哪家平台是**用户拥有、
+读文件读不出来**的选择（工作区的平台对照记录着两家**各自排他**）。
+
+**被推翻的条件：** (i) 用户提供有戏AI 的 `localStorage` token —— 那时平台侧的一部分可以变成可驱动的，
+Phase 2 的形态要重写，而这条**属于用户拥有的决定**，不是一次 preset 编辑；(ii)
+`standingKeyFor('dsh-duanju')` 返回拒绝 —— 组合被推翻，按消息点名的那一行与服务改；(iii) 用户说
+「**完全不用即梦**」—— 人格里那段边界要改（现在写的是 D-02 的口径：样片与关键镜头可用，整部生成禁止）；
+(iv) `script-gate.mjs` 的 `REQUIRED_COLUMNS` 变长或变短 —— 技能只指向它、不复制数字，所以技能本身不用改，
+但 `drama-workspace`/`youxi-platform` 里引用的行号要复核。
+
+**状态：** 已交付并静态通过（读数见上）。**未验证、不声称：** 挂载（`standingKeyFor` 从未跑过 ——
+本部署的 `cordis_*` 只在出厂 `cordis` preset 注册）、工具到达模型、GUI 模式选择器何时反映新装的 preset、
+以及有戏AI 的私有接口在给定凭证下是否可用（**没有发出过任何请求**）。探针源码与验收判别键写在
+`docs/dsh-duanju.md` 第六节。
+
+## D-100: 交付后的对抗性复核改掉了什么 —— 以及我拒绝采纳的一条建议
+
+**决定：** (i) 接受复核的 9 条发现并**全部修掉**；(ii) 其中两条（F1/F2）我采取**比复核建议更小的一步** ——
+不把过期的数据抄对，而是把它**从技能里删掉**，改成指向 `story.json` 的字段；(iii) 把「退出码 4 不存在」
+记成关于 `script-gate.mjs` 的事实，而不是只改 preset 的措辞；(iv) 明确一条操作纪律：**技能内容改动之后必须重装**
+（`--force`），否则安装副本静默落后于仓库副本。
+
+**因为（实测）：** 复核给了 9 条，我逐条按到运行时上，**全部成立**。
+① **`hook-ladder` 里那张《金枝》付费点表与它自称的出处矛盾。** `story.json` 的非空 `paywall` 在
+**ep2 / ep5 / ep8 / ep11**（值为 `"第1个付费点：观众必须知道是谁替她留的位置。"` 等），而技能写着
+3→4 / 5→6 / 8→9 / 11→12，并且 `她在书房看见了自己的名字`、`夫人承认孩子是她偷换的`、`最终反转前一刻`
+**在该文件里一个字都不存在**。同一段里那句「前三集给足**谁该付出代价**」被 `monetization.note` 逐字标为
+「**已被 D-21 的真凶反转推翻**」（真凶到第 11 集才落地）。
+② **退出码 `4` 从来发不出来。** `process.exit(` 在整个 `script-gate.mjs` 里**一次都不出现**，
+只有 `:2853 process.exitCode = main()`，而 `main()` 只返回 `0/1/2/3`（另有 `:2812 exitCode: …?2:…?3:0`）。
+头注释 `:45` 与 `:439` 都在声称一个不存在的读数，而三处 preset 文本原样重复了它 —— **运行期异常冒泡成 `1`，
+与「用法/输入错」同码**，所以看到 `1` 时必须分清这两件事。
+③ `asset-manifest.mjs:117` 的受管区块目标是 `products\<剧名>\bible\README.md`；`PROJECT.md` 与
+`INVENTORY.md` **各 0 个 `<!--`**（对照：那份 `bible\README.md` 有 2 个）。
+④ `~/.dsh/plugins` 下 **5** 个插件带 `.git`（account-balance / agent-memory / ck3-modcheck / ima-kb / inbox），
+README 写「有三个」。
+⑤ **我自己引入的悬挂引用**：`shotlist` 提到 `manju-production`，而那是 `dsh-aivideo` 的技能、本 preset 不带。
+⑥ **继承来的线性假设**：`720p 10s = 140` 与 `720p 30s = 600` 不能同时是「14 算力/秒的严格线性」。
+⑦–⑨ 三处文档面：`docs/dsh-duanju.md` 那句「方向反了」只说了错的那一组、`README` 的插件计数、
+以及我加第四个 preset 时把 `docs/dsh-ck3-mod.md:19` 的「三个预设」变成了假话。
+
+**被复核为「未攻破」的那一半（组合面）：** 逐包读了 20 个包的声明 —— 只有 `dsh-plan-mode`、
+`dsh-compaction-basic`（经 `dsh-compaction`）、`dsh-compaction-tool-result-pruner` 发布服务，
+三者**各在自己的 realm 内**；`dsh-repeat-tool-reminder` 里那两个 `Service` 子类是**打包进来的死代码**
+（模块只导出 `{Config, apply, name}`，`apply` 只调 `ctx.on`）。**那个空的 `workflowEngine` realm 被追到实现层
+确认是惰性的**：没有 provider → 不铸根符号 → `cordis-plugin-loader` 的 diff 循环跳过 → 无警告无错误。
+三个块标量按原始字节重建并与 `yaml` 的解析结果比对一致（2889 / 2908 / 1004 字符），全文只有 `{{model}}`
+与 `{{cwd}}` 两个插值组。
+
+**被否决的选项：** ① **照建议把过期数据抄对** —— 那会留下同一个形状：一份「每剧一表」的副本住在通用手艺技能里，
+下次改剧本它再过期一次；改成**指向字段**才与工作区「`episodes\*.json` 是唯一源」的法则一致。
+② **只改技能、不重装** —— 那正是 AGENTS.md 规则 6 警告的那类静默漂移（安装副本继续被加载，而仓库副本已改）。
+③ **不采纳**复核转述的一条「`docs/dsh-duanju.md` 的技能优先级方向不可证」—— 它来自一个搜索了错误包的
+子代理；比较器在 `dsh-skill/lib/index.js:519`，本会话已亲自读过并引用了行号。**不同来源的结论冲突时，
+去跑那个能判定的检查，不要折中**（复核自己也是这样把它推翻的）。
+
+**被推翻的条件：** (i) 有人给 `script-gate.mjs` 加上真正返回 `4` 的路径 —— 那时这三处文本要改回四态；
+(ii) `story.json` 的 `paywall`（ep2）与 `freeEpisodes: 3` 的分歧被裁定 —— 那时 `hook-ladder` 里那段
+「报出来、别自己挑」要改成引用裁定结果；(iii) 挂载检查跑出拒绝 —— 组合面这一半随之作废。
+
+**状态：** 9 条全部处置。改动后重跑：技能 lint **8/8 clean**（仓库副本与安装副本各一次）、
+`preflight` `validated: 17   skipped: 9   failed: 0`、`check-pack` **PACK OK**、重装后
+`agent.cordis.yml` 的 SHA256 与仓库副本**逐字节相同**（`BA818BC0…23DB3`）。
+**仍未验证：** 挂载、工具到达模型、有戏AI 私有接口可用性。
+
+## D-101: 整个 `@deepseek-ai` 目录搜不出东西时，它是**报错**，不是「没有」
+
+**决定：** 往 `$DSH_HOME/profiles/node_modules/@deepseek-ai/` 做**目录级**搜索时，把 **exit 2 当成
+「这次搜索没跑」**，绝不当成「没有匹配」。要做缺失断言，就把范围缩到**一个包或一个文件**，
+并配一个已知存在的对照串。
+
+**因为（实测，本会话）：** `rg` 对整个 `@deepseek-ai` 目录搜索**直接以 exit 2 失败**并点名四个条目：
+
+```
+rg: …\@deepseek-ai\dsh-client-runtime: 系统找不到指定的文件。 (os error 2)
+rg: …\@deepseek-ai\dsh-host-apiproxy: 系统找不到指定的文件。 (os error 2)
+rg: …\@deepseek-ai\dsh-tool-subagent-report: 系统找不到指定的文件。 (os error 2)
+rg: …\@deepseek-ai\node-addon-landlock-run: 系统找不到指定的文件。 (os error 2)
+```
+
+这四个是**指向不存在目标的 junction** —— 正是 `dsh-runtime-reference` 技能记的那条：
+「`node_modules` 底下满是 junction，目标缺失的 junction 会解析成一个不存在的路径」。
+所以这条有**具名成因**，而且它**同时佐证了那个技能里关于 `dsh-tool-subagent-report` 的那一句**。
+
+**为什么值得单独记：** 它就是本仓库反复付学费的那一族 —— **「读不到」必须在输出上与「没有问题」不同**。
+一次 exit 2 的搜索与一次真正的零命中，如果都被读成「没有」，那么任何「这个仓库里没有 X」的断言都是空话。
+**而且这条是我自己在复核之后重测的，读数与复核转述的形态不同**：复核说它「静默返回 No matches found」，
+实测是**响亮的 exit 2 + 四个具名条目**。按「测得比预测更锐利时，记更锐利的那条」，记实测这一版。
+
+**被推翻的条件：** 那四个 junction 的目标被补齐（或它们被删掉），目录级搜索恢复正常 —— 那时这条降级为
+历史记录，但「先缩范围、再配对照」的做法不变。
+
+**状态：** 已实测。同族的既有事实见 `dsh-runtime-reference` 技能与 D-71。
+
+## D-102: `dsh-duanju` 的挂载检查跑通了 —— 以及「本会话没有 `cordis_*`」这个前提为什么是错的
+
+**决定：** `dsh-duanju` 的挂载检查**已实测通过**：`standingKeyFor('dsh-duanju')` 正常返回，
+逐行读数 24/24 个 enabled 行 `ACTIVE`。同时记下一条**前提性错误** —— 判断一个会话能不能跑这条检查，
+**看挂载的工具表，不看工作目录**。本会话的工作目录是 `D:\DeepSeek Harness`，却有整套 `cordis_*`。
+
+**因为（实测，本会话，2026-09-21）：**
+
+1. **前提是错的。** 请求里写「本会话没有 `cordis_*`，跑不了」。实际工具表里有
+   `cordis_inspect_list` / `cordis_inspect_query` / `cordis_inspect_self` / `cordis_define` /
+   `cordis_run` / `cordis_stop` / `cordis_undefine` —— 第一次 `cordis_inspect_list` 调用就成功了，
+   而「没有该工具」时这是不可能发生的。`AGENTS.md` rule 5 已经写过这一点（「一个 rooted 在
+   `D:\DeepSeek Harness`、跑出厂 `cordis` preset 的会话有整套 `cordis_*`」）；这次是它**第二次**被实测确认，
+   而且是以一条**被违反的前提**的形式出现的。
+
+2. **本会话跑的是出厂 `cordis` preset，两条独立证据。** (i) 工具表含 `cordis_*`，而按 rule 5 该行只在
+   出厂 `cordis` 里 `enabled=true`（`dsh-smith` 是 `disabled`、`dsh-forge` 不含这一行）。
+   (ii) **更强的一条**：本会话加载的两个技能 `cordis-plugin-development` 与 `editing-cordis-compositions`
+   都从 `…\dsh-agent-presets\presets\cordis\skills\…` 解析出来 —— 技能 provider 把路径直接指到了这个
+   preset 自己的目录，与工作目录无关。
+
+3. **探针按 `docs/dsh-duanju.md` 第六节那段跑**（`cordis_define` + `cordis_run`，纯 Host 半边，
+   因此没有审批轮次），`preset_check { id: 'dsh-duanju' }` 返回 **`mounted OK (standing key: object)`**。
+   四种被拒形态（`Cannot find package` / `invalid config:` / `did not activate` /
+   `published process-global service`）**一个都没出现**。
+
+4. **逐行读数**（`compositionInventory`；standing mount 建立后它从 **live Loader entries** 回答，
+   不是文件解析）：`trust: user`、`broken: null`、**25 个条目**，
+   **24 个 `enabled: true` 的行全部 `fiberState: 2`**，`tool-bash` 是 `enabled: false` + `fiberState: none`。
+   `2` 是 `FiberState.ACTIVE`（`@deepseek-ai/cordis/lib/types/fiber.d.ts:67-74`：
+   `PENDING=0, LOADING=1, ACTIVE=2, FAILED=3, DISPOSED=4, UNLOADING=5`）。
+   **这个数必须先解码再报**：2 与 3 的差别正好是成与败，照抄一个未解码的 `2`
+   等于把结论押在一条没读过的枚举上。
+
+5. **25 与静态预检的 `rows: 28` 不矛盾，逐条对得上。** 文件里 28 条 `- id:`，其中 3 条是
+   `cordis:group` 结构行（`planning` / `compaction` / `team`），它们只以**子行**出现在 inventory 里；
+   28 − 3 = 25。这条顺带复核了 D-25 那一族「文件解析 vs 运行时清单」的对账 —— 这次差的 3 条是结构行，
+   不是漏读。
+
+6. **安装一致性复核成立**：仓库副本与安装副本 `agent.cordis.yml` 的 SHA256 同为
+   `BA818BC0EF188BDE6366D9DD8EF27C08EC537FC38BD810B105A87A378D823DB3`（`docs/dsh-duanju.md` 原第 182 行
+   的断言，本次复核）。
+
+7. **D-40 留的那个口子没有被闭合，只是被收窄了。** `fiberState: ACTIVE` 只证明该行的 `apply` 跑过且没抛，
+   **不**证明它贡献了什么 —— 一行可以挂上而什么都不注册。它排除的是四种被拒形态里的
+   「`did not activate`」，不是「激活但零贡献」。所以 `docs/dsh-duanju.md` 的「**工具到达模型**」一栏
+   **保持未验证**：那要真在 `dsh-duanju` 上开一个会话，看工具表里有没有
+   `expert_script` / `expert_board` / `expert_verifier` / `expert_chronicler` / `subagent_fork`
+   且**没有** `workflow` / `ralph` / `subagent`。
+
+**被推翻的条件：** (i) 任一次 `standingKeyFor('dsh-duanju')` 抛错 —— 说明 composition 回归了；
+(ii) `FiberState` 枚举被改值，那时第 4 条要按新枚举重解；(iii) `dsh-duanju` 的某一行从 `ACTIVE`
+变成 `FAILED(3)` 或 `DISPOSED(4)`；(iv) 会话工具表里不再有 `cordis_*` 而工作目录仍在
+`D:\DeepSeek Harness` —— 那时第 1、2 条要重写。
+
+**状态：** 已实测（本会话，出厂 `cordis` preset 内）。探针用完已 `cordis_undefine` 收掉（`preset-1`）；
+`standingKeyFor` 建立的 standing mount 留在进程里直到退出 —— 那是它的既定效果，它不启动
+agent／session／turn。
+
+## D-103: 挂载检查的结果成立，但它的「本会话」不是写请求的那个会话 —— 以及 standing mount 什么时候真的会重挂
+
+**决定：** (i) **D-102 的挂载结论不变**：`standingKeyFor('dsh-duanju')` 通过，24/24 enabled 行 `ACTIVE`；
+(ii) 但它的**归属要更正** —— 那两次读数来自**另一个会话**，不是提出请求的那个；「本会话」这个词在
+跨会话转述里是**歧义的**，会话身份必须用工具表或技能解析路径说出来；
+(iii) 更正 D-102 状态里「standing mount 留在进程里直到退出」所暗示的那条**可重复性**读法：
+它**不是**「同进程内再跑都是同一个 generation」。
+
+**因为（实测）：**
+
+1. **两个会话，同一个词。** 跑探针的那个会话：工具表含整套 `cordis_*`，两个技能从
+   `…\dsh-agent-presets\presets\cordis\skills\…` 解析出来。**写请求的这个会话**：工具表里**没有**
+   `cordis_*`，而它加载的三个技能 —— `editing-cordis-compositions`、`dsh-runtime-reference`、
+   `dsh-expert-team` —— 全部从 `C:\Users\曦曦\.dsh\.agent-presets\dsh-smith\skills\…` 解析出来，
+   且工具表里是 `expert_architect` / `expert_protocol` 那一族。**同一把尺子，两个相反的读数，
+   因为量的不是同一个会话。** 所以 D-102 第 1 条说的「前提是错的」只在**指同一个会话**时成立；
+   按本会话读，那句「本会话没有 `cordis_*`」是对的。`AGENTS.md` rule 5 的教训（判据是挂载的工具表）
+   因此**再加强一条**：跨会话转述读数时，**说「哪个会话」而不是说「本会话」** —— 否则一个正确的读数
+   会被归属到错误的会话上，而它看起来同样权威。
+
+2. **standing mount 会在戳变化时被丢掉重挂。** `ensureStanding`
+   （`dsh-agent-presets/lib/index.js:1767-1800`）在**每次** `standingKeyFor` 调用时都重新取一次戳：
+
+   ```js
+   const mounted = await pending;
+   const current = await compositionStamp(preset.path);
+   if (current === void 0 || sameStamp(mounted.stamp, current)) return mounted;
+   if (this.standing.get(preset.id) === pending) this.standing.delete(preset.id);
+   return this.ensureStanding(preset);          // ← 戳变了：丢掉 standing，重新 compose
+   ```
+
+   而戳是 `compositionStamp`（`:1807-1821`）读的 **`mtimeMs` + `size`**，`path` 是**组合文件**
+   （`agent.cordis.yml`）。所以：
+
+   | 改了什么 | 戳 | 下一次 `standingKeyFor` |
+   | --- | --- | --- |
+   | `agent.cordis.yml` | **变** | **真正的重新挂载** —— 这个检查因此**可以**在编辑后重跑 |
+   | `skills/**` 里的技能正文 | 不变 | 挂载被**复用** —— 重跑**证明不了技能内容**（要验技能得开真会话，或看 provider 的活读） |
+   | `preset.yml` | 不变 | 与挂载无关（它是元数据，不参与 compose） |
+
+   **这条为什么值得单独记：** D-102 那句「留在进程里直到退出」如果被读成「所以重跑没有意义」，
+   方向恰好是反的 —— 它会劝退那条**唯一**能在编辑组合后立刻复验的操作。而「戳 = mtime+size 而不是哈希」
+   这半句也要说清：它是一个**便宜的过期检查**，不是内容同一性检查。
+
+**被推翻的条件：** (i) 未来的 `ensureStanding` 去掉 `compositionStamp` 比较 —— 那时第 2 条要改成
+「同进程内不重挂」；(ii) 戳的覆盖面扩到 `skills/**` —— 那时表格第二行要改；(iii) 会话身份的判据
+（工具表 / 技能解析路径）在某一版里不再可用 —— 那时第 1 条要换判据。
+
+**状态：** D-102 的结论保留、归属更正、可重复性读法更正。探针已收（`preset-1`），
+那条 standing mount 留在**跑探针的那个进程**里 —— 与本会话无关，本会话没有 `cordis_*`。
+
+## D-104: 「工具到达模型」拿到一次读数 —— 以及 `ACTIVE` 到底排除掉什么（按库代码读）
+
+**决定：** (i) D-102 第 7 条留的那道**验收条件已满足**：用户报来一个 `dsh-duanju` 会话的工具表，
+四位具名专家 ＋ `subagent_fork` 在表内、`workflow` / `ralph` / `subagent` / `tool-goal` 缺席。
+(ii) **但按转述记名，不升格为实测** —— 本机没有那个会话的机器可读台账；这条读数的出处只有会话里的
+一句话，而会话文件本身（下条）装不下这个判据。(iii) **D-40 那道边界要按代码重写一次**：
+`ACTIVE` 排除掉的失败形态**比**原记录写的**多**，而它排除不掉的那一种**恰好就是这一格在问的**。
+(iv) **逐行贡献仍未验证** —— 那是另一件事（一个工具被真正委派过后是否跑起来），D-40 的那一格不因本条而闭。
+
+**因为（实测／读码）：**
+
+1. **三个问题，三个判据，`ACTIVE` 落在中间。** 它们不是同一件事的强弱表述：
+
+   | 问题 | 判据 | 出处 |
+   | --- | --- | --- |
+   | 这一行**能不能挂上** | `standingKeyFor` 不抛 | `dsh-agent-presets/lib/index.js:1763-1800` |
+   | 这一行**有没有注册**工具 | `ctx.tools.register(...)` 抛不抛 | `dsh-tool-subagent/lib/index.js:398`（在 `apply` 内） |
+   | 这个工具**到不到模型** | `[...view(scope).visible.values()]` | `dsh-tools/lib/index.js:2854-2879` |
+
+2. **注册是抛错的，所以「没抛」已经排除了「挂上而什么都没注册」。** `ToolRuntime.register`
+   （`dsh-tools/lib/index.js:2773-2782`）在插入前校验 `output` 形状、`output.schema`、`timeoutMs`
+   与保留名 `run_code`；重名由 `NamedEntries` 的工厂抛（`:2538`）；`tools.schemas()` 在投影参数 schema
+   时抛（`:2937`）。**关键在时序**：注册发生在 `apply` 的 `install(runtimeCtx, policy)` 路径上，
+   也就是发生在 `apply` 返回**之前** —— 而这些错误都在那之前抛出，于是该行落到 `FAILED(3)`（`3` 的
+   解码见 D-102 第 4 条）而不是 `ACTIVE`。**原记录那句「一行可以挂上而什么都不注册」在时序上不成立**：
+   它要么注册成功，要么就不是 `ACTIVE`。
+
+3. **排除不掉的只有可达性，而这一格问的正是可达性。** 注册进的是**注册时那个 `ctx` 的层**，
+   到不到模型取决于消费方从哪个 scope 查：`view(scope)` 把 global 层与 scope 链上每一层并起来
+   （`:2854-2879`）。所以「注册成功」与「该 agent 看得见」之间有一个真实的缺口 ——
+   `standingKeyFor` 与 `ACTIVE` 都不回答它。
+
+4. **四个专家行走的是固定名那条路径，不走按 agent 分别注册的那条。** 每行是组合里写死 `toolName` 的
+   `ToolDefinition`，且 `modelSelectionSettings` 未启用（`grep` 全文 0 命中）—— 所以不进入
+   `dsh-tool-subagent/lib/index.js:588-644` 那条「按 agent `installScoped`、在 `agent/created` 上
+   reconcile」的分支；工具注册在**该 preset 的 context 层**，preset 上的每个 agent 都继承得到。
+
+5. **那条判据在会话文件里不存在，所以「转述」不是懒，而是唯一可得的形态。** 实测解压最新一个会话文件的
+   header：`zstdDecompressSync` 解出 200 字节、**只有一行** ——
+   `{"type":"session","version":3,…,"cwd":"D:\\DeepSeek Harness","delegationDepth":0,"agentPreset":"standard"}`。
+   没有 turn、没有工具调用、没有工具表，而 **`agentPreset` 是 `standard`**。这条同时复核了 `AGENTS.md`
+   rule 1（日志证明不了缺席）与 rule 2（会话头是创建期提示、不是挂载结果），**并给出一个新的具体反例**。
+
+6. **一条结构性后果：这个预设无法自验它的工具表。** 真正能回答可达性的活读是 `Tool.listTools`
+   —— 「本 agent 当前可调用的每个工具」（`dsh-tool-cordis/lib/index.js:9038-9052`，`schemas(context.agent)`）
+   —— 而它只存在于装了 `tool-cordis` 的会话，`dsh-duanju` **恰恰没有**那一行（自己的
+   `DELIBERATELY ABSENT` 段，`agent.cordis.yml:761-763`）。所以到现在为止的每一次读数都来自
+   「另开一个会话」或「用户看一眼」，**duanju 会话本身不能复现它**。
+
+7. **要不要补探针，是另一个决定，本条只是把它记明白。** 加一条宿主平面插件行（在
+   `~/.dsh/**` 之外的自己的仓库里写、再由 profile 挂载）才能让这个预设自验；那是规则 7 的既有形态，
+   不是一条 preset 编辑。**不在这里顺手做** —— 本条的产出是一次诚实的状态更正，不是一次能力扩张。
+
+**被推翻的条件：** (i) 拿到那份读数的导出件或截图 —— 那时第 (ii) 条从「转述」升格，出处要换成它；
+(ii) 某个版本的 `register` 改成不抛（例如把校验挪到投影时）—— 那时第 2 条要重写，`ACTIVE` 的意义随之变小；
+(iii) 有人补上探针并跑出读数 —— 那时第 (iv) 条的「未验证」要按新读数改写，且要写明是哪个会话跑的。
+
+**状态：** D-102 第 7 条的验收条件已满足并按转述记名；D-40 的边界按代码重写（排除更多、且缺口的形状不同）；
+逐行贡献仍未验证。同步更正：`docs/dsh-duanju.md`（验证状态表＋第六节新增「证明了什么、没证明什么」）、
+`README.md`（四个预设验证表＋未验证清单）、`docs/agent-notes/PROJECT.md`、`docs/agent-notes/BOARD.md`。
+
+**跨域的那半条（值得脱离本预设记住）：** 引用一个状态读数（`ACTIVE` / `PASSED` / `OK`）之前，
+先找到那个状态的**赋值点**，再问断言与校验发生在它**之前**还是**之后**。在之前 → 该状态已排除该失败形态，
+不要再写「它什么也证明不了」；在之后 → 它对那个形态沉默。两个方向的错都有代价：多声称一次假通过，
+或少声称一次真结论并因此重验一遍。而这类错最坏的形态是**写错缺口的位置** —— 「挂了却什么都没注册」
+听上去像一个已知的、可接受的残余风险，于是没人再去找真正的那个缺口（这里是**可达性**）。
+本条的四份更正里，有两份原来正是这么写的。
+
+## D-105: D-104 第 2 条被同一份文件里的代码推翻 —— `ACTIVE` 排除的是「尝试注册并抛错」，不是「从未注册」
+
+**决定：** (i) **更正 D-104 第 2 条的结论**：`ACTIVE` **不蕴含**「这一行注册了什么」；(ii) D-104 第 3 条
+（可达性缺口）**保留**，并换一个比它引用的更直接的证据；(iii) 把那条跨域教训**补上缺掉的第二问**；
+(iv) 同步更正四处已扩散的说法。**D-104 本身按 append-only 不改** —— 状态由本条覆盖。
+
+**因为（读码，就在 D-104 引用的同一个文件里）：** D-104 引的是
+`dsh-tool-subagent/lib/index.js:398` 的 `runtimeCtx.tools.register(...)`，据此断言
+「注册发生在 `apply` 返回之前，所以要么注册成功、要么不是 `ACTIVE`」。**但那句 `register` 在一个闭包
+`mount(subagentProvider)` 里，而闭包是有条件被调用的** —— 同文件 `:565-575`：
+
+```js
+runtimeCtx.on("subagent/provider-added",   (p) => { if (p.name === config.provider && mounted === void 0) mount(p); });
+runtimeCtx.on("subagent/provider-removed", (name) => { … mounted.disposeTool(); mounted = void 0; });
+const present = runtimeCtx.subagents.getProvider(config.provider);
+if (present !== void 0) mount(present);
+else runtimeCtx.logger.info(`subagent provider "…" not registered yet; the "…" tool will register when it appears`);
+```
+
+`register` 只在 `mount(provider)` 里被调用，而 `mount` 的调用点只有两处：`:574`（provider **已在场**）与
+`:566`（provider **后来出现**）。**provider 缺席时 `mount` 从不运行、`apply` 正常返回、日志只记一条 `info`** ——
+那一行于是 `ACTIVE` 且**什么都没注册**，而库自己为这个状态写了措辞。另两处更强：
+`:568-572` 在 provider 被移除时调 `disposeTool()` 把工具**撤掉**（`apply` 没抛，行仍 `ACTIVE`）；
+`:579` 那段提示的 `text` 是一个**活状态的函数** —— `mounted === void 0 || runtimeCtx.tools.get(toolName, context.scope) === void 0`
+时返回空串，**库自己把「没注册」与「注册了但这个 scope 看不见」并列成两个必须处理的状态**。后者正是 D-104
+第 3 条说的可达性缺口，而 `:579` 是比 `view(scope)` 更直接的证据。
+
+**三个判据的精确形状（取代 D-104 表格那一行）：**
+
+| 问题 | 判据 | `ACTIVE` 蕴含它吗 |
+| --- | --- | --- |
+| 这一行**能不能挂上** | `standingKeyFor` 不抛 | —（那就是它自己） |
+| 这一行**尝试过注册且没抛** | `ctx.tools.register` 抛不抛（`:398`） | **是** —— 抛了就是 `FAILED(3)` |
+| 这一行**真的注册了** | `mount(provider)` 是否跑过（调用点 `:566`/`:574`） | **否** —— 缺席时不跑（`:575`），移除时被撤（`:570`） |
+| 这个工具**在当前 scope 可见** | `tools.get(name, scope)` / `view(scope).visible` | **否** —— 库自己在 `:579` 就用这个判据 |
+
+所以原记录那句「**一行可以挂上而什么都不注册**」**是对的**；D-104 第 2 条判它「在时序上不成立」才是错的。
+而这条错落在**危险的那一侧**：它把一个真实的假通过通道（拿到 `MOUNT OK` + `ACTIVE` 就以为工具在表里）
+写成了已排除。
+
+**跨域教训 —— 补上缺掉的第二问。** D-104 末尾那条「引用一个状态读数前先找赋值点，问断言在它之前还是之后」
+是对的，但**它只问到一半**。这次赋值点找对了（`:398`），错在没接着问第二问。完整的判据是两问：
+
+1. 那个状态的**赋值点**在哪？断言在它之前还是之后？
+2. **赋值点在每条路径上都可达吗？** —— 在一个**闭包、事件回调或条件分支**里的赋值，只说明
+   「*如果*它被调用就会做」，**不说明它会被调用**。
+
+第二问的判据很便宜：`grep` 那个函数名，数调用点有几个、各自在什么条件里。本条的代价是一次把**真结论
+判成假结论**，并且把一个已知的假通过通道从记录里划掉 —— 比多声称一次假通过更难被发现，因为它看起来
+是在收紧。
+
+**被推翻的条件：** (i) `mount` 改成无条件调用（例如 `apply` 里 await provider）—— 那时第 3 行判据要重写；
+(ii) `provider-removed` 不再撤销工具 —— 那时第 3 行少一条路径；(iii) `:579` 的析取项减少 —— 那时可达性
+那一格要另找证据。
+
+**状态：** D-104 的 (i)(ii)(iv) 三条保留（验收条件已满足、按转述记名、逐行贡献仍未验证）；
+**第 (iii) 条被推翻**。四处扩散说法已更正：`docs/dsh-duanju.md`（两处）、`README.md`、
+`docs/agent-notes/PROJECT.md`、`docs/agent-notes/BOARD.md`。
+
+## D-106: 同一会话里，「工作区之外」的写入有两个不同的答案 —— fs 接缝与 shell 不是同一个判据
+
+**决定：** (i) 记下这条对立：`memory_remember` 的写被 **fs 接缝**以 `workspace-write mode` 拒绝，
+而**同一会话**里 `bin/install.mjs` 经 `pwsh` 成功写出了工作区之外的文件；(ii) 由此**更正既有记录的归因** ——
+BOARD 里那句「要让受管工具路径直接可用，需要一个允许写工作区之外文件的会话」是**未经验证的猜测**，
+而本会话的 runtime context **自称 `danger-full-access`**，接缝仍然拒绝；(iii) **不绕过** ——
+策略拒绝就是拒绝，本会话审批已禁、不能提权，改用 shell 去写同一个文件是**绕过一条策略拒绝**，不是修复。
+
+**因为（实测，同一会话）：**
+
+- `memory_remember` → `cannot write C:\Users\曦曦\.dsh\agent-memory\LESSONS.md … file access denied
+  under workspace-write mode`，且报错自己说明「This plugin writes through the SANDBOXED `fs` seam」。
+- 同一会话里 `node bin/install.mjs --preset dsh-duanju` 经 `pwsh` **成功创建**了
+  `C:\Users\曦曦\.dsh\.agent-presets\dsh-duanju\`（工作区之外），返回 `installed:` 与
+  `contents: agent.cordis.yml, preset.yml, skills`，随后 SHA256 与仓库副本逐字节相同。
+- `memory_consolidate --dryRun` **读得通**：`LESSONS.md` 解析出 **7 条**经验，
+  受管区块 **6130 B / 16384 B 上限**，`实际变化：无`。
+
+**为什么不能把它读成「策略说明是错的」：** 那个 `workspace-write mode` 字符串是插件**报错文案**的一部分，
+**不构成对会话策略的读取**；能确定的只是「这一次 fs 接缝判定拒绝」。两条路的差别有具名机制：插件走
+`ctx.fs` → `dsh-fs-sandbox` 按 `ctx.sandboxPolicy.defaultMode` **逐次判定**；而 `install.mjs` 是一个
+**shell 子进程**里的 Node 进程，判据在另一条路上，且它是 `AGENTS.md` 边界里**明确受认可**的那条写入路径。
+**哪一条路允许写什么，这台机器上还没有逐条量过** —— 尤其没有量过「shell 能不能写
+`~/.dsh/agent-memory/`」，因为那正是我不打算绕的那一步。
+
+**后果（写给下一次要搬经验的人）：** 7 条经验已在区块内；新的一条（D-105 的第二问 ——
+**赋值点找到了还不够，还要问它在不在每条路径上**）**没能落盘**，它现在只存在于 D-105 与 D-104 里。
+要搬进受管区块需要三者之一：① 一个 fs 接缝真的允许写工作区之外的会话；② 用户自己执行；
+③ **明确授权**用 shell 写 —— 那等于授权绕过一条策略拒绝，不该由我做决定。
+**受管区块还有余量**（6130 / 16384），所以第 8 条不需要先删旧的。
+
+**被推翻的条件：** (i) 某个会话里 `memory_remember` **写成功** —— 那时 (ii) 要降级为「那个会话的策略不同」，
+并写出**它是哪个会话**（判据用工具表或技能解析路径，见 rule 5）；(ii) 量到某条 shell 路径可写
+`~/.dsh/agent-memory` —— 那时 (iii) 要按实测重写，而不是按倾向。
+
+**状态：** 已实测。受管区块未变（6130 B / 7 条），新经验未落盘。
+
+## D-107: 有戏AI 的「平台评估」是**两次**，不是一个 —— 以及一份 PDF 带进来的发行侧事实
+
+**决定：** (i) 把「**剧本评估**」与「**发行评估**」的区分写进 `dsh-duanju` 的 `youxi-platform` 技能 ——
+这是本条最要紧的一条，两者时点、读的对象、维度、门槛都不同，混用会让按错条件准备的成果被打回；
+(ii) 发行侧的数字（70/30 分成、12+ 渠道、超创「最高100%算力支持」）以**带出处的引文**形式进同一技能，
+并显式标明**未与平台二次核对**；(iii) **原始 PDF 不落进本仓库** —— 它的证据是用户提供的附件路径，
+本机没有第二份副本。
+
+**因为（实测）：** 用户 2026-09-21 提供《有戏AI 托管发行及超创扶持计划》PDF
+（4,315,143 B，sha256 `d27a7eea…`，**3 页**）。读出过程与结论：
+
+- 文件是 `%PDF-1.7`，`Creator=Chromium`、`Producer=pdfcpu v0.8.1`；`/Subtype/Image` = **0**
+  （整份是矢量+文字，**不是扫描件**）；`/Count 3`；`/Subtype/Type3` × **141** + `/ToUnicode` × **143**
+  —— Chromium 把每个字形打成 Type3 子集，底字体是 **Source Han Sans CN**。
+- **本机没有任何现成的 PDF 文字抽取工具**：`pdftotext` / `mutool` / `qpdf` / `gs` / `tesseract` 全无，
+  node 侧无 pdf 包，而 `python.exe` 是 **0 字节的 Windows Store 存根**。读出靠的是：
+  副本放进工作区 → 一次性本地 HTTP 服务（`file:` 被 Playwright 封了）→ Chromium 渲染 → `read_image`。
+- **两个操作细节值得留**：`#page=N` 在同文档内**只改哈希不重载**（两张截图逐字节相同、sha256 一致），
+  必须用**查询串**强制重载；`fullPage: true` 对 `<embed type="application/pdf">` 只给视口高度，
+  要每页一次「放大视口 + `#zoom=page-fit` + 用查询串重载」。
+- **与既有记录互相印证**：70/30 分成、「最高100%算力支持」、「12+ 渠道」三项与
+  `research-youxi/feishu-share.txt` 一致 —— 同一批事实的第二个独立来源。
+- **它带进来的新东西**：发行评估的四个维度（**内容质量／制作完成度／题材适配度／版权清晰度**）、
+  托管发行**五步**、具体渠道名单（海外 TikTok/YouTube；国内 抖音红果/腾讯视频号/火龙漫剧/快手）、
+  超创准入特征与五项特权。
+
+**为什么值得单独立条：** 「平台评估」在既有技能里**只有一个含义**（剧本评估），而平台实际有两次。
+这是一条**会改变行为**的事实 —— 按剧本评估的条件去准备发行资料，等于没准备。另一半更实际：
+**「版权清晰度」把一件原本被归为「本地判不了」的事挪回了创作者侧**（对照 `market_fit.compliance_status`
+那种确实只能等平台的字段）—— 版权链、授权文件、素材来源是**可以提前准备**的。
+
+**被推翻的条件：** (i) 平台公布发行评估的判据或阈值 —— 那时技能里「不要替它补规则」那句要换成引用它；
+(ii) 拿到该文件的新版本 —— 分成与扶持条款会变，日期与数字都要按新版本重记；
+(iii) 「版权清晰度」与 `compliance_status` 被证实是同一个东西 —— 那时两处要合并，不能并列。
+
+**状态：** 已实测并落地。技能改动后重装并复核：lint **8/8**（仓库与安装副本各一次）、
+`preflight` **17/9/0**、**PACK OK**、`youxi-platform/SKILL.md` 与 `agent.cordis.yml` 两侧 SHA256
+逐字节相同。**一次性设施已全部收掉**：临时副本删除、HTTP 服务**按端口**精确杀掉
+（`job_kill` 只收掉了 pwsh 包装，node 子进程存活 —— Windows 上父子不同命，实测 PID 21192 是它）。
+
+## D-108: 收尾 —— 9 个位置复核、两个仓库上传，以及两处对我自己前期转述的更正
+
+**决定：** (i) 本仓库（`dsh-smith`）的 `dsh-duanju` 交付面与记录面分**两个提交**提交并推送；
+(ii) `D:\AIVideo` 落后的 **20 个提交**一并上传；(iii) 其余 7 个位置**逐个重取远端读数复核**，
+不依赖「本地 tip 未动」这个推断；(iv) **对我自己前期两处转述的更正**记在下面 —— 两处都是
+「把专家报告当读数用」的直接后果。
+
+**因为（实测，2026-09-21）：**
+
+1. **推送前先证 tree，因为 `-Base` 的正确性取决于它。** 本地 `dsh-smith` HEAD `753be6b` 的 tree 是
+   `8ab8f9a9160f…`；远端 `main` tip `a54442a` 的 **commit 对象**报出的 `tree.sha` **同为 `8ab8f9a9160f…`**，
+   且 **49 条路径→blob 双向零差异**（0 only-remote / 0 only-local / 0 blob 不同）⇒ `a54442a` 就是
+   `753be6b` 的映射形态，`-Base 753be6b` 合法。
+2. **一条工具事实，值一次记号：`GET /git/trees/{commit_sha}` 回显的是请求里的 sha，不是 tree 的身份。**
+   第一遍把 `$t.sha` 读成远端 tree，得到「它等于提交 sha」这个不可能的结果；权威值只能从 **commit 对象**
+   的 `tree.sha` 取。（同族的错法见 D-41 —— 猜一个返回结构的字段名。）
+3. **`reviews/full_script_review` 的引用位置要更正：仓库文档里是 2 处，不是 4 处。**
+   此前照抄专家报告，说它被引用在 4 处（含 `DECISIONS.md:713` 与 `script-gate.mjs:1025`）。
+   **实测 `grep full_script_review`：全仓库只有 `PROJECT.md:458` 与 `products\金枝\BOARD.md:222` 两处**，
+   另 **3 处在平台自己的渲染包** `research-youxi/chunks/index-BITPFwMb.js` 里。这两处**已订正**。
+   那条更正的内容 —— 它**不是 HTTP 端点**，只是 `.includes(...)` 的**路径子串**（用于菜单路由）——
+   由本轮**自己复读**确认：`dramaCreation-DoLRHoyH.js` 里真实调用是
+   `POST /api/drama/drama-creation/{id}/review/start`（**参数表里根本没有 `data`**）、
+   `GET …/review-report`、`GET …/review-export`。
+4. **`D:\AIVideo` 的 3 处注释/文档订正已做并回归。** `script-gate.mjs` 的两处错误注释
+   （13 列模板「删掉的是站位与分镜描述」、以及「25 列 / 12 个本地质检列」的陈旧计数）改为以
+   `REQUIRED_COLUMNS` 为唯一权威；`platformNotes` 里「所有剧集**已生成**」改为
+   「剧集**存在**（本仓库读作『已生成』，比平台更严）」。**它自己的测试断言 detail 里必须出现
+   「已生成」与「评估」两词，所以改措辞时两词都保留**，并且把那条谓词**直接施在改后的字节上**复核
+   （不是只看套件绿）。回归：`node --test tools/` → **5 个测试文件全绿、`script-gate.test.mjs` 内部 105/0**；
+   工具本身仍 `exit 3`。
+5. **第 4 项里的 `story.json` 分歧（`paywall` 落在 ep2，而 `monetization.freeEpisodes: 3`）只记录、不改。**
+   那是**项目内容的判定**，不是笔误，改哪一边都是替用户决定。
+
+**被推翻的条件：** (i) 某个位置的路径→blob 集合复核失败 —— 那时**按那个位置单独处置**，不整批重推；
+(ii) 某次 `-DryRun` 报出超限对象或长度不匹配 —— 那时先报告再决定，不换旗标硬来；
+(iii) 第 3 条里「引用位置」的判断若又被推翻 —— 那时以 `grep` 的原始读数为准重写。
+
+**状态：** 按**不变式**写（照 `753be6b` 那条的做法，见 D-98）：两个仓库推送后的判据是
+**远端 tree 等于本地 tree，且路径→blob 集合双向相等**，具体 SHA 留给 API —— 推送本身会移动 tip，
+把数字写死在写下的一刻就已经落后一个提交。**仍未验证的只剩一格**：`dsh-duanju` 四位专家的
+**逐行贡献**（真的委派一次、看子进程跑起来），见 D-104 与 BOARD。

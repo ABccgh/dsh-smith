@@ -1,12 +1,74 @@
 # DeepSeek Harness (package `dsh-smith`) — chronicle
 
-> **Scope note, added when the second preset shipped.** Everything below this note is the
-> `dsh-smith` preset's record and stays scoped to it. `dsh-forge` — the software-delivery
-> preset added later — has its own subsection under `## Current state` and its own user-facing
-> page at `docs/dsh-forge.md`. Where a sentence here says "this preset" without naming one, read
-> it as `dsh-smith`; the two presets have **different lineages** (`dsh-smith` ← shipped `cordis`,
-> `dsh-forge` ← shipped `standard`), so any statement about drift, inheritance, or a shared row
-> applies to one of them, never to both.
+> **Scope note, added when the second preset shipped; the count in it was corrected when the
+> fourth did.** Everything below this note is the `dsh-smith` preset's record and stays scoped to
+> it. The repository now ships **four** presets; each of the other three has its own subsection
+> under `## Current state` and its own user-facing page under `docs/`. Where a sentence here says
+> "this preset" without naming one, read it as `dsh-smith`; the presets have **different lineages**
+> (`dsh-smith` ← shipped `cordis`; `dsh-forge`, `dsh-ck3-mod` and `dsh-duanju` ← shipped
+> `standard`), so any statement about drift, inheritance, or a shared row applies to one of them,
+> never to several.
+
+## 2026-09-21 —— 第四个 preset：`dsh-duanju`（短剧工坊）
+
+**这一节是当前里程碑；它下面的内容都早于它。** 一句话：本仓库现在发布**四个** preset，
+新增的 `dsh-duanju` 做竖屏短剧全流程，但它的流水线被**用户自己的平台评估闸门**切成两段。
+
+**目标寿命与平面**：AGENT PRESET。源 = `D:\DeepSeek Harness\dsh-duanju\`
+（`agent.cordis.yml` + `preset.yml` + `skills/**`），安装到 `$DSH_HOME\.agent-presets\dsh-duanju\`，
+唯一受认可写入者是 `node bin/install.mjs --preset dsh-duanju`。**宿主组合零改动。**
+
+**组合（实测读数）**：28 个具名行 = **3 个 group ＋ 25 个叶行**；`preflight` 读到
+`rows: 28`、`validated: 17   skipped: 9   failed: 0`。三个 entry-local realm：
+`planMode`（`planning` 组）、`compaction`＋`toolResultPruner`（`compaction` 组）、
+以及 `team` 组里那个**空的 `workflowEngine`**（照抄 `dsh-ck3-mod:419-424` 这个已挂载验证过的形状；
+注释里写明它今天无人发布，且日后加工作流必须**同时**加回 provider 与消费者）。
+**本 preset 发布 0 个面向外部的服务。** 四位具名专家 `expert_script` / `expert_board` /
+`expert_verifier` / `expert_chronicler` ＋ `subagent_fork`，五个委派行**逐行写 `maxDepth: 2`**。
+
+**三个 realm 之外的一切都从宿主解析**，因此那些行必须在 realm 之外。`isolate` 只隔离它点名的
+服务符号 —— 这是 `planning` 只隔离 `planMode`、`compaction` 只隔离那两个所证明的。
+
+**技能（8 个）**：`dramaturgy` / `hook-ladder` / `shotlist`（源自用户 preset `dsh-aivideo`，其中
+`shotlist` **按代码校正过**，见下）＋ `script-delivery` / `youxi-platform` / `drama-workspace` /
+`drama-project-memory`（原创）＋ `dsh-runtime-reference`（复制自 `dsh-ck3-mod`）。
+
+**它存在的理由是三条被判据撑住的边界**：
+1. **平台侧只能由人做**（无 CLI、无公开 API、0 凭证）。
+2. **列契约的权威是代码**：`D:\AIVideo\tools\script-gate.mjs:85-116` 的 `REQUIRED_COLUMNS` 是 **28** 列，
+   而三处文档写 25/20，其中一处还犯过一次**方向搞反的「更正」**。技能因此只指向代码，不复制数字。
+3. **评估读数是转述**：`E19b` 只校验自洽，抓不出整份报告读错 —— 所以技能要求标注证据等级。
+
+**技能遮蔽机制（值得下次直接用）**：`dsh-skill-filesystem/lib/index.js:21-25,150-165` 的根优先级是
+`<项目根>/.dsh/skills`(100) < `<项目根>/.agents/skills`(200) < preset `customSkillDirs`(300) <
+`~/.dsh/skills`(400)，比较是**升序**（`dsh-skill/lib/index.js:519`），重复**只记警告**。
+所以工作区放一份同名技能就能覆盖 preset 里的那份 —— 而反过来把技能**只**放工作区会让它依赖 cwd。
+
+**验证状态**：技能 lint 8/8；`preflight` 见上；`drift-check` 差异即设计；`check-pack` PACK OK（10/10 文件、
+8 技能）；安装后 SHA256 两侧相同（`BA818BC0…23DB3`，**复核修正后的当前值**）；CI inventory matches。
+**挂载已实测**（2026-09-21，在一个出厂 `cordis` 会话里 —— **不是本会话**，本会话的工具表没有 `cordis_*`）：
+`standingKeyFor('dsh-duanju')` 返回 `mounted OK`，`compositionInventory` 给出 25 条目、
+**24/24 个 enabled 行 `fiberState: 2`（`ACTIVE`）**、`tool-bash` 无 fiber（D-102；归属与
+可重复性读法的更正见 D-103）。
+**「工具到达模型」收到一次用户转述的读数**（2026-09-21 之后的一个 `dsh-duanju` 会话）：四位具名专家 ＋
+`subagent_fork` 在工具表内，`workflow` / `ralph` / `subagent` / `tool-goal` 缺席 —— 即验收判别键。
+**本机没有该会话的机器可读台账，故按转述记名**；它证明的是**可达性**，不是**逐行贡献**。
+而 `ACTIVE` 的边界要按代码说：注册**尝试**是抛错的（`dsh-tools/lib/index.js:2773-2782` 校验
+`output`/schema/`timeoutMs`/保留名，`:2538` 重名，`:2937` 投影参数 schema），所以它**排除**了
+「尝试注册并抛错」（那会是 `FAILED(3)`）。但它**不蕴含**「真的注册了」—— `register` 的调用点在一个**有条件的
+闭包**里（`dsh-tool-subagent/lib/index.js:398` 的 `mount(provider)`，调用点只有 `:566`/`:574`；缺席时
+`:575` 只记一条 `info`，移除时 `:570` 把它撤掉），也**不蕴含**「在当前 scope 可见」（`:579` 用
+`tools.get(toolName, context.scope) === void 0` 作判据）。**D-105 更正了 D-104 第 2 条曾判
+「一行可以挂上而什么都不注册」不成立的说法 —— 那句原话是对的。** 逐行贡献仍是 D-40 留的那一格。
+**仍未验证、不声称**：GUI 模式选择器何时刷新、有戏AI 私有接口可用性。
+
+**与 `dsh-aivideo` 的关系**：并存。那个是用户自建的 broader 变现工作台（12 技能，6 个在短剧链上），
+不属本仓库、本会话按边界不能写它，也从未被本仓库修改。两个 preset 各存一份手艺技能，
+减损通道是上面那条遮蔽机制。
+
+**刻意留白**：没有写 `D:\AIVideo` 里的任何文件（包括那两份会把工作区规则层建起来的
+`AGENTS.md`/`DRAMA.md`）；没有建宿主平面插件；没有把共享技能迁到项目本地根。
+决策与「被推翻的条件」在 **D-99**，用户待办在 `BOARD.md` 顶部。
 
 ## What this is
 
@@ -476,6 +538,10 @@ Decision recorded as D-30.
 | `dsh-smith/skills/**` | exactly five skills; two copied unmodified from the shipped `cordis` preset (with a correction banner), three original |
 | `dsh-forge/agent.cordis.yml` | the `dsh-forge` composition (38 named rows) |
 | `dsh-forge/skills/**` | exactly four skills, all original |
+| `dsh-ck3-mod/agent.cordis.yml` | the `dsh-ck3-mod` composition (27 named rows = 3 groups + 24 leaves) |
+| `dsh-ck3-mod/skills/**` | exactly three skills, all original |
+| `dsh-duanju/agent.cordis.yml` | the `dsh-duanju` composition (28 named rows = 3 groups + 25 leaves; publishes no service) |
+| `dsh-duanju/skills/**` | exactly eight skills: three derived from the user preset `dsh-aivideo` (one of them — `shotlist` — corrected against code), one copied from `dsh-ck3-mod`, four original |
 
 ## Current state
 
