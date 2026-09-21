@@ -2,7 +2,7 @@
 /**
  * Report how far this preset has drifted from the shipped preset it was copied from.
  *
- * This repository ships two presets, each copied from a different shipped one
+ * This repository ships four presets, each copied from a shipped one
  * (`bin/presets.mjs` records which). Every row a local preset shares with its
  * upstream is a row an upstream upgrade can move underneath it — a row whose
  * config surface changed upstream does not fail here, it keeps loading

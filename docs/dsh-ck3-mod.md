@@ -16,7 +16,7 @@
 
 ## 与 `dsh-smith` / `dsh-forge` 的分工
 
-同一个仓库里三个预设，定位不同，互不覆盖：
+同一个仓库里现在有**四个**预设；本表只比其中三个（`dsh-duanju` 见 [`docs/dsh-duanju.md`](dsh-duanju.md)），定位不同，互不覆盖：
 
 | | `dsh-smith` | `dsh-forge` | `dsh-ck3-mod` |
 | --- | --- | --- | --- |

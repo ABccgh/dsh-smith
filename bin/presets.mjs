@@ -20,10 +20,12 @@
  * what `drift-check.mjs` compares against by default. The local presets do
  * NOT share one lineage: `dsh-smith` was copied from the shipped `cordis` preset
  * (itself `standard` plus the self-referential Cordis toolset), while
- * `dsh-forge` and `dsh-ck3-mod` are each `standard` plus their own rows — forge
- * adds software-development rows, ck3-mod replaces the identity and the team with
- * a Crusader Kings III mod-authoring surface. Comparing the wrong one reports drift
- * for every row that legitimately differs, which is worse than reporting nothing.
+ * `dsh-forge`, `dsh-ck3-mod` and `dsh-duanju` are each `standard` plus their own
+ * rows — forge adds software-development rows, ck3-mod replaces the identity and
+ * the team with a Crusader Kings III mod-authoring surface, and duanju replaces
+ * them with a vertical short-drama production line. Comparing the wrong one
+ * reports drift for every row that legitimately differs, which is worse than
+ * reporting nothing.
  */
 import { access } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -99,6 +101,32 @@ export const PRESETS = {
       'job_list',
     ],
     promptSurface: 'run_code',
+  },
+  'dsh-duanju': {
+    repoDir: 'dsh-duanju',
+    displayName: '短剧工坊 · DSH Duanju',
+    upstreamPreset: 'standard',
+    // The FOUR named experts and the fork surface. This preset's pipeline is
+    // 剧本 → 分镜表 → 有戏AI 出片 → 平台评估/投稿, and the platform-side half is
+    // HUMAN-ONLY (有戏AI ships no CLI and no public API, and the workspace holds no
+    // credential for it) — so no tool name here comes from a plugin, and every row
+    // resolves from the shipped packages alone. That is also why
+    // `node bin/preflight.mjs --preset dsh-duanju` is safe to run in CI, unlike
+    // `dsh-ck3-mod`'s.
+    //
+    // There is deliberately NO `tool-goal`, `tool-workflow`, `tool-ralph` or generic
+    // `subagent` name in this list: those rows are not composed here, and a session
+    // that shows them is not on this preset. `verify.mjs` prints this list as the
+    // thing to eyeball in a session it cannot open, and a longer list does not make
+    // that check stronger.
+    expectedTools: [
+      'expert_script',
+      'expert_board',
+      'expert_verifier',
+      'expert_chronicler',
+      'subagent_fork',
+    ],
+    promptSurface: undefined,
   },
 }
 

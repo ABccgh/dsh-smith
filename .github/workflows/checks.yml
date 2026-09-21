@@ -1,4 +1,4 @@
-# Checks for the `dsh-smith` package: the two presets, the shipped scripts, and the
+# Checks for the `dsh-smith` package: the four presets, the shipped scripts, and the
 # published tarball's shape.
 #
 # WHY THIS EXISTS. Every other check in this repository runs against the WORKING TREE, so a
@@ -74,11 +74,23 @@ jobs:
       - name: lint skills (dsh-ck3-mod)
         run: node bin/lint-skills.mjs --preset dsh-ck3-mod
 
+      - name: lint skills (dsh-duanju)
+        run: node bin/lint-skills.mjs --preset dsh-duanju
+
       - name: preflight — resolve every row's package and validate every config
         run: node bin/preflight.mjs
 
       - name: preflight (dsh-forge)
         run: node bin/preflight.mjs --preset dsh-forge
+
+      # `dsh-duanju` HAS NO OUT-OF-REPO ROW, WHICH IS WHY IT GETS A PREFLIGHT STEP WHILE
+      # `dsh-ck3-mod` DOES NOT. Every one of its rows names a shipped `@deepseek-ai/*`
+      # package, so this step is green on a bare runner for the same reason the two above
+      # are. Its platform-side pipeline steps (有戏AI 的登录、导入、生成、评估、发布) are
+      # human-only — the platform ships no CLI and no public API — so there is deliberately
+      # no plugin row to install and nothing machine-specific to resolve.
+      - name: preflight (dsh-duanju)
+        run: node bin/preflight.mjs --preset dsh-duanju
 
       # ONE OF THIS PRESET'S ROWS NAMES A HOST-PLANE PLUGIN THIS REPOSITORY DOES NOT
       # SHIP — `dsh-ck3-modcheck`. It resolves from the profile's `node_modules` in a
@@ -90,6 +102,9 @@ jobs:
       # fails if `dsh-ck3-mod/` is missing from `files` or declared without a directory.
       # Run it by hand, on a machine with the plugin installed:
       #   node bin/preflight.mjs --preset dsh-ck3-mod
+      #
+      # The contrast with `dsh-duanju` above is the point: the exclusion is a property of
+      # that ONE row naming an out-of-repo package, not a policy about new presets.
 
       # The step this workflow exists for: read the PACKED artifact, not the tree.
       - name: published tarball carries every declared preset
