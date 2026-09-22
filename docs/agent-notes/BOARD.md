@@ -1,5 +1,87 @@
 # Board
 
+> ## ⏸️ 暂停交接（2026-09-21 深夜）—— **明天从这里开始**
+>
+> **一句话：`dsh-smith` 已推完并已三项独立验证；`D:\AIVideo` 的推送正在后台跑，暂停时到第 2/21 个提交。**
+>
+> ### 1. 已完成、且已**独立验证**（不需要重做）
+>
+> - **`ABccgh/dsh-smith` 推完**：`refs/heads/main` → `c5034e767a0a668dc903c5ad064d9db3b1ec071c`（`force=False`，快进）。
+>   三项判据**都不依赖脚本自己的报告**：① 远端 `tree` `fae484b2938884ce1a0d35c4ea525ea67855a137` **== 本地 tree**；
+>   ② **60/60 路径→blob 双向零差异**（0 only-remote / 0 only-local / 0 blob 不同）；
+>   ③ 远端 `dsh-duanju/` 下 blob **从 0 → 10**，十个技能目录齐全。
+> - **其余 7 个位置逐个重取远端读数复核 = 7/7 IDENTICAL**（tree 相等且路径→blob 双向零差异）：
+>   `dsh-desktop` 43、`cn-dejure-conquest` 5、`dsh-account-balance` 7、`dsh-agent-memory` 5、
+>   `dsh-ima-kb` 9、`dsh-ck3-modcheck` 6、`dsh-inbox` 13。**没有沿用「本地 tip 未动 ⇒ 仍然一致」那条推断。**
+> - `D:\AIVideo` 的 3 处台账订正**已提交**（`480f4a9`），并已回归：`node --test tools/` 5 个测试文件全绿、
+>   `script-gate.test.mjs` 内部 105/0；工具本身仍 `exit 3`。
+>
+> ### 2. 在飞：`D:\AIVideo` → `ABccgh/ai-video-workbench`
+>
+> **21 个提交**。命令（**必须从 `D:\AIVideo` 调用** —— 脚本按 `git -C $PWD` 操作）：
+>
+> ```powershell
+> cd 'D:\AIVideo'
+> $env:GH_TOKEN = (Select-String -Path "$env:DSH_HOME\.env" -Pattern '^GITHUB_PERSONAL_ACCESS_TOKEN=' |
+>                  Select-Object -First 1).Line -replace '^GITHUB_PERSONAL_ACCESS_TOKEN=',''
+> pwsh -File 'D:\DeepSeek Harness\bin\push-api-ref.ps1' -Base 4a7b4ea99074f5f3eb75b3222bd45e16f6ed67dd `
+>      -RemoteOnlyParent -RemoteOwner ABccgh -RemoteRepo ai-video-workbench
+> ```
+>
+> **第一次没落地，已重跑（09-22 18:35:08 起）。** 宿主 09-21 深夜重启把那次进程杀了，ref 从未移动 ——
+> 09-22 经 API 复读：远端 tip **仍是 `4a7b4ea`**、tree `206eef3722c9a763f8e7379b34e82aec461cda0b`
+> ≠ 本地 `b8e8c1e34411fe48937e6f1ca47cf337f0875c94` ⇒ 确实没落地，所以按下面第 3 节的预测
+> 「ref 不动 ⇒ 可安全重跑」**原样重跑**（`-Base` 与旗标都不变）。
+> **重跑明显更快**：18:35 起，5 分钟内已到第 4 个提交 —— 第一次上传的 blob/tree 作为孤儿对象留在远端，
+> 存在性检查提前返回。**且远端提交的 SHA 与本地逐字相同**（`4a7b4ea` 在远端是真实对象，
+> 父提交是真的，重新编码即恒等 —— D-56/D-97 那条「metadata 一致则 SHA 相同」的又一次实测）。
+>
+> **它慢是有原因的**：每个 tree 一次 `git ls-tree` + 一次 API 存在性检查；一次 `-DryRun` 实测
+> **10 分钟以上没跑完**。所以实推**必须用后台作业** —— 前台会被 600 s 的执行器上限杀掉
+> （第一次尝试就是这样，还留下一个孤儿 `pwsh`，已按 PID 精确杀掉，那次 ref 未被动过）。
+>
+> ⚠️ **这条路线依赖 `api.github.com` 可达，而它一度被本机 hosts 挡住。** 09-22 上午实测：
+> `api.github.com` 与 `github.com` 都解析到 **`127.0.0.1`**（域名级屏蔽；`codeload.github.com`
+> 不受影响，HTTP 200），成因是 **Steam++（Watt Toolkit）** 写进
+> `C:\WINDOWS\System32\drivers\etc\hosts` 的约 35 行 GitHub 屏蔽（当时它的两个进程在跑，
+> hosts `LastAccessTime` 与它启动同秒）。用户启用加速后 API 恢复 —— **而
+> `Resolve-DnsName api.github.com` 仍然返回 `127.0.0.1`**，所以 **DNS 读数不是可达性判据**，
+> 只有**一次带凭证的调用**算数。**若 API 又不通，先查这一点，不要怀疑凭证或脚本。** 详见 D-109。
+>
+> **为什么选 `-RemoteOnlyParent` 而不是提示里的 `-AllowUnrelated`：** 读脚本自己的代码定的 ——
+> `-AllowUnrelated` **只管第一父走查**（`:269` 那个 throw，`:262-272`），
+> 而 `-RemoteOnlyParent`（`:239-249`）**跳过走查与 range 走查**、`:303-307` 置 `skipPairing`、
+> `:308-310` 随之跳过长度检查，并声明第一个提交挂在**当前远端 tip** 上（仍是 fast-forward，不需要 `-Force`）。
+> `-AllowUnrelated` 不跳过配对检查，这里必然撞上长度不匹配。
+>
+> ### 3. 明天第一件事（**顺序不能反**）
+>
+> 1. **先查远端 ref，不要盲重跑**：`GET /repos/ABccgh/ai-video-workbench/git/ref/heads/main`。
+>    - 若 tip 已是新提交、且其 `tree.sha` **== `b8e8c1e34411fe48937e6f1ca47cf337f0875c94`**（本地 `HEAD^{tree}`）
+>      → **推送已完成**，直接做下面第 4 节的三项验证。
+>    - 若 tip **仍是 `4a7b4ea`** → 那次推送没成（失败只留孤儿对象，ref 不动），**可以安全重跑同一条命令**；
+>      重跑会跳过已上传的对象（脚本先做存在性检查）。
+> 2. **绝不要同时跑两个写者。**
+>
+> ### 4. 完成后的验证（同样不看脚本报告）
+>
+> - 远端 `ai-video-workbench` 的 `tree.sha` == 本地 `b8e8c1e34411fe48937e6f1ca47cf337f0875c94`；
+> - **327 条路径→blob 双向零差异**（`get_repository_tree(recursive)` 对 `git ls-tree -r HEAD`）；
+> - 无 `xxx/xxx` 式的重复路径段。
+>
+> ### 5. 仓库里有一处**未提交**的编辑
+>
+> **这份交接本身**（`docs/agent-notes/BOARD.md`）。**我没有提交它** —— 留着是为了让 `git status` 一眼看得见。
+> 明天连同收尾一起提交并推送即可（那会是 `dsh-smith` 的一个新提交，推送时 `-Base` 用
+> `900ca8c67f902bd73b69105249f42a74aed5cc7a` —— 即本轮已推上去的那个本地提交）。
+>
+> ### 6. 仍未验证的（不因本轮而闭合）
+>
+> - `dsh-duanju` 四位专家的**逐行贡献**：真的委派一次、看子进程跑起来。
+> - 工具到达模型（`ACTIVE` 证明不了贡献 —— 见 D-104/D-105）、GUI 选择器刷新时机、有戏AI 私有接口可用性。
+> - **一个未解释的读数，按未解释记录：** 七仓复核**第一次跑出 7 个 404**（我打印了 URL 逐个核对，形状正确），
+>   第二次同样形状给出 **7 个 IDENTICAL**。**原因未确定** —— 不要编一个成因，也不要因此重开这条复核。
+
 ## 2026-09-21（收尾）—— 全面清理与整理 + 9 个位置上传 GitHub（D-108）
 
 **本轮的产出是一条对账，不是一个功能。** 侦察先把「哪几个位置真的有东西要传」量出来：

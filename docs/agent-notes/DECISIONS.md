@@ -4444,3 +4444,54 @@ BOARD 里那句「要让受管工具路径直接可用，需要一个允许写�
 **远端 tree 等于本地 tree，且路径→blob 集合双向相等**，具体 SHA 留给 API —— 推送本身会移动 tip，
 把数字写死在写下的一刻就已经落后一个提交。**仍未验证的只剩一格**：`dsh-duanju` 四位专家的
 **逐行贡献**（真的委派一次、看子进程跑起来），见 D-104 与 BOARD。
+
+## D-109: 收尾第二轮 —— GitHub API 被本机 hosts 挡住，以及**我自己的两个探针**各自犯了一次本仓库最核心的错
+
+**决定：** (i) 记下 09-22 上午 API 不可达的**具名成因**（Steam++/Watt Toolkit 写的 hosts 条目），
+以及**它被解决后 DNS 读数一字未变**这件事的含义；(ii) 记下**我自己两个探针的缺陷** ——
+两个都属于「把『读不到』渲染成结论」这一族；(iii) 复核结论：`dsh-smith` 仍一致，
+`ai-video-workbench` 昨晚那次推送**没有落地**，因此按计划重跑。
+
+**因为（实测）：**
+
+1. **API 不可达的成因是 hosts，不是网络、也不是凭证。** 09-22 18:3x 实测：`api.github.com` 与
+   `github.com` 都解析到 **`127.0.0.1`**，`Test-NetConnection api.github.com -Port 443` 报
+   `TcpTestSucceeded=False`、`RemoteAddress=127.0.0.1`，MCP 的 Go 二进制报
+   `dial tcp 127.0.0.1:443: … actively refused`。而 `codeload.github.com` → `20.205.243.165`，
+   **HTTP 200** —— 所以这是**域名级**的，不是网络整体不通。
+   `C:\WINDOWS\System32\drivers\etc\hosts`（1995 B，`LastWriteTime` **2026-09-21 22:03:03**）里有约
+   35 行把 `github.com` / `api.github.com` / `raw.githubusercontent.com` / `objects.githubusercontent.com`
+   等指向 `127.0.0.1`，同表还有 **`local.steampp.net`** —— **Steam++（Watt Toolkit）写 hosts 的签名**；
+   它已安装在 `%LOCALAPPDATA%\Steam++`，而当时**两个进程在跑**（18:32:28 / 18:32:53），
+   hosts 的 `LastAccessTime` 是 **18:32:34**。**本会话不是管理员**（`IsAdmin: False`），
+   而这个文件由那个正在运行的工具管理 —— 手改既无权限、也会被它写回去。
+2. **用户启用加速之后 API 通了，而 DNS 读数一字未变。** 解锁后 `GET /user` → `ABccgh` 成功，
+   **而 `Resolve-DnsName api.github.com` 仍然返回 `127.0.0.1`**。⇒ **DNS 读数不是可达性判据**；
+   唯一算数的是**一次带凭证的真实调用**。（同族：D-41 猜字段名、D-105 把赋值点找对了却没问路径。）
+3. **我的探针缺陷 ①：一次失败的调用被我渲染成了正面结论。** 第一个「查明状态」的脚本里
+   `Invoke-RestMethod` 抛了（连接被拒），`$ref` 为空，而我的
+   `if ($tip -eq '4a7b4ea') / elseif ($tree -eq $localTree) / else` 落进了 **else**，
+   于是打印出「**ref 移动了但 tree 不等于本地 —— 需要细看**」。那一刻的真实状态是**什么都没读到**。
+   这正是本仓库反复付学费的那条（「读不到」必须在输出上与「没有问题」不同，见 D-67/D-69/D-101），
+   而这次是**我自己**犯的：**`else` 分支替一个空值编了一个结论。**
+4. **我的探针缺陷 ②：用一个把正文也算进去的扫描去判「文件在不在」。** 为了绕过被封的 API，
+   我流式解压 codeload 的 tarball 并 grep 四个串，得到「远端有 `DECISIONS.md`」。**它是错的**：
+   随后的权威读数显示远端仍是 `4a7b4ea`，而 `git ls-tree -r 4a7b4ea` 里**没有** `DECISIONS.md`。
+   差别在方法 —— tar 里**文件名与文件内容在同一段字节流里**，所以 `PROJECT.md` 正文里提一次
+   `DECISIONS.md`，扫描就报「文件存在」。**判「tar 里有没有某个路径」，只能读每个 512 字节块
+   偏移 0..99 的名字字段，不能整段搜串。** 这次能发现，是因为后来拿到了权威读数；
+   否则它会变成一个自信的错句子 —— 与 D-101 记的那类工具陷阱同族，只是这次是自己造的。
+5. **复核结论（解锁后经 API 重读，权威）：** `dsh-smith` 远端 tip `c5034e7`、
+   tree `fae484b2938884ce1a0d35c4ea525ea67855a137` **等于**本地 tree ⇒ 昨天的推送**仍然成立**；
+   `ai-video-workbench` 远端 tip **仍是 `4a7b4ea99074f5f3eb75b3222bd45e16f6ed67dd`**、
+   tree `206eef3722c9a763f8e7379b34e82aec461cda0b` ≠ 本地
+   `b8e8c1e34411fe48937e6f1ca47cf337f0875c94` ⇒ **昨晚那次推送没有落地**
+   （宿主重启把进程杀了，ref 从未移动 —— 与交给明天的交接单预测的「ref 不动 ⇒ 可安全重跑」一致），
+   因此按计划重跑：`-Base 4a7b4ea`、`-RemoteOnlyParent`、`-RemoteRepo ai-video-workbench`，从 `D:\AIVideo` 调用。
+
+**被推翻的条件：** (i) `Resolve-DnsName` 与真实调用再次分叉 —— 那时第 2 条要升级为
+「两者可以独立变化」，而不只是「DNS 不是判据」；(ii) 某个只读 tar 名字字段的扫描器仍然误报 ——
+那时第 4 条要重写；(iii) 加速被关掉 —— 那时 API 会再次不可达，第 1 条与 BOARD 的交接单都要重读。
+
+**状态：** 第 1、2 条已实测；第 3、4 条是**对我自己的更正**，都已落进本文件；
+第 5 条是重跑的依据。仍未验证的仍只有那一格：`dsh-duanju` 四位专家的**逐行贡献**。
