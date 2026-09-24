@@ -4985,3 +4985,89 @@ ruleset / projects / actions，但**没有 `PATCH /repos/{owner}/{repo}`**，而
 见第二节：`archived=False → True`（第二次是重新读，不是采信第一次的响应）；③ 「没有仓库更新工具」
 由枚举本会话可见的 `mcp__github__*` 工具得出（**这是工具面读数，不是权限读数**）；
 ④ `created_at`、`admin: true`、`size 46KB` 来自归档前的 GET。
+
+## D-118: GitHub App 切换**已评估并否决** —— 个人账号的 App 会让 6 个工具永久失效，且 PAT 与 App 无法共存
+
+**决定：** **不**切换到 GitHub App。继续用 `$DSH_HOME/.env` 里的细粒度 PAT；`mcp-github` 行与
+`launch.mjs` 一个字节都不动。用户在 2026-09-24 看过下面的代价后明确选择「保持现状」。
+
+这一条记的是**一个「不做什么」的结论**，而它花了实打实的调查成本 —— 记下来是为了让下一个会话
+不必重推一遍，更不必推错方向。
+
+### 一、为什么「更好」被证据推翻：互斥是**硬失败**，不是警告
+
+`cmd/github-mcp-server/main.go:65-66`：
+
+```go
+if (appAuthRequested && token != "") {
+  return errors.New("GitHub App authentication and GITHUB_PERSONAL_ACCESS_TOKEN are mutually exclusive: set only one")
+}
+```
+
+`appAuthRequested` 在 `--app-id` / `--app-installation-id` / `--app-private-key-path` /
+`GITHUB_APP_PRIVATE_KEY` **任一**存在时即为真。在**本机那个真实的 1.12.2 二进制**上实测 5 次：
+PAT ＋ 各组合**全部 exit 1**、报的就是上面那句；对照组（只有 PAT）exit 0 正常启动；
+而「有 App 旗标、无 PAT」时报的是缺 `.pem` —— 说明互斥检查**先于**读私钥。
+
+⇒ 没有灰度期、没有并存期，这是一次**切换**。而且 `launch.mjs` 的 `spawn(..., { env: process.env })`
+会把 PAT 送进那个子进程，所以「只追加 App 旗标」会让这一行**根本起不来**：
+切换必须连同启动器一起改（先删掉子进程环境里的那个变量，或让它在有 App 旗标时不再被要求）。
+
+### 二、净损失 6 个工具（逐条读数，来自 `x-github.enabledForGitHubApps`）
+
+| 端点 | flag | 对应工具 | 今天 |
+| --- | --- | --- | --- |
+| `POST /user/repos` | **false** | `create_repository` | ✅ 可用（2026-09-24 刚建出 `ABccgh/dsh-duanju-script`） |
+| `GET /user` | **false** | `get_me` | ✅ 可用 |
+| `/gists/*` | **19/19 false** | `create_gist` / `get_gist` / `list_gists` / `update_gist` | ✅ `list_gists` 可用 |
+| `/notifications/*` | false | 6 个通知工具 | ❌ 今天就是 403（`NOTES.md:93`），**无变化** |
+
+`/user*` 共 **94** 个操作、其中 **86** 个 false。**不受影响**：`/search/code`、`/search/repositories`
+（均 true）。⇒ 装在**个人账号**上的 App **无论如何授权**都拿不到这 6 个能力。
+
+### 三、被确认「没问题」的两件事 —— 所以否决的理由**不是**「App 坏了」
+
+① **令牌会自动续期**，长命子进程不会一小时就死：`internal/githubapp/githubapp.go` 的
+`oauth2.ReuseTokenSource(nil, newInstallationTokenSource(cfg, privateKey, nil))`，令牌
+`Expiry = body.ExpiresAt.Add(-5min)`（约 55 分钟重铸）；`pkg/http/transport/bearer.go` 的 `RoundTrip`
+**每个请求**都咨询 provider；上游自带 `TestProviderCachesToken` 与 `TestProviderRefreshesNearExpiry`。
+App 认证在 **v1.7.0** 引入（PR #2797），而 `githubapp.go` 在 v1.7.0 与 v1.12.2 **逐字节相同**
+（sha256 `7623C4AD…B06A6EF`）⇒ 续期从引入起就有，不是后来的修补。
+
+② **本机跑的确实是那一版**：`github-mcp-server.exe --version` 自报
+`Version: 1.12.2 / Commit: 85598ba6e1256f7ebf4867b95d63b833c4549264`，与代码阅读所在的提交一致。
+
+⇒ **将来若要切，技术上没有障碍。不切的理由是代价，不是可行性** —— 这一句必须留在正文里，
+否则将来的人会把一次权衡读成一条技术禁令。
+
+### 四、一个**永久**结论：工具面里没有「改仓库本体」的工具
+
+`bin/README.md` 在 v1.12.2 tag 与 `main` **逐字节相同**（113,197 B，sha256 `0686B410…C9666`），
+**没有任何版本**提供 `PATCH /repos/{owner}/{repo}` 的封装（repo 级写入只有 create/delete/fork/star/unstar）。
+`archived: true` 因此**永久**只能走 REST（D-117 第二节的做法）。
+⚠️ 二进制里 `UpdateRepository` 有 3 处命中，**全是 `UpdateRepositoryRuleset`** —— 假阳性，别再追。
+
+### 五、什么会推翻本条
+
+① 需要**组织级**操作（`POST /orgs/{org}/repos` 的 flag 是 **true**，与个人账号正好相反）；
+② GitHub 把 `/user/repos` 或 `/gists/*` 改成 `enabledForGitHubApps: true`；
+③ 需要把机器写入**归因到 App 身份**而不是本人账号；
+④ PAT 到期或被吊销且不打算续；
+⑤ 若「agent 手上不再挂长期账号凭据」变成硬性要求 —— 那时应接受第二节的损失并走切换，
+且**验收判据不能再用 `get_me`**（它本就该失效，会把成功读成失败），
+要改成「铸一次令牌并调 `GET /app` 成功」＋ 一次仓库读。
+
+### 六、一条诚实的附带记录
+
+上游为这个特性写的原话是：App 认证「**injects a high-privilege credential alongside the agent and
+is not recommended without an independent security review**」。私钥就躺在 `$DSH_HOME` 下、对 agent 可读，
+所以切换买到的是**到期时间**与**可归因**，**不是隔离**。将来若真想要隔离，那是另一种设计
+（凭据不进 agent 进程、由宿主侧代发请求），与本次讨论的不是同一件事。
+
+**证据。** `--version` 与逐端点的 `enabledForGitHubApps` 读数由本会话自己跑（OpenAPI bundle 为
+`github/rest-api-description` 的 `api.github.com.json`，12,964,430 B；`/gists/*` 的 19/19 与
+`/user*` 的 86 为独立复算）；互斥的 5 次实测、以及 `githubapp.go` / `bearer.go` / `main.go` 的行号，
+来自 `expert_protocol` 的报告（本会话派出，其核心claim 中的版本号与两个 flag 已由本会话自行复核）。
+**未做**：没有用 installation token 实跑 `POST /user/repos`（证据是该端点自己的
+`enabledForGitHubApps:false`，不是一次实跑）；也没有实测 >60 分钟的续期。
+**本次为用户明确选择的「什么都不改」**：`~/.dsh/**` 未被触碰。
