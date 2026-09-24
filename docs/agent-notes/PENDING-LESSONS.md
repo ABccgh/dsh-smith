@@ -1,0 +1,60 @@
+# 待写入的全局经验（两轮）
+
+**状态：已写好，未能落盘。** 这不是内容问题，是写入门路问题。
+
+## 为什么没落盘
+
+`memory_remember` 通过**沙箱化的** `ctx.fs` 缝写 `C:\Users\曦曦\.dsh\agent-memory\LESSONS.md`
+（`dsh-agent-memory/lib/index.js:59` 的 `inject = ['fs','tools']`、`:378-380` 的 `writeFile` 走
+`ctx.fs.resolve`），这个会话的 `ctx.fs` 策略是 `workspace-write`，所以写用户全局目录被拒。
+
+**已确认这是工具特有的，不是策略墙**：同一会话里 `pwsh` 直写
+`~/.dsh/agent-memory/` **成功**（本会话的文件策略是 `danger-full-access`）。
+所以**可以**落盘，只是不该由我来做 —— 绕过记忆系统自己的工具去手改它的文件，正是这个部署
+反复禁止的那类动作。本会话的审批提示是关闭的，因此也不应请求提权。
+
+## 怎么落盘（二选一）
+
+1. **换一个 `ctx.fs` 允许写用户全局目录的会话**，在那里调两次 `memory_remember`（正文见下），
+   然后 `memory_consolidate`。
+2. **人工把下面两个 `## ` 条目追加到** `C:\Users\曦曦\.dsh\agent-memory\LESSONS.md` 的**末尾**
+   （该文件没有受管标记，插件把所有顶层 `## ` 条目都当作经验；不要动它已有的 9 条），
+   再在任意会话里跑 `memory_consolidate`。
+
+容量：`~/.dsh/AGENTS.md` 的受管区块当前 **7 652 B / 16 384 B** 上限
+（`DEFAULT_MAX_BLOCK_BYTES`，`dsh-agent-memory/lib/index.js:66`），下面两条约 1.9 KB，放得下。
+**不要为了塞进去而删已有的条目** —— 上限是硬的，超了 `memory_consolidate` 会报错拒绝而不是截断，那是设计。
+
+同样的两条也已经写进 `docs/agent-notes/DECISIONS.md` 作为完整档案（一份是给下一轮加载的浓缩版，
+一份是深度记录 —— 这正是分层的理由）。
+
+---
+
+## 一个「注册成功」的工具可以完全不工作，而套件会全绿
+
+- 决定：把「注册」与「能干活」当两件事验：注册形状用真实断言验，功能用**真的执行一遍**验。断言某个属性之前，先断言那个属性**存在**。
+- 为什么：同一场会话里，「一行挂上了但贡献为零」这个形状在低一层复现了三次：(a) 工具定义缺 `output` 会在 `register()` 处硬抛，但那是注册期的事；(b) 一条断言写成 `if (schema.required !== undefined) { check(...) }` —— 把 `required` 整层删掉时它变成 `undefined`，那条 check 根本不跑，**套件照样绿**；(c) 一棵方法树里，注册数量的断言过了，而九个方法里有两个的行为是错的（一个把正常输出判成崩溃，一个从不报列集合差异）。三件事都不是读代码发现的，是**执行**与**变异**发现的。
+- 证据：`D:\dsh-duanju-script`。falsify 首轮 115/115 全绿，而变异审计 M1 命中的是**另一条**断言 —— 这暴露了 `required` 那条是空断言；改直后 M1 命中它本身。同轮 smoke 跑出两个真缺陷：`script-only-check.mjs` 没有 json 模式（只认 JSON 的分类器把一次退出码 3 的正常运行报成 `CRASHED`），以及 `compareTemplate` 从不报三款模板的列集合差异。修完：falsify 127/127、mutants CAUGHT 5 GAP 0 SKIP 0、smoke 56/56。
+
+## 验证方法本身可以坏掉，而且它坏起来像「发现了问题」
+
+- 决定：当一个检查报出「全部不同」「全部失败」这类**齐整**的坏结果时，先怀疑检查方法，再怀疑被检查的东西。比较字节就用字节（`Buffer` 或临时文件），不要经过字符串解码、`Out-String`、编码往返 —— 那些每一步都可能改写字节。结论的**严重性**也要复核：一条警告的措辞可能指向**未来**，不是现状。
+- 为什么：坏掉的检查比没有检查更糟：它会让人去修一个不存在的问题，而修的方向可能是**改对的东西**。同一场会话里出现两例。① 逐字节比较经过 PowerShell 的字符串往返后，多字节字符在中途被换掉，于是 8/8 文件全报"不同"，而它们实际上逐字节相同。② `git` 对 `core.autocrlf=true` 报的 warning（`LF will be replaced by CRLF the next time Git touches it`）读起来像"已经发生了转换"，而那只是一条**前瞻**警告；当次提交的 blob 与磁盘逐字节相同，我把严重性写成了"已发生"，随后被自己的字节读数推翻。
+- 证据：`D:\dsh-duanju-script`。坏方法：`git cat-file -p` → PowerShell 字符串 → `[Text.Encoding]::UTF8.GetBytes()` 比较，输出「字节不同的文件数：8 ← 🔴 有转换发生」。修好的方法（只走 Buffer）：`execFileSync('git', ['cat-file','blob', path])` **不带 encoding** 得到 Buffer → 与 `readFileSync` 的 Buffer 比 sha256，输出「字节不同 0 个」。同一批文件、同一会话，两次读数相反。
+
+## 三处「工具按一个假设写死」的缺陷，症状都是「健康的输入被报成坏」，静默型
+
+- 决定：一个**消费外部工具输出**的东西，要在它可能抱怨的每一种输出形状上各验一次；写死一个形状时，另外几种不会报错，只会把正常输入判成异常。而且**只有真的跑一遍才看得见** —— 结构检查（注册数、行数、语法）全过。
+- 为什么：本轮同一场会话里，同一个形状出现三次，三次都不是读代码发现的：
+  ① **只认 JSON 的分类器**把 `script-only-check.mjs` 一次**完全正常**的运行（退出码 3 = 有 UNAVAILABLE）报成 `CRASHED` —— 而那个闸门**没有 json 模式**，只打人类可读的三态行；
+  ② **写死 JSON Schema 形状的 `Config`** 让 loader 在装载期抛 `Cannot read properties of undefined (reading 'validate')` —— 一个**不点名插件**的错，失败方式是**签下整个宿主**，而三道静态检查（lint / preflight / check-pack）全过；
+  ③ **一份只做等值比对**的模板校验器从不报列集合差异，于是「旁白模板没有时长列」这件事从工具里完全看不见。
+  它们的共同点是**没有崩溃也没有警告**：前两个把好输入判坏，第三个把差异抹平。这比崩溃难查，因为崩溃会留下栈。
+- 证据：`D:\dsh-duanju-script`。② 由**真的启动一个一次性 profile** 抓到（`dsh --profile <p> --dump-config` 之后就报，我随后开了真会话确认六个工具出现）；①③ 由**真的执行六个工具**抓到。修复后四道检查：`falsify` 146/146、变异审计 CAUGHT 5 GAP 0 SKIP 0、smoke 56/56、启动后工具表出现全部六个。
+
+## 删掉「一条看起来是通用功能的行」之前，先找**它注册的 listener** —— 承载机制的行不是功能行
+
+- 决定：判断一行能不能删，不要看它的工具名像不像这条产品线的东西，要**grep 它注册了哪些回调**（`onJobDone` / `on…` / `effect` / `timer`）。一个「注册 listener」的行删掉之后，那个 listener 承载的**全部行为**一起消失，而**没有任何检查会因此变红**。
+- 为什么：本会话按「只留与主题相关的功能」删掉了一条作业控制行，理由听起来无懈可击 —— 它是通用能力，不属于这门手艺。**错的是量法：** 后台委派的**完成通知不是宿主服务自动推的**，发源恰恰就是那一行里的 `ctx.jobs.onJobDone(...)`（它自己就是那唯一的 listener），而服务只负责把结算派发给已登记的 listener，**别的包一个都没登记**。后果是：一个由四名专家组成、全部以后台方式委派的智能体，**每一次委派都会静默结束而 lead 永远收不到通知** —— 整个团队不可观测，而三道静态检查（lint / preflight / check-pack）全绿。这条错误本仓库的技能文件里**已经写着**（`editing-cordis-compositions` 有一句把「completion notices」与三个控制工具并列，理由就是「retain both」），我先按清单删了、**被一个子进程指出那句话之后**才去核对，才发现自己是错的。⇒ 两条都记住：**清单不是权威**（技能与代码是），以及**删行前先找 listener**。
+- 证据：`dsh-tool-jobs/lib/index.js:206-227`（`onJobDone` → `createUserMessage({ form: "notice" })` → `followup`/`inject`）；`dsh-jobs-local/lib/index.js:261`（`onJobDone`）与 `:379`（派发）；`dsh-subagent` 无 `onJobDone`（已 grep）。**纠正方式：把那一行加回去**，并在其上方注明「保留它不是因为它属于本领域，而是因为它是专家团回话的通道」。
+

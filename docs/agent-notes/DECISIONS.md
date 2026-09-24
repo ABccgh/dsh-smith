@@ -4531,3 +4531,121 @@ BOARD 里那句「要让受管工具路径直接可用，需要一个允许写�
 
 **状态：** 收尾完成，九处全部闭合。**仍未验证的仍只有一格**：`dsh-duanju` 四位专家的
 **逐行贡献**（真的委派一次、看子进程跑起来）。
+
+---
+
+## D-111: 飞书接入**取消** —— 已建成的全部拆除，只留这条记录
+
+**决定：** 取消「让 DSH 接入飞书」这件事（用户 2026-09-23 的决定）。已建成的**全部拆掉**：
+宿主组合里那行 `mcp-feishu`、固定安装目录 `$DSH_HOME/plugins/dsh-lark-mcp/`（90 MB）、以及
+`AGENTS.md` 里那段**当时尚未提交**的规则（已 `git checkout --` 还原到 HEAD）。这条记录是**唯一**
+的残留，理由见下「为什么仍然记一条」。
+
+**为什么：** 项目取消本身是用户的选择，不需要技术理由。**要写下来的是它曾经建成什么、以及
+哪几条实测事实重新推导要花代价** —— 因为删掉那个目录同时销毁了那些读数的唯一副本。
+
+**曾建成什么（不是「从未存在过」）：** 一行宿主平面 MCP 连接 ——
+`@deepseek-ai/dsh-mcp-client` → **官方** `@larksuiteoapi/lark-mcp@0.5.1`（装在固定目录里，
+照 `dsh-playwright-mcp` 的样式，以免可执行路径由 npx 缓存哈希决定）。目标曾按用户澄清**收敛为
+「只读飞书文档」**，工具面因此收窄到 5 个只读工具而**不用** `preset.default`（那 17 个里含 6 个
+多维表格写入与 1 个云盘授权，而工具在宿主作用域**全局可见**）。**从未有凭据被填入**，
+所以**没有任何一次真实调用发生过**。
+
+**四条仍然可信的实测事实（重建时的省力点）：**
+
+| # | 事实 | 读数 |
+| --- | --- | --- |
+| 1 | 安装该服务器**必须**带 `--ignore-scripts` | 否则 `keytar@7.9.0` 的 `node-gyp rebuild` 让**整个安装失败、什么都不留下**（本机无 Python —— PATH 上那个 `python.exe` 是 Microsoft Store 存根；无 VS 构建工具，`vswhere.exe` 不存在） |
+| 2 | keytar 的失败**被捕获并降级** | 它在 stdio 启动路径上**确实会被加载**（经 `mcp-server/transport/stdio.js`，不是惰性），但只打印 `[WARN] Failed to initialize encryption`；MCP `initialize` 握手**仍然成功**，回 `serverInfo.id = lark-mcp-server` / `0.5.1` |
+| 3 | `--tools` 是**精确名单，且只认飞书 API id 形态** | `docx.v1.document.rawContent` → **1** 个；`docx_v1_document_rawContent` → **0** 个；`im.v1.message` → **0** 个。**三者都静默**，写错形态得到的是空工具表而不是错误 |
+| 4 | 读文档是**两层**权限，缺一即 `403/1770032` | 光开 `docx:document:readonly` 不够：官方排查建议原文要求再经文档右上角**「...」→「...更多」→「添加文档应用」**把应用加进**那一份文档**；而同页还写明「在**添加文档应用**前，你需确保目标应用至少开通了一个云文档或多维表格的 API 权限」，即**顺序不能反** |
+
+**顺带一条与飞书无关、但当时也测了的事实：** 本机 Node 直连 `open.feishu.cn` 正常
+（假凭据回 `HTTP 200 {"code":10003,"msg":"invalid param"}`），所以本机 `git`/`curl` 的
+schannel 吊销缺陷（`CRYPT_E_NO_REVOCATION_CHECK`）**不适用于飞书**。
+
+**从未验证（不要当成已验证）：** 端到端真的读出一份文档。凭据始终为空，上述读数全部停在
+「MCP 握手 ＋ `tools/list` ＋ 文本自检」这一层。**「工具在列」从来不是「工具能干活」。**
+
+**为什么仍然记一条：** 删目录会销毁读数的唯一副本，而重建一次的代价是刚刚付掉的那一轮探索；
+且本仓库对「移除」本就有先例 —— **D-47**（`dsh-balance` 源码与记录一起移除）与 **D-51**
+（`dsh-github` 连插件、行、凭据全部拆除并记录）。**这条记录不会让飞书能力看起来存在**：
+它写明是取消、且重建要先重做哪几步。
+**不进 `AGENTS.md`**：那里每轮自动加载，一个已取消的项目不该占常驻预算；`DECISIONS.md` 是按需检索的。
+
+**被推翻的条件：** (i) 用户重新要求接入飞书 —— 那时从上面第 1–4 条起手，并注意目标仍需收敛为
+「读文档」，因为长连接那套（事件订阅、回调、WS 客户端、测试企业、审批）只服务于**反方向**
+（飞书触发 DSH），与本功能无关；(ii) 飞书改了权限模型或 `lark-mcp` 改了 `--tools` 的匹配规则 ——
+那时第 3、4 条要重测，判据是**服务器返回的 `tools/list` 实际条数**，不是配置文件里写了什么。
+
+**状态：** 拆除完成并验证。删除后组合文件解析为 **8 行**且 id 集合与预期**完全一致**
+（`account-balance, ima-kb, ck3-modcheck, agent-memory, dsh-inbox, mcp-playwright, video-player, mcp-github`）；
+全部署与仓库扫描 `lark|feishu|飞书` **零命中而对照串 `ima-kb` 命中**（零命中必须配对照才算证据）；
+`AGENTS.md` 与 HEAD 无差异；安装目录与临时目录物理不存在。
+**未触碰**：Playwright 浏览器 profile 里 09-20 那批飞书站点数据（属别的会话，删掉会让用户退出登录）、
+其它日期更早的 `%TEMP%` 残留、以及 npm 缓存。
+
+## D-112: 新增 `dsh-script` 预设（剧本工坊）—— 分镜出局的连带后果，以及**两条本仓库此前不知道的工具缺陷**
+
+**决定：** 按用户 2026-09-24 的要求新增一个预设 `dsh-script`（显示名「剧本工坊 · DSH Script」），
+它只做**剧本**：选题 → 一句话钩子 → 圣经 → 分集功能表 → 逐集正文 → 交给用户在平台上评估 → 按读数改稿。
+**分镜表（28 列）与平台的 xlsx 导入模板整体移出该预设的能力面**：宿主插件 `dsh-duanju-script`
+的三个分镜/模板工具（`duanju_board` / `duanju_contract` / `duanju_template`）与相关代码路径删除，
+`shotlist` 与 `dsh-runtime-reference` 两个技能删除，保留技能里的分镜内容清掉。
+
+**旧目录 `dsh-duanju/` 保留为回退路径**，因此它在 `package.json` 的 `dsh.presets` 里**必须继续登记**
+（`.github/workflows/checks.yml` 的清单步骤会对「盘上有、`dsh.presets` 里没有」抛错）。⇒
+**有五个预设目录，不是四个**；文档里的对照表是五列。
+
+**为什么把这两条工具缺陷单独写下来：** 它们都不是从代码「想」出来的，而是**在做别的事时撞出来的**，
+而且**任何静态检查都看不见它们**。这类事实如果只留在本次会话里，下一次要重新付出的代价一样大。
+
+### 一、`bin/drift-check.mjs` **看不见块标量** —— 所以它的「无漂移」不是「文本相同」
+
+**读数：** `drift-check` 的行读取器（`bin/drift-check.mjs:124-141`）匹配 `key: value`，只在值**为空**时
+才对块标量取指纹。`prefix: |-` 因此被存成字面量字符串 `|-`，`section: |` 被存成 `|`。
+⇒ **persona 的 `prefix`/`suffix` 与 `plan-mode` 的 `section` 被整段重写，该工具也会报「0 differ」。**
+
+**后果（这才是要记住的）：** 本次 `dsh-script` 相对 `dsh-duanju` 的重写里，**只有那两处块标量真的改了文本**，
+而 `drift-check` 的对照读数恰好是「shared rows 25，0 differ」——**同一份数据可以同时支持「毫无改动」与
+「改了两处最大的字符串」两个相反结论，而工具分不出来。** 本次是用一个自写的深比较（按 loader 自己的
+`yaml` ＋ `!!js` 形态逐行、含块标量）才拿到真读数：**25 个共享行里 23 个逐字节相同，只有
+`persona` 与 `planning/plan-mode` 不同。**
+
+**规矩：** 引用 `drift-check` 的通过时，只能说「包名、`disabled` 行、非块标量配置值都没变」，
+**不许**说「文本没变」。要给文本结论，就用逐字节比较。
+
+### 二、后台委派的**完成通知**由 `tool-jobs` 那一行承载，删它是**功能中断**，不是精简
+
+**读数：** 通知不是宿主作业服务「本来就会推」的东西。发源是
+`dsh-tool-jobs/lib/index.js:206-227` 的 `ctx.jobs.onJobDone((snapshot, owner) => { … form: "notice" …
+owner.followup(message) / owner.inject(message) })`，即**它自己就是那个 listener**。
+`dsh-jobs-local` 只负责把结算派发给已登记的 listener（`:261` `onJobDone`、`:379` 分发）；
+`dsh-subagent` **一个都没登记**（已 grep，无 `onJobDone`）。**没有 listener，作业结算不产生任何消息。**
+
+**后果：** 一个组合了「四个具名专家 ＋ `backgroundMode: continuable`」的预设，如果把 `tool-jobs` 删掉，
+**每一次后台委派都会静默结束而 lead 永远收不到通知** —— 整个团队变得不可观测，而
+`preflight`／`lint-skills`／`check-pack` 三道全绿。
+
+**这一条是本仓库的 `editing-cordis-compositions` 技能早就写着的**（「Full presets already carry
+`tool-jobs`, while the base host carries the job registry; retain both so `job_output`, `job_list`,
+`job_kill`, cancellation, and completion notices stay available」）。**我按用户的「只留剧本相关功能」
+先删了它，然后被一个子进程指出这句话，再去运行时核对才发现技能是对的、我的计划是错的。**
+⇒ 重新加回。**它的定性不是「一条通用功能」，而是「让专家团能回话的那条通道」** ——
+用户的要求是去掉非剧本的功能，不是去掉让功能可见的机制；这一点当时的清单没有覆盖到。
+
+**什么会推翻它：** 若某天通知改由宿主服务自己（不经任何行）投递，或 `dsh-agent-loop` 自己登记 listener，
+那么这一行就真的可以删。判据是 `onJobDone` 的登记点是否存在，不是工具表里有没有 `job_list`。
+
+### 三、闸门的四个模式只能留一个（分镜出局的直接后果）
+
+`duanju_gate` 原有四个 `range` 值，其中 `episode`/`cross-episode` 会先读
+`storyboards\第NN集-分镜.csv`、读不到就 return；`series-check` 的 **E19** 判的是
+「`episodeCount ≥ 10` **且 `storyboards\` 里有 ≥ 该数的 CSV**」。分镜出局后这三个模式只可能恒报
+`UNAVAILABLE` —— 留一个恒报「跑不了」的入口，与这个插件自己的三态纪律相冲突（「读不到」不得被
+排布成一个可被读成「没问题」的空白）。**⇒ `range` 收窄为单一值 `'script-only'`。**
+
+**仍待完成（本条不声称已完成的那些）：** `D:\DeepSeek Harness\dsh-script\` 的落盘、三个镜像文件的同步、
+`dsh-duanju-script` 三个工具的删除、以及 `bin/install.mjs` 安装 —— 完成后在本条下补一行读数。
+**挂载判定（`agentPresets.standingKeyFor('dsh-script')`）未做**：它需要出厂 `cordis` 预设的会话，
+本会话没有 `cordis_*`。**未验证，不声称。**
