@@ -193,9 +193,12 @@ AGENTS.md            给 agent 的工作区规则（自动加载）
 ## 仓库之外的插件
 
 本仓库只发布 preset（规则 7）。下面**四个**是**独立仓库**（`dsh-duanju-script` 是本地 git 仓库、没有远端），各自单独克隆与安装，**都不在本仓库的 tarball 里**。
-**这四个不是全部** —— `$DSH_HOME/plugins/` 下还有 `dsh-ima-kb` 与 `dsh-inbox`，同样各自带 `.git`、
-同样不属本仓库（实测 2026-09-24：该目录 8 个插件里有 **5** 个带 `.git` —— `dsh-account-balance`、
-`dsh-agent-memory`、`dsh-ck3-modcheck`、`dsh-ima-kb`、`dsh-inbox`；未列于此表是因为它们与任何 preset 的能力面无关）：
+**这几个不是全部** —— `$DSH_HOME/plugins/` 下还有 `dsh-ima-kb`，同样带 `.git`、
+同样不属本仓库（实测 2026-09-24：该目录 **7** 个插件里有 **4** 个带 `.git` —— `dsh-account-balance`、
+`dsh-agent-memory`、`dsh-ck3-modcheck`、`dsh-ima-kb`；未列于此表是因为它们与任何 preset 的能力面无关）。
+**`dsh-inbox`（待办收件箱）已于 2026-09-24 移除** —— 插件目录（含它自己的 `.git`）、profile 依赖、
+那一行 `insert:`、以及五处把它当作交付机制的提示词引用，一并删除。它的接口面、它同时是
+`ask_user_question` 持久通道这件事、以及重建时省事的三条实测理由，见 `docs/agent-notes/DECISIONS.md` **D-115**：
 
 | 插件 | 做什么 | 承载它的 preset |
 | --- | --- | --- |

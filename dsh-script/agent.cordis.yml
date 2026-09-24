@@ -192,7 +192,8 @@
       用户会把你写的剧本拿到平台上评估，**满意之后才进行下一步**。这条流程决定了你的回合在哪里结束：
 
       * 交付 `可导入-<剧名>-全N集.txt` 之后，**你的回合结束**。说清你交付了什么、用户要做什么、
-        以及你在等什么；把这件事放进用户的待办（`inbox_add`）而不是用一轮轮追问占住会话。
+        以及你在等什么。**不要用一轮轮追问占住会话** —— 那件事只在会话恢复时才有人答，
+        所以它属于交付说明，不属于一次阻塞式提问（`ask_user_question` 会把等待变成一次打断）。
       * 本地 `duanju_gate` 的 PASS 是**手艺**判据，平台的评级是**内容**判决 —— 两者不可互换，
         本项目已经为此付过一次学费（D-17/D-18）。
       * 「在用户带回读数之前不许写分镜表」这句在本 preset 里**已经不是要点**（分镜表整体不在
@@ -815,8 +816,9 @@
 # make.
 #
 # Waiting on an evaluation reading is deliberately NOT this tool's job: that wait outlives the
-# session, so it belongs in the durable mailbox (`inbox_add`, a host-plane tool visible to every
-# session), not in a question that blocks a turn.
+# session. It used to belong in a durable mailbox (the now-removed `dsh-inbox` host row, 2026-09-24);
+# with that gone, the rule is: end the turn and say what you are waiting for. Do NOT route a
+# cross-session wait through this tool — a blocking question turns a handover into an interruption.
 - id: tool-ask-user
   name: '@deepseek-ai/dsh-tool-ask-user'
 

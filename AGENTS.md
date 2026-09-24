@@ -172,11 +172,21 @@ three is the target state, recorded at `dsh-script/agent.cordis.yml:46-53`.
    knowing before writing the next one: it **symlinks** the package, so the plugin's own **bare**
    specifiers fail to resolve from the link's real path (`ERR_MODULE_NOT_FOUND`), while relative
    imports among its own files are unaffected (D-35).
-   **A fourth out-of-repo plugin now exists: `$DSH_HOME/plugins/dsh-inbox`** (measured 2026-09-17) —
-   a durable inbox for the Web GUI, mounted by one `insert:` row in the same `cordis.patch.yml`. It is
-   **installed and composed but not mounted** until the Host is restarted (see the bullet below).
+   **A fourth out-of-repo plugin EXISTED and is now GONE: `$DSH_HOME/plugins/dsh-inbox`** (removed
+   2026-09-24 at the user's request; measured 2026-09-17 when it was built) — a durable inbox for the
+   Web GUI, mounted by one `insert:` row in the same `cordis.patch.yml`. **The plugin directory (with
+   its own `.git`, 1 commit, 0 remotes), the profile dependency, the `insert:` row, and the five
+   prompt/skill references to `inbox_add` were all removed in one pass**; the row's site now carries
+   an "已移除" note and the three measured reasons it was built the way it was live on in
+   `docs/agent-notes/DECISIONS.md` **D-115**, because deleting the directory destroyed the only copy.
+   What the removal cost, and the reason it is worth remembering: that row was ALSO the persistent
+   channel for `ask_user_question` (`captureQuestions: true` queued a blocking question for later
+   answering, and the answer resolved the same pending tool call). With it gone,
+   `ask_user_question` is back to a transient composer card only. **A mechanism was removed; the
+   discipline it carried was kept and moved into the handover text** — see D-115 §4.
    Two defects found while building it are *general* facts about host-plane plugin rows here, not
-   facts about this plugin, and both are recorded in its own `NOTES.md`:
+   facts about that plugin, and both were recorded in its `NOTES.md` (also deleted, so D-115 and this
+   paragraph are now their only copy):
    1. **A row's `Config` must be a Standard Schema.** The loader resolves it with
       `runtime.Config['~standard'].validate(config)` (`cordis/lib/index.js:957-961`), so a `Config`
       shaped like a JSON Schema throws during config resolution and **the row never mounts** — with no

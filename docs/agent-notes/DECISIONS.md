@@ -4778,3 +4778,78 @@ owner.followup(message) / owner.inject(message) })`，即**它自己就是那个
 `cordis` 会话的 `cordis_*`，本会话没有）；② `grep '^\s*toolName:'` 源与安装版各 **5** 命中、行号一一对应；
 ③ 四个已删名字源与安装版各 **0** 命中；④ `Get-FileHash` 两文件同一 sha256 ＋ 同 mtime；
 ⑤ `grep 'expert_'` → **10** 命中，逐行分类为 6 注释 + 4 定义。
+
+## D-115: 移除「待办收件箱」`dsh-inbox` —— 一个**宿主平面、浏览器两半**的插件被整体拆掉
+
+**决定：** 按用户 2026-09-24 的要求移除待办功能。本部署里有两个东西都能叫「待办」，
+本条只处理**收件箱**（`dsh-inbox` 插件）；**任务板 `todo_write` 不动**（它是预设平面的
+`@deepseek-ai/dsh-tool-todo`，会话内清单、不占界面、不跨会话），理由是用户没有另选，
+我按方案 §7 的推荐 (A) 执行。两者的区别记在这里，免得下一个人把它们当同一件事。
+
+### 一、它曾经是什么（这是删除后**唯一的**副本）
+
+宿主平面插件，源码 `$DSH_HOME/plugins/dsh-inbox`（**独立 git 仓库、0 个远端、1 个提交 `a98ecb4`、
+无未提交改动** —— 所以目录一删，源码与历史一起消失）。它做三件事，`lib/index.js` 逐行：
+
+| # | 接口 | 位置 |
+| --- | --- | --- |
+| 1 | 三个模型面工具 `inbox_add` / `inbox_replies` / `inbox_list`，注册进宿主 `ctx.tools`（每个会话可见） | `:455` / `:490` / `:533` |
+| 2 | 一条**精确** Fetch 路由 `/api/inbox`，浏览器轮询、提交编辑与回复 | `:547` |
+| 3 | 一个 `user-questions/request` 监听 | `:584` |
+
+`inject = ['tools','connection','userQuestions']`（`:66`），`export const name = 'dsh-inbox'`（`:53`），
+**不发布任何服务** —— `:11` 逐字写着它因此不需要 `isolate` realm。
+它自证过：`node test/falsify.mjs` → **27 passed, 0 failed**，exit 0（删前跑的）。
+
+### 二、三条**重建时省事**的实测事实（随源码一起要删的东西里最值钱的部分）
+
+1. **路由必须走 `ctx.connection.fetch`，不能用 `ctx.webServer.register({kind:'exact'})`。**
+   webserver 的 `match()` 先查 exact 表再查 prefix 表，而 `/api` 的浏览器认证是一条 **prefix** 路由
+   ⇒ 一条 exact 的 `/api/inbox` 会**绕过认证**（`dsh-host-webserver/lib/index.js:321-331`）。
+   注册在 connection 的 fetch 路由表里才位于认证之后。
+2. **写盘必须走 `node:fs` 而不是 `ctx.fs`。** 宿主行没有 session 时，`ctx.fs` 解析到的是
+   **部署默认**工作区根，写 `$DSH_HOME` 会被 `FS_SANDBOX_DENIED` 拒绝。
+3. **存储用插件自己的 JSON、每次访问重读**（不是 `ctx.storage` 的内存态），
+   这样在编辑器里手改立刻生效；写盘走 `node:fs` 的原子替换。
+
+### 三、一处**行为变化**：移除之后 `ask_user_question` 的语义变了
+
+那个监听带 `captureQuestions: true`。实测语义（监听体）：agent 调 `ask_user_question` 时，
+问题**先被写进收件箱**，人在面板里回答，**回答会解除同一个 pending 工具调用**；
+而 `if (questions.length === 0) return delegate()` —— **没有问题时它原样交给下一个监听**。
+
+⇒ **移除之后**：`ask_user_question` 退回**只有**那张临时 composer 卡片的行为，
+**并且 agent 失去「向未来提问」的通道**（把一条需要人回答的事排进队列、由人稍后回答）。
+这不是缺陷，是移除的后果 —— 它让下面第四节的提示词改写成为**必需**而非可选。
+
+### 四、四处提示词/技能把它当作**交付机制**在教（一并改掉，不是简单删除）
+
+被移除的工具同时是「本轮结束、等用户」这条纪律的**载体**。纪律要留，机制要换：
+
+| 文件 | 原写法 | 改法 |
+| --- | --- | --- |
+| `dsh-script/agent.cordis.yml:195` | 「把这件事放进用户的待办（`inbox_add`）而不是用一轮轮追问占住会话」 | 回合在交付处结束、说清在等什么；**不用追问占住会话**（那件事在会话恢复时才有人答） |
+| `dsh-script/agent.cordis.yml:818`、`dsh-duanju/agent.cordis.yml:815`（注释） | 说明等待读数属于那个宿主平面邮箱 | 等待读数是**跨会话**的，所以不要用 `ask_user_question` 阻塞它 —— 那会把一次交付变成一次提问 |
+| `dsh-script/skills/script-delivery/SKILL.md:58`、`:235` | 「把这件事放进用户的**持久待办**（`inbox_add`）」 | 写进交付说明并结束回合；不要用阻塞式提问承载跨会话等待 |
+| `dsh-script/skills/drama-supplements/SKILL.md:76` | 「或者放进 `inbox_add`（如果这个答案跨越整个回合）」 | 或者结束回合并写清在等什么 |
+
+**这一条值得记住的形态：** 移除一个**机制**时，不能连带移除**它承载的纪律**。
+所以「删掉那几句」是错的改法，正确改法是**换掉它借用的机制、保留规矩**。
+
+### 五、数据是空的（所以「不丢东西」只对当前状态成立）
+
+`C:\Users\曦曦\.dsh\inbox\inbox.json` 实测 `{"version":1,"rev":93,"updatedAt":"2026-09-24T13:24:47Z","items":[]}`
+—— **`items` 为空**。但 `rev: 93` 说明它被修订过 93 次；我无法判断那些条目是被逐条标完成清理掉了、
+还是从未有过内容。⇒ **本方案保留那个 89 字节的空文件不动**（删与不删都不丢东西，留着让「确实空过」可复核）。
+
+### 六、什么会推翻本条
+
+① 若用户后来要求把收件箱装回来 —— 那时应按第一节的接口面与第二节那三条事实重建，
+**不要从别的插件「照抄形状」**（那三条都是实测的，不是风格选择）；
+② 若将来发现 `ask_user_question` 的「事后回答」能力还有别的提供者，则第三节那条行为变化作废；
+③ 若 `todo_write` 随后也被移除，应新增一条，注明它与本条不是同一件事。
+
+**证据。** `lib/index.js` 的行号见第一节；`inbox.json` 内容见第五节；
+`node test/falsify.mjs` 27/27（删前）；`git -C <plugin> log --oneline -1` = `a98ecb4`、
+`git remote` 输出为空；profile patch 的 `:106-133`（注释 ＋ 一行 `insert:`，config 三键
+`dataPath` / `captureQuestions` / `refreshMs`）。
