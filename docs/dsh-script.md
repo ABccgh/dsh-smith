@@ -32,13 +32,14 @@
 之后的那一段整块切掉。被切掉的那一类是**分镜表（28 列故事板）与平台的 xlsx 导入模板**。
 
 理由不是「那些东西没用」，是**本 preset 里没有任何一行能生成、读取或判定它们**
-（`dsh-script/agent.cordis.yml:9-12`）。源文件两样都带，是因为它把「剧本 → 分镜表 → 平台评估」
-当**一个产品**；这一版在**交付处**结束，所以在这里写出的分镜表会是一件**本 preset 无人能验**的东西。
+（组合文件开头 `WHAT WAS CUT IS A DIFFERENT ARTIFACT CLASS` 一段，`:9-13`）。源文件两样都带，
+是因为它把「剧本 → 分镜表 → 平台评估」当**一个产品**；这一版在**交付处**结束，
+所以在这里写出的分镜表会是一件**本 preset 无人能验**的东西。
 
 | | `dsh-script`（本文档描述的这一版） | `dsh-duanju`（保留在盘上的回落版） |
 | --- | --- | --- |
 | 回路 | 选题 → 逐集正文 → 交给用户评估 → 按读数改稿 | 剧本 → 28 列分镜表 → 有戏AI 出片 → 评估与投稿 |
-| 具名行 | **26** | 28（HEAD） |
+| 具名行 | **27** | 28（HEAD） |
 | 专家 | script / doctor / dialogue / continuity（4） | script / board / verifier / chronicler（4） |
 | 剧本域工具 | 三件，由**宿主面插件**提供（见第四节末） | 无 |
 | 分镜表与 xlsx 模板 | **不在范围内** | 主产物之一 |
@@ -74,8 +75,8 @@
 - **本工作区里没有任何凭证** —— 全树递归搜 `.env*` / `*token*` / `*cookie*` / `*credential*` / `*secret*` → **0 个文件**。
 
 所以 `dsh-script` 里**没有**任何一行组合平台，也**没有**任何配置键写着 token
-（`dsh-script/agent.cordis.yml:806-812`）。把这些步骤包装成工具会是在假装一个有戏AI 不提供的接口 ——
-那比不做更糟，因为流程看起来在往前走，而实际上它在等人。
+（组合文件末尾 `NOT A ROW, AND WORTH SAYING OUT LOUD` 一节，`:893-900`）。把这些步骤包装成工具会是在
+假装一个有戏AI 不提供的接口 —— 那比不做更糟，因为流程看起来在往前走，而实际上它在等人。
 
 > **注意它和第四节那三件工具的区别，两者很容易被读成一回事：**
 > 三件工具（`duanju_gate` / `duanju_recall` / `duanju_checkpoint`）**不碰平台**：跑的是**本机**的
@@ -107,9 +108,9 @@
 | `script-review` | 新增 | 送评前的自检清单：形态与评估两条法怎么落到一份正文上 |
 | `youxi-platform` | 保留/更新 | 平台边界与读数纪律：闸门、报告字段与评级映射、读数陷阱 |
 
-**`youxi-platform` 不在最初给的那份名单里，但它有独立依据**：组合文件的 `tool-web` 一节写着
-「保留 `fetch` 的理由就是**平台技能存在的理由**」（`dsh-script/agent.cordis.yml:737`）——
-没有一份平台技能，那条理由就没有主语。其余十条来自本次窄化的决定本身。
+**`youxi-platform` 不在最初给的那份名单里，但它有独立依据**：组合文件的 `web` 一节写着
+「`fetch` 保留的理由，就是**平台技能存在的理由**」（`:819-820`，原文 *"`fetch` is kept for the reason
+the platform skills exist at all"*）—— 没有一份平台技能，那条理由就没有主语。其余十条来自本次窄化的决定本身。
 
 > **一处对不上，留在这里而不是抹平。** 决定里**点名**的是 10 个
 > （上表去掉 `youxi-platform`），另加两个**删除**（`shotlist`、`dsh-runtime-reference`）；
@@ -120,7 +121,7 @@
 
 ```sh
 Get-ChildItem dsh-script/skills -Directory | Select-Object -ExpandProperty Name
-node bin/lint-skills.mjs --path dsh-script
+node bin/lint-skills.mjs --preset dsh-script
 ```
 
 两条命令当时的输出：目录列出 **11** 个 —— `drama-project-memory`、`drama-supplements`、`drama-workspace`、
@@ -130,8 +131,9 @@ node bin/lint-skills.mjs --path dsh-script
 **11 与「12」这两个数字都成立，因为它们说的是两件事**：11 是**盘上此刻的读数**，12 是**决定的数目**。
 多出来的那条名额不在上面这 11 个里（上表已列全）—— **以写完后的目录列举为准**，不要按这份文档补一条名字。
 
-> 组合文件**刻意不在注释里列技能清单**（`dsh-script/agent.cordis.yml:283-286`）：一份写在注释里的
-> 文件清单会静默过期，而「文档落后代码、没有任何测试变红」这个形状本工作台已经吃过一次亏。
+> 组合文件**刻意不在注释里列技能清单**（`:317-322`，原文：*"this comment deliberately carries NO SKILL
+> INVENTORY"*）：一份写在注释里的文件清单会静默过期，而「文档落后代码、没有任何测试变红」这个形状
+> 本工作台已经吃过一次亏。
 
 ### 技能从哪来
 
@@ -167,6 +169,10 @@ node bin/lint-skills.mjs --path dsh-script
 
 ## 四、组合：27 个具名行
 
+> **定位方式先说清楚：** `dsh-script/agent.cordis.yml` 在写这份文档期间**被改过两次**（26 行 → 27 行，
+> 行号整体位移），所以下面给的定位以**节名与行 id**为主、行号为辅，行号是**某一刻的快照值**；
+> 文件的快照（行数 / 字节数 / mtime）记在第六节。组合文件一动，第六节那一格就要重跑。
+
 用 `node bin/preflight.mjs --preset dsh-script` 复读，实测（2026-09-24）：
 
 ```
@@ -184,8 +190,8 @@ validated against its own plugin schema.
 **24/27 这个说法是按行差算出来的，不是数出来的** —— 它是与上面 `rows: 27` 的一致性检查，
 不是两次独立读数。
 
-**发布 0 个服务。** 三个 `isolate` realm 都在 preset 内、寿命与会话一致
-（`dsh-script/agent.cordis.yml:316-317,359-361,429-430`）：
+**发布 0 个服务。** 三个 `isolate` realm 都在 preset 内、寿命与会话一致（三处 `isolate:` 分别在
+`:354-355`、`:399-401`、`:476-477`）：
 
 | group | realm | 谁发布 |
 | --- | --- | --- |
@@ -205,8 +211,8 @@ validated against its own plugin schema.
 | `expert_dialogue` | 台词师 | 句子级：施压／掩饰／反击、对白密度、静止解释禁令、语域一致 |
 | `expert_continuity` | 连续性官 | **跨集**尺度的矛盾：声音漂移、埋了不还的钩子、道具／伤势／时间线、因果断裂、「他还不可能知道这件事」 |
 
-**四个专家行逐行写 `maxDepth: 2`**（`dsh-script/agent.cordis.yml` 的 `:443` `:503` `:563` `:631`
-四行）—— 省略会解析成 schema 默认 3，专家在深度 1 于是能比 lead 自己挖得更深；深度链因此是
+**四个专家行逐行写 `maxDepth: 2`**（`:494`、`:552`、`:613`、`:685` 四个 `tool-expert-*` 行）——
+省略会解析成 schema 默认 3，专家在深度 1 于是能比 lead 自己挖得更深；深度链因此是
 agent(0) → expert(1) → helper(2)。
 
 **两条与源文件不同的角色决策，写下来免得被当成遗漏：**
@@ -216,9 +222,9 @@ agent(0) → expert(1) → helper(2)。
   后者带走的是「谁维护记忆层」：这一版由 **lead 自己**维护 `D:\AIVideo\{PROJECT,DECISIONS,INVENTORY}.md`
   与受管的 `products\<剧名>\项目总览.md`（persona 里写着）。
 - **`tool-subagent-fork` 没有组合。** 本 preset 的委派都是**自足简报型**：角色拿到的是**它自己**要读的
-  文件，而不是 lead 已经读过的上下文（`dsh-script/agent.cordis.yml:795-796`）。
+  文件，而不是 lead 已经读过的上下文（`:878-879`，`DELIBERATELY ABSENT` 一节的 `tool-subagent-fork` 条）。
 
-### 刻意不装的行（`dsh-script/agent.cordis.yml:853-880`）
+### 刻意不装的行（`:853-891`，即组合文件末尾的 `DELIBERATELY ABSENT` 一节）
 
 `command-goal`/`tool-goal`（长程状态已有主：`D:\AIVideo\` 下的记忆层与评估转录）、
 `tool-ralph`（每次迭代之间隔着一次**你**去做、并且要付费的平台往返）、
@@ -233,14 +239,14 @@ agent(0) → expert(1) → helper(2)。
 > `owner.followup` / `owner.inject`；而作业服务只向**已注册的监听者**扇出，`dsh-subagent` 一个都不注册。
 > 所以这一行缺席时，**每一次后台委派都会静默落定**：四个专家默认就是后台的
 > （`backgroundMode: continuable`），lead 永远不会被告知它们跑完了。它**不是功能，是委派的回传通道**
-> （`dsh-script/agent.cordis.yml:768-788`）。
+> （组合文件的 `background jobs` 一节，`:768-788`）。
 > 组合文件把这段推理**留在原地**，并注明它曾被从「刻意缺席」名单里划掉（`:856-857`）——
 > 后来读这份文档的人不该去盘上找它是不是又坏了。
 
 **`tool-ask-user` 保留了**（与 `dsh-ck3-mod` 相反，差异是刻意的）：往哪个平台交、走哪条产品线、
 是否为积分花钱，是**你拥有、读文件读不出来**的选择 —— 而**等一次评估读数故意不是它的活**：
 那个等待比一个会话活得久，所以走持久信箱（`inbox_add`），不是卡住回合的问题
-（`dsh-script/agent.cordis.yml:801-810`）。
+（组合文件的 `user questions` 一节，`:800-812`）。
 
 ### 剧本域的三件工具**不在**这个组合里
 
@@ -249,13 +255,14 @@ agent(0) → expert(1) → helper(2)。
 `cordis.patch.yml` 一行 `insert:` 挂载，方式和 `dsh-ck3-modcheck`、`dsh-ima-kb` 一样。
 它**不发布任何服务**（`inject = ['fs','tools']`，没有 `provide()`），只把工具注册进宿主的 `ctx.tools` ——
 **所以这里没有它的一行**：在这个 composition 里为它写一行，要么解析不了，要么把工具重复注册进一个
-按名字做键的注册表（`dsh-script/agent.cordis.yml:814-817`）。
+按名字做键的注册表（组合文件末尾最后一节，`:902-906`）。
 
 三件工具是：`duanju_gate`（跑本机闸门并返回**结构化四态** `PASS` / `FAIL` / `UNAVAILABLE` / `CRASHED`）、
 `duanju_recall`（一部剧状态的**只读**投影）、`duanju_checkpoint`（把投影渲进 `项目总览.md` 的**受管区块**，
 标记不成对时**拒绝**写入）。
 
-> **「只剩三件」是收缩后的目标态，不是今天的读数。** 组合文件自己留了这条（`:41-49`）：
+> **「只剩三件」是收缩后的目标态，不是今天的读数。** 组合文件自己留了这条（`:46-53`，
+> `THE DEPENDENCY HAS NOT LANDED YET` 一段）：
 > 写那份文件时 `D:\dsh-duanju-script\lib\` 注册的是**六件** —— 上面三件，加被移除的三件
 > （`duanju_board` 逐行分镜表判定、`duanju_contract` 28 列列契约、`duanju_template` 官方 xlsx 模板对照）。
 > **移除是决定，不是故障**；在盘上读到六件时不要以为哪里坏了。
@@ -321,7 +328,7 @@ dsh plugin --profile <profile> add D:\dsh-duanju-script
 （`dsh-smith` 把它们 `disabled`；`dsh-forge`、`dsh-ck3-mod`、`dsh-duanju`、`dsh-script` 都不含那一行）。
 
 > **不要把旧读数搬过来。** 2026-09-21 有过一次 `mounted OK`，但那是 **`dsh-duanju`（旧 preset）**
-> 的读数，不是在 `dsh-script` 上跑的。两个 composition 的行清单不同（26 对 28/29、专家不同、
+> 的读数，不是在 `dsh-script` 上跑的。两个 composition 的行清单不同（**27** 对 28/29、专家不同、
 > 少一条 fork 行），**所以那条读数对此处一个字都不证明。**
 
 **`node bin/verify.mjs` 不是这条检查** —— 它自己 `new cordis.Context()` 起裸运行时，`agentPresets` 按定义缺席，
@@ -409,8 +416,7 @@ return {
 
 **不要用会话头里的 `agentPreset` 判断** —— 它是创建期提示，不是挂载结果；**工具表才是权威**。
 **也不要用 `duanju_gate` 在不在表里判断**：那三件工具是宿主面的，对**每一个**会话可见，
-所以它们证明的是**宿主行挂上了**，不证明这个会话跑的是 `dsh-script`
-（`dsh-script/agent.cordis.yml:35-39`）。
+所以它们证明的是**宿主行挂上了**，不证明这个会话跑的是 `dsh-script`（`:40-44`）。
 
 ---
 
@@ -421,7 +427,7 @@ return {
   界面侧的刷新时机未实测）。
 - **规则文件不由本 preset 创建，今天也确实不存在。** `agent-instructions` 的候选文件是
   `AGENTS.md` / `CLAUDE.md` / `DRAMA.md`（本地版 `AGENTS.local.md` / `DRAMA.local.md`），项目根标记是
-  `.git` / `AGENTS.md` / `DRAMA.md`（`dsh-script/agent.cordis.yml:261-276`）。
+  `.git` / `AGENTS.md` / `DRAMA.md`（组合文件的 `durable workspace instructions` 一节，`:268-294`）。
   **实测 2026-09-24：`D:\AIVideo` 下这五个候选全为 `False`，只有 `.git` 存在** —— 所以从那里起的会话
   **读不到工作区规则层**，本 preset 全靠自己的技能运转。你建了其中任何一个，下一次读取就会带上它
   （**不需要重启**）。—— 注意 `maxSourceBytes: 49152`：超过这个大小的规则文件会被**整份忽略且不留任何标记**，
@@ -433,8 +439,8 @@ return {
 - **Phase 2（本次没做）**：把共享手艺技能迁到 `D:\AIVideo\.dsh\skills\` 只存一份。
   只有所有会话都从那棵树里起才划算，否则会丢掉 cwd 之外的技能。
 - **源文件里的 Phase 2 已经落地了一半，写在这里免得读者去别处找**：闸门与状态投影**现在**是一件
-  宿主面插件（`dsh-duanju-script`，三件工具）。源文件把它列为「等 pwsh 调用真的开始出错再做」；
-  它做出来了，而 `board-to-xlsx` 一类**不再需要** —— 分镜表出了范围。
+  宿主面插件（`dsh-duanju-script`；目标态三件工具，盘上今天六件 —— 见第四节末）。源文件把它列为
+  「等 pwsh 调用真的开始出错再做」；它做出来了，而 `board-to-xlsx` 一类**不再需要** —— 分镜表出了范围。
 
 ---
 

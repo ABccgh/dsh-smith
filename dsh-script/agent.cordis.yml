@@ -57,17 +57,24 @@
 # tools do not exist in ANY session, so "cannot read it" and "there is nothing wrong" must stay
 # distinct (suffix section 3).
 #
-# WHERE THIS FILE CAME FROM, AND WHY IT CANNOT RUN BY ID YET.
-# Its lineage is `dsh-duanju`, which itself began as the shipped `standard`. This repository's
-# registry `bin/presets.mjs` has NO `dsh-script` entry TODAY — measured: `node bin/preflight.mjs
-# --preset dsh-script` and `node bin/drift-check.mjs --preset dsh-script` both exit 1 with the same
-# line: `unknown preset "dsh-script": this repository ships dsh-smith, dsh-ck3-mod, dsh-forge,
-# dsh-duanju`. Accepting the id needs an entry in `PRESETS` (`repoDir: 'dsh-script'`,
-# `upstreamPreset: 'standard'`, and an `expectedTools` carrying the four expert names — there is no
-# fork row), plus the same id mirrored in `package.json`'s `dsh.presets`; AGENTS.md states plainly
-# that "a new preset is an edit in both files". Both files live OUTSIDE this preset directory, so
-# neither was touched this time; until they are edited, the static check runs by path:
+# WHERE THIS FILE CAME FROM.
+# Its lineage is `dsh-duanju`, which itself began as the shipped `standard`.
+#
+# IT IS REGISTERED NOW (this paragraph used to say the opposite — measured stale on 2026-09-24).
+# `bin/presets.mjs` carries a `dsh-script` entry (`repoDir: 'dsh-script'`,
+# `displayName: '剧本工坊 · DSH Script'`, `upstreamPreset: 'standard'`, and an `expectedTools`
+# holding the four expert names plus `subagent_fork`), and `package.json` mirrors the id in
+# `dsh.presets` and lists the directory in `files`. So the id-taking forms work:
+#   node bin/preflight.mjs    --preset dsh-script      # measured: rows 27 · validated 16 · failed 0
+#   node bin/lint-skills.mjs  --preset dsh-script      # measured: 11 skills, all clean
+#   node bin/drift-check.mjs  --preset dsh-script      # diffs against the shipped `standard`
+# The `--path` form still works and needs no registry entry:
 #   node bin/preflight.mjs --path D:\DeepSeek Harness\dsh-script\agent.cordis.yml
+#
+# ONE THING THE REGISTRY CHANGE DID *NOT* BUY, stated so it is not over-read: accepting the id is a
+# REGISTRY fact, not a MOUNT fact. `agentPresets.standingKeyFor('dsh-script')` has NOT been run — it
+# needs a session on the shipped `cordis` preset (for `cordis_*`), which this session did not have.
+# A preflight pass is not a mount verdict; `bin/preflight.mjs` says so itself in its closing lines.
 #
 # TWO LAWS, in the order they bite. The persona carries them; this comment says why they are laws
 # rather than advice.

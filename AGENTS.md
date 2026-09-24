@@ -47,7 +47,7 @@ four clean presets above — which is the whole reason it belongs in CI while `d
 not. The consequence in the other direction is the one to remember in a session: without the plugin
 the preset still mounts, but the three tools do not appear. Today that plugin still registers **six**
 tools (`duanju_gate`, `duanju_recall`, `duanju_checkpoint` plus the three the narrowing removed);
-three is the target state, recorded at `dsh-script/agent.cordis.yml:41-49`.
+three is the target state, recorded at `dsh-script/agent.cordis.yml:46-53`.
 
 ## Evidence rules
 

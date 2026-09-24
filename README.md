@@ -44,7 +44,7 @@
 > `dsh-script` 用到的三件剧本域工具——`duanju_gate`（结构化闸门，**四态** `PASS`／`FAIL`／`UNAVAILABLE`／`CRASHED`）、`duanju_recall`（一部剧状态的只读投影）、`duanju_checkpoint`（把投影渲进 `项目总览.md` 的受管区块）——由**本仓库不发布**的宿主平面插件 `dsh-duanju-script` 提供，源码在 `D:\dsh-duanju-script\`。
 > 它由 profile 的 `cordis.patch.yml` 一行 `insert:`（`id: duanju-script`）挂载，依赖用 `dsh plugin --profile <profile> add D:\dsh-duanju-script` 写进 profile 的依赖图。**与 `dsh-ck3-modcheck` 的差别在这里**：它不在 `$DSH_HOME/plugins/` 下，而是以 `link:` 指向 `D:\dsh-duanju-script\`；相同的是它**不发布任何服务**（`inject = ['fs','tools']`，没有 `provide()`），只把工具注册进宿主的 `ctx.tools`。
 > **所以 `dsh-script/agent.cordis.yml` 里没有它的一行** —— preset 只**消费**这三件工具，`dsh-ck3-mod` 则是**点名**它的插件。后果有两条，方向相反：没有插件时 preset **照样挂载**（组合里没有任何一行指向它），但那三件工具**不会出现**，而 persona 与技能都按它们存在来写 —— 这时闸门的结论是**没有结论**，不是通过；反过来，**有插件时这三件工具对每一个会话可见**，包括不跑本 preset 的会话，所以「工具表里有 `duanju_gate`」**不是** `dsh-script` 的身份判据，判据是四位专家名。
-> 写这份文档时的读数与目标态有出入，两句都记在这里：插件 `lib/` 今天注册的是**六件**工具（多出 `duanju_board`／`duanju_contract`／`duanju_template`），**剩三件是收缩后的目标态**（`dsh-script/agent.cordis.yml:41-49` 自己记着这一条）。复制 `dsh-script/` 到另一台机器**不会**带上这件插件。
+> 写这份文档时的读数与目标态有出入，两句都记在这里：插件 `lib/` 今天注册的是**六件**工具（多出 `duanju_board`／`duanju_contract`／`duanju_template`），**剩三件是收缩后的目标态**（组合文件开头的 `THE DEPENDENCY HAS NOT LANDED YET` 一段，`dsh-script/agent.cordis.yml:46-53`，自己记着这一条）。复制 `dsh-script/` 到另一台机器**不会**带上这件插件。
 
 ## 快速开始
 
@@ -140,7 +140,7 @@ node bin/install.mjs --preset dsh-script      # dsh-script（也需要一个插�
 
 **2026-09-21 之后收到一次用户转述的读数**（一个 `dsh-duanju` 会话）：工具表里有 `expert_script` / `expert_board` / `expert_verifier` / `expert_chronicler` / `subagent_fork`，且没有 `workflow` / `ralph` / `subagent` / `tool-goal`。**那是旧 preset 的验收判别键，不是 `dsh-script` 的** —— 后者的判别键是 `expert_script` / `expert_doctor` / `expert_dialogue` / `expert_continuity`，且**没有** `subagent_fork`（该行已从这个 preset 里删掉）。`dsh-script` **没有任何工具表读数**，转述的也没有。那条旧读数按转述记名（本机没有该会话的机器可读台账）；它证明**可达性**，不证明**逐行贡献**（某个工具被委派后真的跑起来），后者仍是 D-40 留的那一格。
 
-> **一条结构性后果：** 真正能回答可达性的活读 —— `Tool.listTools`，返回「本 agent 当前可调用的每个工具」（`dsh-tool-cordis/lib/index.js:9038-9052`）—— 只存在于装了 `tool-cordis` 的会话，而 `dsh-duanju` 与 `dsh-script` **恰恰都没有**那一行。**两个短剧 preset 都无法自验自己的工具表**；到现在为止的读数都来自另开一个会话、或由用户看一次。而 `preflight` 通过只说明「每一行都解析得到、每个能读的 config 都过了它自己的 schema」，它自己会告诉你它看不见什么：**激活了但什么都没贡献的行、泄漏到根 realm 的服务、以及写在 `apply()` 而不是 schema 里的校验**。步骤与探针源码在 [`docs/dsh-script.md`](docs/dsh-script.md)。
+> **一条结构性后果：** 真正能回答可达性的活读 —— `Tool.listTools`，返回「本 agent 当前可调用的每个工具」（`dsh-tool-cordis/lib/index.js:9038-9052`）—— 只存在于装了 `tool-cordis` 的会话，而 `dsh-duanju` 与 `dsh-script` **恰恰都没有**那一行。**两个短剧 preset 都无法自验自己的工具表**；`dsh-duanju` 的读数来自另开一个会话、或由用户看一次，而 **`dsh-script` 连那样的读数也还没有**。而 `preflight` 通过只说明「每一行都解析得到、每个能读的 config 都过了它自己的 schema」，它自己会告诉你它看不见什么：**激活了但什么都没贡献的行、泄漏到根 realm 的服务、以及写在 `apply()` 而不是 schema 里的校验**。步骤与探针源码在 [`docs/dsh-script.md`](docs/dsh-script.md)。
 
 **详细依据与逐条读数**在各预设自己的文档里：[`docs/dsh-smith.md`](docs/dsh-smith.md#验证状态)、[`docs/dsh-forge.md`](docs/dsh-forge.md#验证状态)、[`docs/dsh-ck3-mod.md`](docs/dsh-ck3-mod.md)、[`docs/dsh-script.md`](docs/dsh-script.md#验证状态)。（`dsh-duanju` 的旧文档已随这次窄化改名为 `docs/dsh-script.md`，它现在记的是窄化版；回落版的读数就留在上面这张表的它那一列里。）
 
