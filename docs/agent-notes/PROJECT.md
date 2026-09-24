@@ -1,13 +1,45 @@
 # DeepSeek Harness (package `dsh-smith`) — chronicle
 
 > **Scope note, added when the second preset shipped; the count in it was corrected when the
-> fourth did.** Everything below this note is the `dsh-smith` preset's record and stays scoped to
-> it. The repository now ships **four** presets; each of the other three has its own subsection
-> under `## Current state` and its own user-facing page under `docs/`. Where a sentence here says
+> fourth and again when the fifth did.** Everything below this note is the `dsh-smith` preset's
+> record and stays scoped to it. The repository now ships **five** presets; the other four each have
+> a page under `docs/` and a section in this file, but **not one uniform shape of section** —
+> `dsh-forge` is a `###` under `## Current state`, `dsh-ck3-mod` is a top-level `##`, and
+> `dsh-duanju` / `dsh-script` are described under the dated entries at the top. Read the headings
+> rather than assuming a layout; the earlier wording here claimed each preset had a `## Current
+> state` subsection, which was false for three of them when it was written.
+> Where a sentence here says
 > "this preset" without naming one, read it as `dsh-smith`; the presets have **different lineages**
-> (`dsh-smith` ← shipped `cordis`; `dsh-forge`, `dsh-ck3-mod` and `dsh-duanju` ← shipped
-> `standard`), so any statement about drift, inheritance, or a shared row applies to one of them,
-> never to several.
+> (`dsh-smith` ← shipped `cordis`; `dsh-forge`, `dsh-ck3-mod`, `dsh-duanju` and `dsh-script` ←
+> shipped `standard`), so any statement about drift, inheritance, or a shared row applies to one of
+> them, never to several.
+
+## 2026-09-24 —— 项目收尾：全面清理、整理、上传（D-112 … D-117）
+
+**这一节是当前里程碑；它下面的内容都早于它。** 一句话：短剧这一线定成**两个阶段、两个 preset**，
+待办收件箱整体移除，积压的 5 条经验落盘，**9 个提交已推送并独立验证**。
+
+| 项 | 读数 |
+| --- | --- |
+| preset 面 | **五个**：`dsh-smith` / `dsh-forge` / `dsh-ck3-mod` / `dsh-duanju` / `dsh-script`（前两者之外的三个都从出厂 `standard` 复制） |
+| 工作树 | 干净；本地 HEAD `0395083` |
+| 远端 | `ABccgh/dsh-smith` tip **`5a5ed61`**，tree `af7c1e5…` 与本地相等，**72/72** blobs 双向零差异；第一父链**正好 9 跳**回到推送前的 tip `011efda` |
+| 推送方式 | `pwsh -File bin/push-api-ref.ps1 -RemoteRepo dsh-smith -Base <本地父> -RemoteOnlyParent`，两次都是 `force=False` 的快进 —— **`-RemoteOnlyParent` 而不是 `-AllowUnrelated`**，因为远端 tip 与本地 base 是**内容相同、SHA 不同**（60/60 blobs 实测），远端区间长度为 0 |
+| 记忆 | `LESSONS.md` 8 → **13 条**；`~/.dsh/AGENTS.md` 受管区块 7653 → **16049 B / 16384 B（余量 335 B）** |
+| 待办收件箱 | 插件目录（含自身 `.git`）、profile 依赖、`insert:` 行、5 处提示词/技能引用全部移除；GitHub 上的 `ABccgh/dsh-inbox` 已**归档**（只读保留，可逆） |
+
+**两个阶段的分界（这一轮定死的）：** `dsh-script` 只做**正文**（选题 → 钩子 → 圣经 → 分集功能表 →
+逐集正文 → 交给用户去平台上评估 → 按读数改稿），28 列分镜表与平台导入模板**明确出局**；
+`dsh-duanju` 只做**正文之后**（28 列分镜表 → 可导入 xlsx → 生成 → 成片 → 投稿），
+**它不写也不改正文**。⇒ 没有哪个角色由两者共同发布；两者**也不是**互为 fallback。
+
+**这一轮推翻或纠正的旧记录（三条）：** ① `memory_remember` 的「换一个 `ctx.fs` 就写得进去」是
+**假出路** —— 宿主平面插件经 `ctx.fs` 走的是**部署默认**模式，与调用它的会话权限预设无关（D-116）；
+② `create_repository` **不再是 403**（D-117）；③ 归档一个仓库在 90 个 `mcp__github__*` 工具里
+**没有**对应工具，走 REST ＋ 同一把 token（D-117）。
+
+**唯一仍然开放的：** 四位专家对各自 preset 的**逐行贡献**没有标准程序 —— D-40 那条边界没有被这一轮的
+任何读数削弱（`standingKeyFor` 只证明「没有抛错」）。
 
 ## 2026-09-21 —— 第四个 preset：`dsh-duanju`（短剧工坊）
 

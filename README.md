@@ -2,7 +2,7 @@
 
 五个 DeepSeek Harness agent preset，一个仓库。每个都是**一个会话挂载的一份组合**，各自强化思考协议、记忆纪律与具名专家团队，各带一套随行技能。
 
-> Five DeepSeek Harness agent presets in one repository: `dsh-smith` builds harness agents and Cordis plugins, `dsh-forge` delivers software, `dsh-ck3-mod` authors Crusader Kings III mods, `dsh-script` writes the screenplay half of a vertical short drama (**选题 → 一句话钩子 → 圣经 → 分集功能表 → 逐集正文**, handed to the user for platform evaluation and revised from the reading), and `dsh-duanju` is the retained **fallback** — the same line carried further, through a 28-column storyboard and the 有戏AI production stages.
+> Five DeepSeek Harness agent presets in one repository: `dsh-smith` builds harness agents and Cordis plugins, `dsh-forge` delivers software, `dsh-ck3-mod` authors Crusader Kings III mods, `dsh-script` writes the screenplay half of a vertical short drama (**选题 → 一句话钩子 → 圣经 → 分集功能表 → 逐集正文**, handed to the user for platform evaluation and revised from the reading), and `dsh-duanju` carries that same line further — a later **stage**, not a fallback for `dsh-script` (neither replaces the other) — through a 28-column storyboard and the 有戏AI production stages.
 
 [![topics](https://img.shields.io/badge/topics-DeepSeek%20Harness%20Plugins-blue)](https://github.com/search?q=topic%3Adeepseek-harness-plugins&type=repositories)
 

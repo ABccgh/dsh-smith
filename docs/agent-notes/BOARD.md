@@ -1,5 +1,28 @@
 # Board
 
+## 2026-09-24 —— 短剧这一线收尾：清理、整理、上传（D-112 … D-117）
+
+**结论先说：本轮**没有**留下的开放工作项。** 5 个 preset 定型、9 个提交已推送并**独立验证**、
+待办收件箱已整体移除、积压的 5 条经验已落盘。
+⚠️ **下面的 `## Objective` 写的是「本文写作时」的目标（`dsh-ck3-mod`），已不是当前状态** ——
+它连同本文件其余按日期分节的内容都保留作记录，别把它读成现状。
+
+| 项 | 读数 |
+| --- | --- |
+| 本地 → 远端 | 本地 HEAD `0395083`；远端 tip **`5a5ed61`**，tree `af7c1e5…` **相等**，**72/72** blobs 双向零差异，无重复路径段 |
+| 第一父链 | 从 `891fee0` 往回**正好 9 跳**落在推送前的 tip `011efda` ⇒ 是快进，不是重写 |
+| 推送命令 | `pwsh -File bin/push-api-ref.ps1 -RemoteRepo dsh-smith -Base <本地父> -RemoteOnlyParent`；两次都 `force=False`。**用 `-RemoteOnlyParent` 而不是 `-AllowUnrelated`**：远端 tip 与本地 base 内容相同而 SHA 不同（60/60 blobs 实测），远端区间长度是 **0**，`-AllowUnrelated` 治不了那个长度检查 |
+| preset 面 | **五个**：`dsh-smith` / `dsh-forge` / `dsh-ck3-mod` / `dsh-duanju` / `dsh-script` |
+| 记忆 | `LESSONS.md` **8 → 13 条**；`~/.dsh/AGENTS.md` 受管区块 7653 → **16049 B / 16384 B（余量 335 B）** |
+| `dsh-inbox` | 本地：插件目录 ＋ profile 依赖 ＋ `insert:` 行 ＋ 5 处引用全移除；远端：`ABccgh/dsh-inbox` **已归档**（只读保留，**可逆**） |
+| 仍然开放 | 只有 D-40 那条：**没有**验证「某一行确实有贡献」的标准程序（`standingKeyFor` 只证明没抛错） |
+
+**两条要记住的操作事实：** ① `memory_remember` / `memory_consolidate` 在本部署**永远写不了
+`~/.dsh/**`** —— 宿主平面插件经 `ctx.fs` 走的是**部署默认**模式（`DSH_PERMISSION_MODE ?? 'workspace-write'`），
+与调用它的会话权限预设**无关**，所以「换个会话」是假出路（D-116）。
+② **下一条经验会因超限被拒**（拒绝而非截断，是设计）。届时的两条正道：合并/精简最大的条目，
+或**有意识地**调高 `maxBlockBytes`（真实行配置字段）。**不要为了塞进去而删已有条目。**
+
 > ## ✅ 交接已履行（09-21 深夜写下 → **09-22 19:21 完成**）—— 下面这份是当时的计划与依据，保留作记录
 >
 > **结果：两个仓库都已上传并独立验证。** `dsh-smith` 远端 tip `83d6767`、tree `5ddbdd4d…`
