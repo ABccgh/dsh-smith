@@ -40,6 +40,20 @@ layers ends at the last one's complete config.
 - delegation: `subagent`, `subagent-spawn-in-process`, `subagent-fork-in-process`
 - the web surface: `webserver`, the `api-*` controllers, `dsh-web-app`
 
+**Out-of-repo host-plane plugins register TOOLS and publish nothing.** They are added by a profile
+patch row, not by a preset, so a preset that wants their tools composes **no row at all** — and the
+tools are still visible to every session in the process. Measured inventory on this deployment:
+`$DSH_HOME/plugins/dsh-ck3-modcheck` → `ck3_modcheck` / `ck3_mod_init` / `ck3_mod_status` /
+`ck3_mod_evidence`; `$DSH_HOME/plugins/dsh-ima-kb` → the `ima_*` set; `$DSH_HOME/plugins/dsh-inbox`
+→ `inbox_*`; `$DSH_HOME/plugins/dsh-duanju-script` (plus the six tools of the same package) →
+`duanju_gate` / `duanju_contract` / `duanju_board` / `duanju_template` / `duanju_recall` /
+`duanju_checkpoint`. Two consequences worth keeping straight: **a preset cannot publish these** (a
+row for an already-registered tool name collides, since the registry is keyed by name), and
+**"tool X is in my tool table" is not evidence about which preset served the session** — only
+preset-plane things (the persona, the expert tool names) are. The host row's own `Config` export is
+a plain Standard Schema object, so `bin/preflight.mjs` reports it as
+`skip … (exports no usable Config schema)`; its config validation lives in the plugin's own tests.
+
 **Preset-plane rows** (in a preset composition; one instance per session): `persona`,
 `agent-instructions`, the `tool-*` model-facing tools, `plan-mode`, `compaction-basic`,
 the delegation tool rows, and any `skill-filesystem` layer the preset wants.
@@ -81,8 +95,10 @@ Read from `resolveChildAgentOptions` in `@deepseek-ai/dsh-subagent`, because the
    default instead of being forced onto an effort that belonged to another model.
 
 Two consequences this preset depends on. A child sharing the parent's route but inheriting its
-effort is why `agentOptions.reasoningEffort: max` is meaningful at all — most rows omit
-`agentOptions`, so they think at whatever the parent's route was using. And a row that pins an
+effort is why `agentOptions.reasoningEffort: max` is meaningful at all — a row that omits
+`agentOptions` thinks at whatever the parent's route was using, which is why the `dsh-duanju`
+team pins an effort on only the three roles whose failure is expensive to find late (编剧 /
+剧本医生 / 守门人) and leaves the other two inheriting. And a row that pins an
 effort while the lead switches models keeps its pinned effort, because naming it suppresses the
 deletion rule. `modelSelectionSettings: true` on the generic row is the separate path by which a
 child gets an independently sampled model instead.
