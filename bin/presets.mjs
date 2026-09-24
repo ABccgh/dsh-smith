@@ -106,24 +106,65 @@ export const PRESETS = {
     repoDir: 'dsh-duanju',
     displayName: '短剧工坊 · DSH Duanju',
     upstreamPreset: 'standard',
-    // The FOUR named experts and the fork surface. This preset's pipeline is
-    // 剧本 → 分镜表 → 有戏AI 出片 → 平台评估/投稿, and the platform-side half is
+    // The FIVE named experts and the fork surface. This preset's pipeline is
+    // 剧本 → 28 列分镜表 → 有戏AI 出片 → 平台评估/投稿, and the platform-side half is
     // HUMAN-ONLY (有戏AI ships no CLI and no public API, and the workspace holds no
-    // credential for it) — so no tool name here comes from a plugin, and every row
-    // resolves from the shipped packages alone. That is also why
-    // `node bin/preflight.mjs --preset dsh-duanju` is safe to run in CI, unlike
-    // `dsh-ck3-mod`'s.
+    // credential for it).
     //
-    // There is deliberately NO `tool-goal`, `tool-workflow`, `tool-ralph` or generic
-    // `subagent` name in this list: those rows are not composed here, and a session
-    // that shows them is not on this preset. `verify.mjs` prints this list as the
-    // thing to eyeball in a session it cannot open, and a longer list does not make
-    // that check stronger.
+    // KEPT AS THE FALLBACK for the narrower `dsh-script`. Because the CI inventory step
+    // reconciles the preset directories ON DISK against `package.json`'s `dsh.presets`,
+    // this directory cannot be dropped from that list without also deleting the directory.
+    //
+    // WHY NO `duanju_*` NAME IS LISTED. The script-domain tools come from a HOST-plane row
+    // (`dsh-duanju-script`, a plugin this repository does not ship and that the preset
+    // composes no row for), so they are registered into the host `tools` registry and are
+    // visible in EVERY session, not just this preset's. Listing them here would make
+    // `verify.mjs` instruct a reader to run a check that is true on every preset — a
+    // tautology. The preset-plane discriminators are the five expert names below.
+    //
+    // Note the tool names are NOT a claim about what the plugin registers today: it was
+    // narrowed to three (`duanju_gate`, `duanju_recall`, `duanju_checkpoint`). This list is
+    // about the PRESET's rows, which is a different question.
     expectedTools: [
       'expert_script',
-      'expert_board',
+      'expert_doctor',
+      'expert_dialogue',
       'expert_verifier',
       'expert_chronicler',
+      'subagent_fork',
+    ],
+    promptSurface: undefined,
+  },
+  'dsh-script': {
+    repoDir: 'dsh-script',
+    displayName: '剧本工坊 · DSH Script',
+    upstreamPreset: 'standard',
+    // The narrower sibling of `dsh-duanju`: **the script and nothing else**. 选题 → 一句话钩子
+    // → 圣经 → 分集功能表 → 逐集正文 → 交给用户在平台上评估 → 按读数改稿. The 28-column
+    // 分镜表 and the platform's xlsx import templates are deliberately OUT OF SCOPE, which is
+    // why `shotlist` is gone and why the plugin's three storyboard/template tools were deleted.
+    //
+    // THE FOUR NAMED EXPERTS ARE THE DISCRIMINATOR. The plugin's tools (`duanju_gate`,
+    // `duanju_recall`, `duanju_checkpoint`) are HOST-plane — one row in the profile's
+    // `cordis.patch.yml`, no row here — so they are visible in every session and are
+    // worthless as a preset test. What proves a session is on THIS preset is these four
+    // names plus `subagent_fork` (the five delegation rows).
+    //
+    // There is deliberately NO `expert_verifier`, NO `expert_chronicler`, NO `tool-goal`,
+    // NO `tool-workflow`, NO `tool-ralph` and NO generic `subagent` name here: those rows are
+    // not composed, and a session that shows them is not on this preset. `verify.mjs` prints
+    // this list as the thing to eyeball in a session it cannot open, and a longer list does
+    // not make that check stronger.
+    //
+    // `preflight --preset dsh-script` CAN run in CI: every row resolves from a shipped
+    // `@deepseek-ai/*` package, because the plugin needs no row (it is host-plane, so a
+    // missing plugin costs the tools, not the mount). Measured on this machine:
+    // `validated: 16   skipped: 9   failed: 0`.
+    expectedTools: [
+      'expert_script',
+      'expert_doctor',
+      'expert_dialogue',
+      'expert_continuity',
       'subagent_fork',
     ],
     promptSurface: undefined,

@@ -16,7 +16,7 @@
 
 ## 与 `dsh-smith` / `dsh-forge` 的分工
 
-同一个仓库里现在有**四个**预设；本表只比其中三个（`dsh-duanju` 见 [`docs/dsh-duanju.md`](dsh-duanju.md)），定位不同，互不覆盖：
+同一个仓库里现在有**五个**预设；本表只比其中三个（短剧那两个见 [`docs/dsh-script.md`](dsh-script.md) —— 记的是窄化后的剧本版；`dsh-duanju` 是保留在盘上的回落版，它的状态在 [`README.md`](../README.md) 的比较表里），定位不同，互不覆盖：
 
 | | `dsh-smith` | `dsh-forge` | `dsh-ck3-mod` |
 | --- | --- | --- | --- |

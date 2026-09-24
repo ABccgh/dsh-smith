@@ -3,31 +3,51 @@
 This tree is the **`dsh-smith` npm package** and the presets it ships. Source of truth for each
 composition is that preset's own directory: `dsh-smith/agent.cordis.yml` (builds harness agents
 and Cordis plugins), `dsh-forge/agent.cordis.yml` (software delivery),
-`dsh-ck3-mod/agent.cordis.yml` (a Crusader Kings III **mod-authoring** agent), and
-`dsh-duanju/agent.cordis.yml` (a vertical short-drama production line whose script stage is gated
-by the user's own evaluation on the 有戏AI platform). `bin/presets.mjs`
+`dsh-ck3-mod/agent.cordis.yml` (a Crusader Kings III **mod-authoring** agent),
+`dsh-script/agent.cordis.yml` (**剧本 and nothing else**: 选题 → 一句话钩子 → 圣经 → 分集功能表 →
+逐集正文 → 交给用户在平台上评估 → 按读数改稿; the 28-column 分镜表 and the platform's xlsx import
+templates are deliberately **out of scope**), and `dsh-duanju/agent.cordis.yml` (the same line
+carried further — through the storyboard to 有戏AI 出片 and 投稿 — kept on disk as the **fallback**
+for the narrower `dsh-script`). `bin/presets.mjs`
 is the registry of which presets exist, which directory each lives in, and which shipped preset
 each one was copied from — the five scripts that install, verify, lint, drift-check and preflight a
 preset read their paths from it. The ids are mirrored in `package.json`'s `dsh.presets`, which
 `bin/check-pack.mjs` reads for the packed surface and the CI inventory step reconciles against disk,
-so **a new preset is an edit in both files**.
+so **a new preset is an edit in both files** — and because the CI inventory step compares the
+on-disk directories against that list, **a directory left on disk must stay declared**: `dsh-duanju/`
+stays in both, which is why that fallback cannot be removed from `package.json` without also
+deleting its directory.
 
-**Preset rows and shipped packages: three of the four presets resolve entirely from shipped
-packages, and one does not.** `dsh-duanju` is the clean case — every one of its rows names a
-shipped `@deepseek-ai/*` package, so `preflight --preset dsh-duanju` runs in CI beside
-`dsh-smith`'s and `dsh-forge`'s, and it deliberately has **no** out-of-repo plugin row: its
+**Preset rows and shipped packages: four of the five presets resolve entirely from shipped
+packages, and one does not — but TWO presets depend on an out-of-repo plugin, on DIFFERENT planes,
+and that difference is what decides which steps CI can run.**
+`dsh-smith`, `dsh-forge`, `dsh-duanju` and `dsh-script` are the clean case: every one of their rows
+names a shipped `@deepseek-ai/*` package, so `preflight --preset <id>` runs in CI. `dsh-duanju`'s
 platform-side steps (有戏AI 的登录、导入、生成、评估、发布) are human-only, so wrapping them in a
-plugin would be inventing an interface that platform does not offer. **`dsh-ck3-mod` is the one preset whose rows name a package this repository does not ship** —
+plugin would be inventing an interface that platform does not offer.
+**`dsh-ck3-mod` is the one preset whose rows NAME a package this repository does not ship** —
 `dsh-ck3-modcheck`, a host-plane Cordis plugin under `$DSH_HOME/plugins/` (rule 7's pattern, like
 `dsh-ima-kb`). Two measured consequences. `bin/preflight.mjs --preset dsh-ck3-mod` passes only where
-that plugin is installed, which is why `.github/workflows/checks.yml` **excludes** that step rather
-than running it under a `continue-on-error`. And that same script **does not validate that row's
-config at all**: it reads a row's `Config` export only when that export is a *function*
-(`bin/preflight.mjs:178`, `typeof Schema !== 'function'` → `no-schema`), while this plugin exports
-the plain-object Standard Schema exactly as `dsh-ima-kb` does, so it prints
-`skip … (exports no usable Config schema)`. Config validation for it therefore lives in the plugin's
-own `test/falsify.mjs`, next to assertions that six planted defects are each named and that a real
-vanilla localization file produces zero findings.
+that plugin is installed — measured on this machine, where it is: `validated: 16   skipped: 9
+failed: 0`, exit 0 — which is why `.github/workflows/checks.yml` **excludes** that step rather than
+running it under a `continue-on-error`; a runner has no profile, so the same command there reports
+`Cannot find package`. And that same script **does not validate that row's config at all**: it reads
+a row's `Config` export only when that export is a *function* (`bin/preflight.mjs:178`,
+`typeof Schema !== 'function'` → `no-schema`), while this plugin exports the plain-object Standard
+Schema exactly as `dsh-ima-kb` does, so it prints `skip … (exports no usable Config schema)`. Config
+validation for it therefore lives in the plugin's own `test/falsify.mjs`, next to assertions that six
+planted defects are each named and that a real vanilla localization file produces zero findings.
+**`dsh-script` is the second preset with an out-of-repo dependency, and it names nothing.** Its
+plugin `dsh-duanju-script` (source `D:\dsh-duanju-script\`, a `link:` dependency of the profile
+rather than a directory under `$DSH_HOME/plugins/`) is a **host-plane** row in
+`profiles/<profile>/cordis.patch.yml` that registers three tools into the host `ctx.tools` and
+publishes no service (`inject = ['fs','tools']`, no `provide()`). So the preset composes **no row for
+it** and `preflight --preset dsh-script` resolves every row from shipped packages exactly like the
+four clean presets above — which is the whole reason it belongs in CI while `dsh-ck3-mod`'s step does
+not. The consequence in the other direction is the one to remember in a session: without the plugin
+the preset still mounts, but the three tools do not appear. Today that plugin still registers **six**
+tools (`duanju_gate`, `duanju_recall`, `duanju_checkpoint` plus the three the narrowing removed);
+three is the target state, recorded at `dsh-script/agent.cordis.yml:41-49`.
 
 ## Evidence rules
 
@@ -113,16 +133,17 @@ vanilla localization file produces zero findings.
 
 6. **Edit the preset here, never the installed copy by hand.** The live files are
    `${DSH_HOME}/.agent-presets/<id>/agent.cordis.yml`. A hand edit there creates silent
-   drift from this repo. Change `dsh-smith/**`, `dsh-forge/**`, `dsh-ck3-mod/**` or `dsh-duanju/**` and then
+   drift from this repo. Change `dsh-smith/**`, `dsh-forge/**`, `dsh-ck3-mod/**`, `dsh-duanju/**` or
+   `dsh-script/**` and then
    re-install — `node bin/install.mjs --preset <id>` is the *sanctioned* writer for that path,
    and `--force` is a real replace (delete then copy), which is what removes skills a newer
-   version dropped. All four local preset directories are *user* preset territory and are
+   version dropped. All five local preset directories are *user* preset territory and are
    authoring-free; the shipped presets under the deployment's own `agent-presets`
    directory (`standard`, `ptc`, `minimal`, `cordis`) are the ones that must never be
    written at all.
 
-7. **This repo ships presets and nothing else.** Four directories — `dsh-smith/`, `dsh-forge/`,
-   `dsh-ck3-mod/` and `dsh-duanju/` — are the whole owned surface, and each is written to its install target only through
+7. **This repo ships presets and nothing else.** Five directories — `dsh-smith/`, `dsh-forge/`,
+   `dsh-ck3-mod/`, `dsh-duanju/` and `dsh-script/` — are the whole owned surface, and each is written to its install target only through
    `bin/install.mjs --preset <id>` (rule 6). A **Cordis plugin is a different kind of thing** and
    would not belong here: it is mounted by a *host-composition row* in a profile's
    `cordis.patch.yml`, and the sanctioned writer for a profile's dependency graph is
@@ -204,9 +225,10 @@ vanilla localization file produces zero findings.
 ## Boundaries
 
 - Do not modify, migrate, or delete anything under `~/.dsh/**` — profiles, sessions, or other
-  presets' installs — from a session rooted here, **except** the four preset directories this
-  repo owns (`~/.dsh/.agent-presets/dsh-smith`, `.../dsh-forge`, `.../dsh-ck3-mod`, `.../dsh-duanju`),
-  and only through `bin/install.mjs`, which is the sanctioned writer for exactly those four paths. A hand
+  presets' installs — from a session rooted here, **except** the five preset directories this
+  repo owns (`~/.dsh/.agent-presets/dsh-smith`, `.../dsh-forge`, `.../dsh-ck3-mod`, `.../dsh-duanju`,
+  `.../dsh-script`),
+  and only through `bin/install.mjs`, which is the sanctioned writer for exactly those five paths. A hand
   edit under `~/.dsh` is still a violation even for an owned preset. **Removing one is the
   exception that proves the rule:** `agentPresets.remove(id)` is the only sanctioned delete, it
   needs the `cordis_*` tools, and those exist only in a shipped-`cordis` session — so when a preset

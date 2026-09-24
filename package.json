@@ -1,7 +1,7 @@
 {
   "name": "dsh-smith",
   "version": "0.3.0",
-  "description": "Four DeepSeek Harness agent presets: `dsh-smith`, which builds harness agents and Cordis plugins, `dsh-forge`, a software-delivery agent, `dsh-ck3-mod`, a Crusader Kings III mod-authoring agent with a check-before-delivery gate, and `dsh-duanju`, a vertical short-drama production line whose script stage is gated by the user's own evaluation on the 有戏AI platform. Each carries a thinking protocol, a layered memory discipline, and a standing team of named experts.",
+  "description": "Five DeepSeek Harness agent presets: `dsh-smith`, which builds harness agents and Cordis plugins, `dsh-forge`, a software-delivery agent, `dsh-ck3-mod`, a Crusader Kings III mod-authoring agent with a check-before-delivery gate, `dsh-script`, a 剧本 (screenplay) specialist with the storyboard deliberately out of scope, and `dsh-duanju`, the same short-drama line carried further through the 28-column storyboard to 有戏AI 出片 and 投稿, kept as the fallback. Each carries a thinking protocol, a layered memory discipline, and a standing team of named experts.",
   "keywords": [
     "deepseek-harness",
     "dsh",
@@ -27,6 +27,7 @@
     "dsh-forge",
     "dsh-ck3-mod",
     "dsh-duanju",
+    "dsh-script",
     "README.md",
     "LICENSE"
   ],
@@ -81,6 +82,11 @@
         "id": "dsh-duanju",
         "repoDir": "dsh-duanju",
         "installTarget": "${DSH_HOME:-~/.dsh}/.agent-presets/dsh-duanju"
+      },
+      {
+        "id": "dsh-script",
+        "repoDir": "dsh-script",
+        "installTarget": "${DSH_HOME:-~/.dsh}/.agent-presets/dsh-script"
       }
     ]
   },

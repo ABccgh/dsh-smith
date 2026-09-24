@@ -1,4 +1,4 @@
-# Checks for the `dsh-smith` package: the four presets, the shipped scripts, and the
+# Checks for the `dsh-smith` package: the five presets, the shipped scripts, and the
 # published tarball's shape.
 #
 # WHY THIS EXISTS. Every other check in this repository runs against the WORKING TREE, so a
@@ -26,7 +26,7 @@
 #   * `agentPresets.standingKeyFor(<id>)` — the real mount check. It needs a live harness
 #     process reached through the `cordis_*` tools, which exist only in a session on the
 #     shipped `cordis` preset. CI has no harness, so this workflow CANNOT and DOES NOT prove
-#     that either preset mounts. Do not read a green run as that claim.
+#     that any preset mounts. Do not read a green run as that claim.
 #
 # NO SECRETS. Both jobs are read-only and need no token: `permissions: contents: read` and no
 # `secrets.*` reference anywhere below, so this workflow is safe to run on a fork's pull
@@ -45,8 +45,8 @@ permissions:
 
 jobs:
   checks:
-    # windows-latest rather than ubuntu-latest: this package targets Windows (the two owned
-    # presets mount `dsh-tool-pwsh`, and `bin/*.ps1` are PowerShell), so CI matches the
+    # windows-latest rather than ubuntu-latest: this package targets Windows (every owned
+    # preset composes `dsh-tool-pwsh`, and `bin/*.ps1` are PowerShell), so CI matches the
     # platform it actually ships for instead of testing a configuration nobody runs.
     runs-on: windows-latest
     steps:
@@ -77,6 +77,9 @@ jobs:
       - name: lint skills (dsh-duanju)
         run: node bin/lint-skills.mjs --preset dsh-duanju
 
+      - name: lint skills (dsh-script)
+        run: node bin/lint-skills.mjs --preset dsh-script
+
       - name: preflight — resolve every row's package and validate every config
         run: node bin/preflight.mjs
 
@@ -92,6 +95,27 @@ jobs:
       - name: preflight (dsh-duanju)
         run: node bin/preflight.mjs --preset dsh-duanju
 
+      # `dsh-script` ALSO DEPENDS ON AN OUT-OF-REPO PLUGIN — ON THE HOST PLANE, WHICH IS WHY THIS
+      # STEP IS HERE WHILE `dsh-ck3-mod`'s BELOW IS NOT. The plugin is `dsh-duanju-script`
+      # (source `D:\dsh-duanju-script\`, a `link:` dependency of the profile, added with
+      # `dsh plugin --profile <profile> add <path>`), mounted by one `insert:` row in a profile's
+      # `cordis.patch.yml`: it publishes no service and only registers three tools into the host
+      # `ctx.tools`. The preset composes NO ROW for it — and `preflight` walks the rows of the
+      # preset's own composition — so the plugin's absence on a runner cannot fail this step.
+      # Measured locally when this step was added:
+      #   node bin/preflight.mjs --preset dsh-script
+      #   → rows: 27 / validated: 16   skipped: 9   failed: 0 / exit 0
+      # (That id has to be present in `bin/presets.mjs` AND in `package.json`'s `dsh.presets` for
+      # the command to resolve at all — `AGENTS.md`: a new preset is an edit in both files.)
+      #
+      # THE INVARIANT THIS STEP RESTS ON: keep the plugin out of the preset's rows. A row naming
+      # that package would make this step `Cannot find package` on every runner, and then it must be
+      # EXCLUDED with a written reason — like `dsh-ck3-mod`'s — never run under a
+      # `continue-on-error`. The other direction is just as important to know: because the plugin is
+      # host-plane, this step says NOTHING about whether its three tools appear in a session.
+      - name: preflight (dsh-script)
+        run: node bin/preflight.mjs --preset dsh-script
+
       # ONE OF THIS PRESET'S ROWS NAMES A HOST-PLANE PLUGIN THIS REPOSITORY DOES NOT
       # SHIP — `dsh-ck3-modcheck`. It resolves from the profile's `node_modules` in a
       # real deployment, so `preflight --preset dsh-ck3-mod` PASSES on a machine with
@@ -103,8 +127,10 @@ jobs:
       # Run it by hand, on a machine with the plugin installed:
       #   node bin/preflight.mjs --preset dsh-ck3-mod
       #
-      # The contrast with `dsh-duanju` above is the point: the exclusion is a property of
-      # that ONE row naming an out-of-repo package, not a policy about new presets.
+      # The contrast is the point: `dsh-duanju` and `dsh-script` above both run, this one does
+      # not, and the difference is ONE row naming an out-of-repo package — not a policy about new
+      # presets. A plugin on the HOST plane (no row in the preset) is invisible to this script in
+      # both directions: it can neither fail the step nor be validated by it.
 
       # The step this workflow exists for: read the PACKED artifact, not the tree.
       - name: published tarball carries every declared preset
