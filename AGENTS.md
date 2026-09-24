@@ -338,10 +338,20 @@ three is the target state, recorded at `dsh-script/agent.cordis.yml:46-53`.
   and every delegated child**. The credential was then upgraded, and **writes work**: `push_files` and
   `create_pull_request` answered 2xx (so did a close-PR call), and `create_or_update_file`,
   `create_branch`, `actions_run_trigger`, `issue_write`, `add_issue_comment`, `merge_pull_request` all
-  reached the API and failed only on the bogus arguments they were given. Still 403: `create_repository`
-  (account-level — needs a **GitHub App**: `--app-id`/`--app-installation-id`/`--app-private-key-path`),
-  star/unstar, and the reads `list_notifications`, `projects_list`, `list_code_scanning_alerts`,
-  `list_dependabot_alerts`.
+  reached the API and failed only on the bogus arguments they were given. **`create_repository` was 403
+  then, and is NO LONGER — measured 2026-09-24:** it returned `{"id":"1385636531","url":
+  "https://github.com/ABccgh/dsh-duanju-script"}` and the repository exists. So the earlier
+  "account-level, needs a **GitHub App**" reading was a property of the credential at that time, not of
+  the tool; the App flags (`--app-id`/`--app-installation-id`/`--app-private-key-path`) were never
+  exercised. **Re-probe before repeating the 403:** a permission reading has a date, and this line
+  proves it can rot in the permissive direction. Still 403 as of that same day: star/unstar, and the
+  reads `list_notifications`, `projects_list`, `list_code_scanning_alerts`, `list_dependabot_alerts`.
+  **And one toolset gap that is NOT a permission fact:** there is **no tool that updates a repository**,
+  so `archived: true` is unreachable through `mcp__github__*` at all — the 90 tools cover issue/PR/
+  file/ref/tree/commit/release/ruleset/projects/actions, but not `PATCH /repos/{o}/{r}`. Measured
+  2026-09-24, when `ABccgh/dsh-inbox` was archived (read-back `archived=true`) **over REST with the same
+  token from `$DSH_HOME/.env`**, because that was the only route — the same pattern as
+  `bin/push-api-ref.ps1`. Do not read "no MCP tool" as "not permitted".
   **Two traps that cost real state here, both worth knowing before probing permissions:**
   (i) **"Point the write probe at something that does not exist" is NOT a safe rule** — `push_files`
   *creates* its target branch, so the next probe in the list (`create_pull_request`) found a real head and

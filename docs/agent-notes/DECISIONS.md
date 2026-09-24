@@ -4945,3 +4945,43 @@ PENDING-LESSONS 所指的那个会话」—— 实测仍被拒，两个「策略
 ④ 结构缺陷的字节数（728 / 974 / 1 702 / 超限 1 301）由只读探针逐条打印，
 探针与落盘脚本在 `%TEMP%\duanju-recon\`（`measure-pending.mjs` / `simulate-remember.mjs` /
 `consolidate-pending.mjs`）。
+
+## D-117: `create_repository` 不再是 403（旧读数被推翻），以及**「没有这个工具」不等于「没有这个权限」**
+
+**决定：** 更正 `AGENTS.md` 里那条权限读数，并记下「归档一个仓库」的真实路线。
+两条都是**写入面**的事实，因此都带日期与一次真实调用。
+
+### 一、被推翻的旧读数：一次「在放宽方向上腐坏」的测量
+
+`AGENTS.md` 原写：`Still 403: create_repository (account-level — needs a GitHub App:
+--app-id/--app-installation-id/--app-private-key-path)`，**measured 2026-09-19**。
+2026-09-24 实测：它**成功**，返回 `{"id":"1385636531","url":"https://github.com/ABccgh/dsh-duanju-script"}`，
+且该仓库存在。⇒ 旧读数描述的是**当时那把凭据**的能力，不是工具的能力；三个 App 旗标**从未被真正用过**
+（它们是被"需要 GitHub App"这个推断写进记录的，不是被调用失败写进去的）。
+**可迁移的一条：权限读数带日期，而且它会在「放宽」的方向上腐坏。** 收紧会立刻制造失败，
+放宽不会 —— 于是没有任何检查、任何测试、任何脚本读数会因此变红，记录只在下一个真正需要它的人
+到来时才静默为假。这与「一条被记录为可用的路线是对实现它的那段代码的断言」同族，但对象是**凭据**
+而不是代码：**改凭据之后要重跑那条调用**。
+
+### 二、「没有这个工具」不等于「没有这个权限」
+
+用户要求归档 `ABccgh/dsh-inbox`（归档前 GET：`archived: false`，token 对它有 `admin: true`，
+`created_at 2026-09-19T15:47:34Z`）。枚举这 90 个 `mcp__github__*` 工具后发现：
+**没有任何一个能修改仓库本体** —— 覆盖面是 issue / PR / 文件 / 引用 / tree / commit / release /
+ruleset / projects / actions，但**没有 `PATCH /repos/{owner}/{repo}`**，而 `archived` 只由它设置。
+所以走 MCP **完全不可达**，这不是权限问题。实际用**同一把** token（`$DSH_HOME/.env`）走 REST PATCH，
+读回 `archived=true` 确认。
+⇒ 与 `bin/push-api-ref.ps1` 是同一个形状：**工具面缺失时，REST ＋ token 是本部署的既有路线，不是绕路。**
+⇒ 也提醒一条量法：**先证明「工具不存在」，再断言「做不到」** —— 两者看起来都是"没成功"。
+
+### 三、什么会推翻本条
+
+① 若 `create_repository` 再次 403，那是凭据又变了 —— **重新探一次**，不要照抄本条（本节的存在
+理由正是旧读数被照抄了五天）；② 若将来 MCP 工具集补上了仓库更新工具，第二节的 REST 路线即可退休；
+③ 归档**可逆**（`archived:false` 一次调用即可），所以本条的后果不是不可撤销的；
+④ 若那把 token 被换掉，第一节的读数与第二节的路线都要重测。
+
+**证据。** ① `create_repository` 的返回体见第一节（id 与 url 逐字取自响应）；② 归档的两次 GET
+见第二节：`archived=False → True`（第二次是重新读，不是采信第一次的响应）；③ 「没有仓库更新工具」
+由枚举本会话可见的 `mcp__github__*` 工具得出（**这是工具面读数，不是权限读数**）；
+④ `created_at`、`admin: true`、`size 46KB` 来自归档前的 GET。
