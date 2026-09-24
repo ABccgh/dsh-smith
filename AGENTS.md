@@ -178,7 +178,13 @@ three is the target state, recorded at `dsh-script/agent.cordis.yml:46-53`.
    its own `.git`, 1 commit, 0 remotes), the profile dependency, the `insert:` row, and the five
    prompt/skill references to `inbox_add` were all removed in one pass**; the row's site now carries
    an "已移除" note and the three measured reasons it was built the way it was live on in
-   `docs/agent-notes/DECISIONS.md` **D-115**, because deleting the directory destroyed the only copy.
+   `docs/agent-notes/DECISIONS.md` **D-115**, because deleting the directory destroyed the only *local* copy.
+   **That sentence was imprecise when it was written, and on 2026-09-24 it became true in a different way:**
+   the GitHub repository `ABccgh/dsh-inbox` then held a 13-file copy of the implementation (it had existed
+   since 2026-09-19), and at the user's request that repository has since been **deleted** — so no copy
+   exists anywhere now, and D-115's design reasoning is what remains. A tarball was taken first and kept at
+   `D:\dsh-inbox-retired-20260924.tar.gz` (13 files, 34.5 KB); see **D-119**. Do not go looking for the
+   repository, and do not rebuild the plugin without reading D-115 first.
    What the removal cost, and the reason it is worth remembering: that row was ALSO the persistent
    channel for `ask_user_question` (`captureQuestions: true` queued a blocking question for later
    answering, and the answer resolved the same pending tool call). With it gone,

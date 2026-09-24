@@ -5071,3 +5071,78 @@ is not recommended without an independent security review**」。私钥就躺在
 **未做**：没有用 installation token 实跑 `POST /user/repos`（证据是该端点自己的
 `enabledForGitHubApps:false`，不是一次实跑）；也没有实测 >60 分钟的续期。
 **本次为用户明确选择的「什么都不改」**：`~/.dsh/**` 未被触碰。
+
+## D-119: 九个仓库全部推到最新，并删除「本地无源」的 `ABccgh/dsh-inbox`
+
+**决定：** 按用户 2026-09-24 的要求做两件事 —— ①「把 GitHub 上所有仓库更新到最新版本」；
+②「删除本地无源的仓库」。两件都已实测完成。
+
+### 一、普查：10 个远端仓库里只有 4 个需要动作
+
+| 远端仓库 | 动作 | 结果 |
+| --- | --- | --- |
+| `ai-video-workbench` | 先提交 7 个未提交文件（+519/−13 的一次对账），再推 2 个提交 | 远端 tip `91d6833`，tree `3f3d655` |
+| `dsh-desktop` | 推 2 个提交 | 远端 tip `d4c218d`，tree `ccb169d` |
+| `dsh-duanju-script` | **空仓库** → 引导 → `-Force` 推 8 个提交 | 远端 tip `ca77a095`，tree `1a3640ca` |
+| `dsh-inbox` | **删除** | `HTTP 404`，账号仓库总数 10 → 9 |
+| 其余 6 个 | **不动** | `dsh-smith` / `dsh-ck3-modcheck` / `dsh-agent-memory` / `dsh-ima-kb` / `dsh-account-balance` tree 逐字节相同；`cn-dejure-conquest` 5/5 文件相同 |
+
+三个推送都用 `bin/push-api-ref.ps1`，前两个 `-RemoteOnlyParent`（远端区间长度为 0，
+`-AllowUnrelated` 治不了长度检查），第三个 `-Force`。**三个都 `force=False`/`force=True` 如预期，
+远端 tree 全部等于本地 `HEAD^{tree}`。**
+
+### 二、一个**会被反复误判**的读数：`cn-dejure-conquest` 没有 `.git`，但它并不落后
+
+它的本地源是 `D:\CK3Mods` —— **一个没有 `.git` 的普通目录**。用 tree 比较会得到空值，
+看起来像「落后」甚至「无源」。实际逐文件用 `git hash-object` 比 blob SHA：**5/5 全同，且本地无多余文件**。
+⇒ **判据要落到 blob 层，不能停在「有没有 `.git`」。** 同一个形状也解释了为什么它**不能**用推送脚本更新
+（脚本要 `git -C $PWD` 读提交对象）——那是**可修**的（`git init` 即可），与 `dsh-inbox` 的「什么都没有」是两件事。
+
+### 三、空仓库的引导路线（`dsh-duanju-script`，唯一的新形状）
+
+`GET /branches/main` → `404`：仓库**一个提交都没有**，git 数据库端点不可用（D-33/D-45 记过 `409 Git Repository is empty.`），
+两个推送脚本都推不进去。路线：**① 一次 Contents-API 写入造出第一个提交**（写了一个注明用途的占位 `README.md`）
+→ **② `-Force -DryRun` 先看**（`mode : FORCE`、首个提交 `parent(remote)=(root)`）→ **③ `-Force` 真跑**。
+
+**结果证明引导提交没有污染产物**：推送后远端仍是 **8 个 blob**，`README.md` 的 blob SHA 等于本地
+`HEAD:README.md` 的（`fcab29a4…`）—— 那个占位符版本在分支上**不存在**。
+它作为**不可达对象**仍可按 SHA 取到（`7cbcb51` 仍 200），这是 GitHub 的正常行为，不是残留。
+
+### 四、`dsh-inbox` 的删除：它是那份实现的**最后拷贝**
+
+删除前实测：13 个 blob，含 `lib/index.js`（32,685 B）、`lib/client.js`（14,814 B）、
+`NOTES.md`（13,814 B）与 7 个测试文件。本地目录早在 D-115 整体删除，
+**D-115 保存的是设计理由与三条实测事实，不是代码** ⇒ 删掉即失去实现。
+所以**先留档再删**：`D:\dsh-inbox-retired-20260924.tar.gz`（34.5 KB，13 个文件逐个与 API 的 `size` 对上）。
+留档走 **codeload + `Invoke-WebRequest`**（实测可用；不用 `curl.exe`，本机 schannel 缺陷）。
+
+**两个实测到的操作事实：**
+* **归档状态不影响删除** —— 计划里备了「先解除归档再删」，**实际不需要**：`archived: true` 的仓库
+  `DELETE /repos/{o}/{r}` 直接返回 2xx。
+* **`delete_repository` 在二进制里有、在我的工具面里没有** —— 服务器的 README 列了它
+  （`OAuth Challenge Scopes: delete_repo, repo`），但我的可调用工具目录里没有它。
+  ⇒ 这是**工具面缺口**，不是权限缺口；走的 REST，与 D-117 归档同一条路。**别把「没有这个工具」读成「没有这个权限」。**
+
+### 五、一条踩了**两次**的陷阱：这些工具从 `$PWD` 判断「哪个仓库」
+
+`bin/push-api-ref.ps1` 用 `git -C $PWD`（D-56 记过）。本会话实测：从 `D:\DeepSeek Harness` 调用它去推
+`D:\AIVideo`，它去 dsh-smith 里找那个 base，报 `no local commits in <sha>..HEAD` —— **看起来像推送失败，
+其实是被推的提交不在当前仓库里**。同一天我在自己写的校验脚本上**又踩了一次**：它用裸 `git`，
+于是从 dsh-smith 里校验 AIVideo 的提交时报 `ambiguous argument '<sha>^{tree}': unknown revision`。
+⇒ **规矩：调用方必须把 `workdir` 设成被操作的仓库**；校验脚本已加 `-LocalPath` 参数把它变成本地事实，
+而不是依赖调用者的当前目录。**「命令跑对了、只是跑在了别的仓库上」这个形状不会自己报警。**
+
+### 六、什么会推翻本条
+
+① 若某个仓库的本地源被移动/删除，第一节的「已同步」立刻失效，**须重跑普查**（判据是 tree，不是记忆）；
+② 若要恢复 `dsh-inbox`：解档 `D:\dsh-inbox-retired-20260924.tar.gz` 即得 13 个文件，
+但**不要在没读 D-115 之前重建它**（那三条实测事实决定了它当初为什么那样写）；
+③ 若将来给 `cn-dejure-conquest` 做了 `git init`，第二节那条「无 `.git` 也能同步」的提醒就只余历史意义；
+④ 若有人再把 `-Force` 用在**非空**仓库上，第一节「丢弃的只是引导提交」这个前提就不成立了。
+
+**证据。** 三次推送的脚本输出（含 `mode`、逐提交 `parent(remote)`、`remote tree`/`local tree` 相等）；
+三个仓库的独立校验各 **5/5 通过**（tree 相等、逐 blob 零差异、第一父链 N 跳落到推送前 tip、无重复路径段、
+关键路径在场）—— 读数取自 API 与 `git`，**未采信脚本自述**；
+`ai-video-workbench` 的 272 个 blob 与该仓库对账记录里「受跟踪 272 个文件」互相印证；
+`dsh-inbox` 删除后 `GET` → 404 且 `search/repositories user:ABccgh` 的 `total_count` 由 **10 → 9**（两个独立判据）；
+留档 13/13 文件与 API 的 `size` 逐一相符。
