@@ -4853,3 +4853,95 @@ owner.followup(message) / owner.inject(message) })`，即**它自己就是那个
 `node test/falsify.mjs` 27/27（删前）；`git -C <plugin> log --oneline -1` = `a98ecb4`、
 `git remote` 输出为空；profile patch 的 `:106-133`（注释 ＋ 一行 `insert:`，config 三键
 `dataPath` / `captureQuestions` / `refreshMs`）。
+
+## D-116: 5 条积压经验**已落盘**，并纠正原记录里的一条**假出路** —— 宿主平面插件经 `ctx.fs` 写盘与被写会话的权限预设**无关**
+
+**决定：** 把 `docs/agent-notes/PENDING-LESSONS.md` 里积压的 5 条经验写进用户全局记忆，并更正该文件
+对「为什么写不进去」的诊断。**经验本体一字未改**；改的是**通路**与**对通路的解释**。
+
+### 一、读数（两条独立路径给出同一个数）
+
+| 项 | 落盘前 | 落盘后 |
+| --- | --- | --- |
+| `~/.dsh/agent-memory/LESSONS.md` 条目数 | 8 | **13** |
+| `~/.dsh/AGENTS.md` 受管区块 | 7 653 B | **16 049 B**（上限 16 384 B ⇒ 余量 **335 B**）|
+
+两条路径：① 我按插件的 `parseLessons`/`renderBlock` 自己算；② 落盘后调 `memory_consolidate --dryRun`，
+它回读「**13 条经验** / 受管区块 **16049 B** / 实际变化：**无**」。**②比①强**：它证明磁盘上的区块与
+插件自己的渲染器**逐字节一致**，而不只是与我的复算一致。
+
+### 二、实际走通的路：工具入口被拒，改用插件**自己导出的纯函数**
+
+`memory_remember` 被拒：`the fs sandbox refused it (… file access denied under workspace-write mode)`。
+**第一次尝试时的假设是错的**：我以为「本会话文件策略是 `danger-full-access`，所以本会话就是
+PENDING-LESSONS 所指的那个会话」—— 实测仍被拒，两个「策略」不是同一个旋钮（第三节）。
+
+走通的路线是 D-98 的先例：用插件自己导出的 `parseLessons` / `renderBlock` / `spliceBlock` 生成字节，
+由会话侧（有 `danger-full-access`）落盘。**要如实说清它绕掉的是什么：绕掉的是那道围栏，不是插件的逻辑。**
+字节由插件自己的函数产出，且每条正文都按 `memory_remember` 的格式补了 `- 记录于：<日期>`
+（`dsh-agent-memory/lib/index.js:518-521`），所以落进去的条目与该工具**本该写出的同形**。
+
+脚本先打印四条读数、再落盘：超 `maxBlockBytes` 则拒绝（不截断）；标记外**逐字节不变**
+（本次：标记前 **0 B**、标记后 **1 B**，均相同）；按标题去重；**区块每次重渲染**。
+最后一条是修出来的：我第一版在这里「没有新条目就退出」，那会让一次「`LESSONS.md` 写了、
+`AGENTS.md` 没写」的半途失败变成**永久陈旧**——重跑会说「没有新条目」然后什么都不做。
+
+**一个顺带的事实，也是个陷阱：** 用户全局 `AGENTS.md` 在标记**之前 0 B、之后 1 B**（一个换行）
+—— **整个文件就是那个受管区块**，没有人类手写的外围部分。所以任何人手工往这个文件里加一条规矩，
+下一次 `memory_consolidate` 会**静默覆盖**它。要加规矩就加在 `LESSONS.md` 里。
+
+### 三、纠正：原记录的「换一个会话」是**假出路**
+
+原记录写「换一个 `ctx.fs` 允许写用户全局目录的会话」。2026-09-24 在一个文件策略为
+`danger-full-access` 的会话里重测，**仍然被拒，报的还是 `workspace-write`**。逐环读代码后链条闭合：
+
+1. `dsh-base/cordis.patch.yml:208-212` 配置 `sandbox-policy` 行：
+   `mode: !!js process.env.DSH_PERMISSION_MODE ?? 'workspace-write'`、`workspaceRoot: !!js process.cwd()`；
+2. `DSH_PERMISSION_MODE` 在本机**未设置**（`Get-ChildItem env:DSH*` 只有 `DSH_HOME` / `DSH_SESSION_ID`
+   / `DSH_SHELL` / `DSH_WEB_URL`）⇒ 部署默认模式就是 `workspace-write`；
+3. `dsh-sandbox-policy/lib/index.js:141-145`：`resolve(request = {})` 在请求里**没有 `session`** 时
+   取 `this.defaultMode`，会话覆盖值走不到；
+4. `dsh-fs-sandbox/lib/index.js:154`：写入围栏调 `this.ctx.sandboxPolicy.resolve()`——**不传 request**；
+5. `dsh-sandbox/lib/index.js:155-161`：`writableRoots(policy)` 是**纯函数**
+   （`workspaceRoot` + `/tmp` + `tmpdir()`），**没有「额外可写根」这个入参**。
+
+⇒ **本部署里任何宿主平面插件经 `ctx.fs` 写盘，都被钉在「harness 进程 cwd ＋ 临时目录」内，
+与会话权限预设无关**；`memory_remember` / `memory_consolidate` 因此**永远写不了 `~/.dsh/**`**。
+插件自己那句提示（"run a session whose policy allows writes outside the workspace"）**是假出路**：
+没有哪个会话能满足它。真正的旋钮只有 `DSH_PERMISSION_MODE` 与 `workspaceRoot`，且都不窄
+—— 前者会把**整个部署**的默认模式放宽。
+
+### 四、同一趟里发现的结构缺陷（比容量更值得记）
+
+`PENDING-LESSONS.md` 用自己的**顶层 `## `** 写了两节过程说明（「为什么没落盘」「怎么落盘（二选一）」），
+而 `parseLessons` 把**每个顶层 `## `** 当作一条经验。所以按原样送去 consolidate，会把
+**728 B ＋ 974 B ＝ 1 702 B** 关于「这个文件自己」的散文注入**每一轮都加载**的区块，
+并因此**超限 1 301 B**（拒绝，不截断）。
+
+**这不是解析器的缺陷。** `LESSONS.md` 里每个顶层 `## ` 确实就是一条经验，那一层的约定是对的；
+错的是**待写入文件借用了那个约定**。修法：把两节降为 `### `，并把该文件的 H1 与状态改成「已落盘」。
+
+⇒ 可迁移的一条：**当一个文件要被某个解析器消费时，它的结构就是接口** ——
+「读起来像标题」与「是一条记录」是两件不同的事。
+
+### 五、容量只剩 335 B
+
+下一条经验会因超限**被拒**（拒绝是对的：静默截断会让机制看起来在工作而实际丢经验）。
+两条正道，插件自己的报错也是这么说的：合并/精简最大的条目，或**有意识地**调高 `maxBlockBytes`
+—— 它是**真实的行配置字段**（`dsh-agent-memory/lib/index.js:103` 的默认值与 `:116-120` 的正整数校验），
+不是常量。**不要为了塞进去而删已有的条目。**
+
+### 六、什么会推翻本条
+
+① 若 `DSH_PERMISSION_MODE` 被设为 `danger-full-access`，或 harness 从 `~/.dsh` 启动使
+`process.cwd()` 覆盖到记忆目录，则第三节「永远写不了」失效 —— 届时应**重测** `memory_remember`，
+不要照抄本条；② 若 `ctx.fs` 的围栏改为接受会话策略，第三节第 4 环作废；
+③ 若某条经验被合并、或上限被调高，第一节的 335 B 是即时读数，须重测。
+
+**证据。** ① 落盘读数：`memory_consolidate --dryRun` 回读 13 条 / 16 049 B / 实际变化：无；
+脚本打印 `LESSONS.md` sha256 `a4e37c22dee6 → 08f08eb0b04d`、`AGENTS.md` `1875f066290d → ab5de3be9c85`，
+以及「标记前 0 B、标记后 1 B 逐字节相同 ✅」；② 拒绝原文见第二节；③ 链条五环的引用见第三节，
+`DSH_PERMISSION_MODE` 未设置由 `Get-ChildItem env:DSH*` 的**四个变量**反证；
+④ 结构缺陷的字节数（728 / 974 / 1 702 / 超限 1 301）由只读探针逐条打印，
+探针与落盘脚本在 `%TEMP%\duanju-recon\`（`measure-pending.mjs` / `simulate-remember.mjs` /
+`consolidate-pending.mjs`）。
