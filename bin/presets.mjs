@@ -106,29 +106,30 @@ export const PRESETS = {
     repoDir: 'dsh-duanju',
     displayName: '短剧工坊 · DSH Duanju',
     upstreamPreset: 'standard',
-    // The FIVE named experts and the fork surface. This preset's pipeline is
-    // 剧本 → 28 列分镜表 → 有戏AI 出片 → 平台评估/投稿, and the platform-side half is
-    // HUMAN-ONLY (有戏AI ships no CLI and no public API, and the workspace holds no
-    // credential for it).
+    // The FOUR named experts and the fork surface. This preset now covers the stage AFTER the
+    // script: 定稿正文 → 28 列分镜表 → 平台可导入 xlsx → 生成 → 成片 → 投稿. The script stage
+    // itself belongs to `dsh-script`, and the platform-side steps are HUMAN-ONLY (有戏AI ships
+    // no CLI and no public API, and the workspace holds no credential for it).
     //
-    // KEPT AS THE FALLBACK for the narrower `dsh-script`. Because the CI inventory step
-    // reconciles the preset directories ON DISK against `package.json`'s `dsh.presets`,
-    // this directory cannot be dropped from that list without also deleting the directory.
+    // WHY THE THREE SCRIPT EXPERTS ARE GONE FROM THIS LIST. Until 2026-09-24 this preset carried
+    // `expert_script` / `expert_doctor` / `expert_dialogue` — the screenwriter, the script doctor
+    // and the dialogue coach. Their functional twins live in `dsh-script`, and two presets
+    // publishing the same three roles is the same-capability-twice shape this repository is
+    // supposed to avoid. They were removed here and replaced by the two roles this stage needs.
     //
     // WHY NO `duanju_*` NAME IS LISTED. The script-domain tools come from a HOST-plane row
-    // (`dsh-duanju-script`, a plugin this repository does not ship and that the preset
-    // composes no row for), so they are registered into the host `tools` registry and are
-    // visible in EVERY session, not just this preset's. Listing them here would make
-    // `verify.mjs` instruct a reader to run a check that is true on every preset — a
-    // tautology. The preset-plane discriminators are the five expert names below.
+    // (`dsh-duanju-script`, a plugin this repository does not ship and that this preset composes
+    // no row for), so they are registered into the host `tools` registry and are visible in EVERY
+    // session, not just this preset's. Listing them here would make `verify.mjs` instruct a reader
+    // to run a check that is true on every preset — a tautology. The preset-plane discriminators
+    // are the four expert names below.
     //
-    // Note the tool names are NOT a claim about what the plugin registers today: it was
-    // narrowed to three (`duanju_gate`, `duanju_recall`, `duanju_checkpoint`). This list is
-    // about the PRESET's rows, which is a different question.
+    // Note the tool names are NOT a claim about what the plugin registers: it is down to three
+    // (`duanju_gate`, `duanju_recall`, `duanju_checkpoint`), all script-side. This list is about
+    // the PRESET's rows, which is a different question.
     expectedTools: [
-      'expert_script',
-      'expert_doctor',
-      'expert_dialogue',
+      'expert_board',
+      'expert_shootability',
       'expert_verifier',
       'expert_chronicler',
       'subagent_fork',

@@ -10,10 +10,10 @@
 
 ## 该用哪个
 
-| | **`dsh-smith`** · 智能体工坊 | **`dsh-forge`** · 研发工坊 | **`dsh-ck3-mod`** · CK3 模组工坊 | **`dsh-duanju`** · 短剧工坊（回落版） | **`dsh-script`** · 剧本工坊 |
+| | **`dsh-smith`** · 智能体工坊 | **`dsh-forge`** · 研发工坊 | **`dsh-ck3-mod`** · CK3 模组工坊 | **`dsh-duanju`** · 短剧工坊（分镜与成片） | **`dsh-script`** · 剧本工坊 |
 | --- | --- | --- | --- | --- | --- |
-| 做什么 | 造 DSH 智能体、写 Cordis 插件 | 交付软件：写、改、测、调、审 | **只做 CK3 模组开发**：写得出、校验得了、记忆留得住 | **只做竖屏短剧**：编剧 → 28 列分镜表 → 有戏AI 出片 → 评估与投稿 | **只做剧本**：选题 → 一句话钩子 → 圣经 → 分集功能表 → 逐集正文 → 交给你在平台上评估 → 按读数改稿；**分镜表与 xlsx 模板不在范围内** |
-| 专家 | architect / verifier / protocol / chronicler（4） | architect / verifier / **debugger** / protocol / chronicler（5） | modd / verifier / chronicler（3） | script / board / verifier / chronicler（4） | script / doctor / dialogue / **continuity**（4） |
+| 做什么 | 造 DSH 智能体、写 Cordis 插件 | 交付软件：写、改、测、调、审 | **只做 CK3 模组开发**：写得出、校验得了、记忆留得住 | **只做分镜与成片**：读剧本工坊交付的定稿正文 → 28 列分镜表 → 平台可导入 xlsx → 生成 → 成片 → 投稿；**不写也不改正文** | **只做剧本**：选题 → 一句话钩子 → 圣经 → 分集功能表 → 逐集正文 → 交给你在平台上评估 → 按读数改稿；**分镜表与 xlsx 模板不在范围内** |
+| 专家 | architect / verifier / protocol / chronicler（4） | architect / verifier / **debugger** / protocol / chronicler（5） | modd / verifier / chronicler（3） | **board / shootability** / verifier / chronicler（4） | script / doctor / dialogue / **continuity**（4） |
 | 计划协议 | 组合设计（平面 / realm / 行清单） | 软件工程（改动面 / 接口 / 边界 / 验收） | 模组四段（目标与落点 / 证据清单 / 执行顺序 / 未知与假设） | 短剧四段（目标与落点 / 证据清单 / 执行顺序 / 未知与假设） | 剧本四段（目标与落点 / 证据清单 / 执行顺序 / 未知与假设） |
 | 工具呈现 | 原生工具表 | `mode: both`：原生工具表 ＋ `run_code` 的 TypeScript SDK | 原生工具表 | 原生工具表 | 原生工具表 |
 | 自省工具 | 含 `tool-cordis` 行（本部署下被门关掉） | 不含该行 | 不含该行 | 不含该行 | 不含该行 |
@@ -21,9 +21,9 @@
 | 血统（`drift-check` 比对的上游） | 出厂 `cordis` | 出厂 `standard` | 出厂 `standard` | 出厂 `standard` | 出厂 `standard`（源文件是本仓库的 `dsh-duanju`） |
 | 详细文档 | [`docs/dsh-smith.md`](docs/dsh-smith.md) | [`docs/dsh-forge.md`](docs/dsh-forge.md) | [`docs/dsh-ck3-mod.md`](docs/dsh-ck3-mod.md) | （不单开文档：`docs/dsh-duanju.md` 已随这次窄化改名为 [`docs/dsh-script.md`](docs/dsh-script.md)；它的状态就是本表这一列） | [`docs/dsh-script.md`](docs/dsh-script.md) |
 
-**`dsh-duanju` 那一列按 `HEAD` 记，不按工作区。** 它留在盘上是**回落版**：`dsh-duanju/` 目录与 `dsh-duanju` 这个 id 都还在（`package.json` 也仍然声明它，否则 CI 的清单核对会因为它还在盘上而变红）。**写这份文档时工作区里有未提交的改动落在那个目录里**（行数、专家与技能数都不是 HEAD 的数字）——那些改动**不在本表内**，本表记的是已提交的那一版。
+**`dsh-duanju` 现在只有分镜与成片那一段。** 剧本那一块（剧本 persona、编剧／剧本医生／台词师三名专家、9 个剧本侧技能）已整体移出，因为 `dsh-script` 已经把它做全 —— 两个预设发布同一套角色就是「同一能力两份实现」。移出之后它仍是一个**完整可用**的预设：它的专家是分镜工程师与可拍性，技能是分镜表、导出、平台投稿与制作链。
 
-**五个都装也可以**：它们互不覆盖，各自的源目录就是各自的 preset 目录，会话启动时由选择器决定用哪个。（`dsh-duanju/` 与 `dsh-script/` 是同一个能力面的两代，都装时选择器里会同时出现「短剧工坊 · DSH Duanju」与「剧本工坊 · DSH Script」。）
+**五个都装也可以**：它们互不覆盖，各自的源目录就是各自的 preset 目录，会话启动时由选择器决定用哪个。（`dsh-duanju/` 与 `dsh-script/` 是**同一条短剧链上的两段**：前者从定稿正文往后做到成片，后者只做正文那一段。都装时选择器里会同时出现「短剧工坊 · DSH Duanju」与「剧本工坊 · DSH Script」。）
 
 > ### `dsh-script` 与用户自建的 `dsh-aivideo`
 >
@@ -31,7 +31,11 @@
 
 > ### `dsh-duanju` 与 `dsh-script` 的关系
 >
-> 同一个能力面的**两代**，不是两个产品。`dsh-duanju` 走「剧本 → 28 列分镜表 → 有戏AI 出片 → 评估与投稿」；`dsh-script` 只留剧本那一段，**分镜表与平台的 xlsx 导入模板整体出范围** —— 理由不是「那些没用」，而是新 preset 里**没有任何一行**能生成、读取或判定一份分镜表，写出来会是一件无人能验的东西。两代并存、互不覆盖，都是本仓库发布的 preset 目录。
+> **同一条短剧链上的两段，不是两代、不是两个产品。** `dsh-script` 只做**正文**那一段：选题 → 圣经 → 分集功能表 → 逐集正文 → 交给用户在平台上评估 → 按读数改稿，**分镜表与平台 xlsx 模板整体出范围**。`dsh-duanju` 从正文往后接：读剧本工坊交付的定稿正文 → **28 列分镜表** → 平台可导入 xlsx → 生成 → 成片 → 投稿，**不写也不改正文**。
+>
+> **两者之间没有重复的专家、没有重复的技能、没有重复的判据。** 这一条是 2026-09-24 专门做的一次去重：`dsh-duanju` 原先带的剧本 persona、编剧／剧本医生／台词师三名专家、以及 9 个剧本侧技能已整体移出，因为 `dsh-script` 把它们做全了 —— 两个预设发布同一套角色，是「同一能力两份实现」。
+>
+> **一个必须说清的能力损失：** 分镜侧**已经没有自动判据**了。读列契约、判分镜表形状、比对官方模板的三个工具（`duanju_contract` / `duanju_board` / `duanju_template`）随剧本一起被删，剩下的三件 `duanju_*` 全是剧本域的。所以 `dsh-duanju` 在分镜上靠的是**技能里的权威引用 + 它自己的核对**，而不是机器闸门；它的 `expert_board` 的 persona 里写着「你的检查就是那个检查」。
 
 > ### `dsh-ck3-mod` 还需要一个插件
 >
@@ -171,8 +175,8 @@ bin/                 九个文件，五个预设共用
 dsh-smith/           preset 源目录（组合 + preset.yml + 5 个技能）
 dsh-forge/           preset 源目录（组合 + preset.yml + 4 个技能）
 dsh-ck3-mod/         preset 源目录（组合 + preset.yml + 3 个技能）
-dsh-duanju/          preset 源目录（组合 + preset.yml + 8 个技能，HEAD 状态；回落版）
-dsh-script/          preset 源目录（组合 + preset.yml + 11 个技能；决定的数目是 12，见 docs/dsh-script.md 第三节）
+dsh-duanju/          preset 源目录（组合 + preset.yml + 6 个技能：分镜与成片那一段）
+dsh-script/          preset 源目录（组合 + preset.yml + 11 个技能 —— 实测数，`lint-skills` 报 11）
 docs/
   dsh-smith.md       逐预设文档
   dsh-forge.md

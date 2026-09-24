@@ -45,14 +45,36 @@ patch row, not by a preset, so a preset that wants their tools composes **no row
 tools are still visible to every session in the process. Measured inventory on this deployment:
 `$DSH_HOME/plugins/dsh-ck3-modcheck` → `ck3_modcheck` / `ck3_mod_init` / `ck3_mod_status` /
 `ck3_mod_evidence`; `$DSH_HOME/plugins/dsh-ima-kb` → the `ima_*` set; `$DSH_HOME/plugins/dsh-inbox`
-→ `inbox_*`; `$DSH_HOME/plugins/dsh-duanju-script` (plus the six tools of the same package) →
-`duanju_gate` / `duanju_contract` / `duanju_board` / `duanju_template` / `duanju_recall` /
-`duanju_checkpoint`. Two consequences worth keeping straight: **a preset cannot publish these** (a
+→ `inbox_*`. Two consequences worth keeping straight: **a preset cannot publish these** (a
 row for an already-registered tool name collides, since the registry is keyed by name), and
 **"tool X is in my tool table" is not evidence about which preset served the session** — only
 preset-plane things (the persona, the expert tool names) are. The host row's own `Config` export is
 a plain Standard Schema object, so `bin/preflight.mjs` reports it as
 `skip … (exports no usable Config schema)`; its config validation lives in the plugin's own tests.
+
+**`dsh-duanju-script` is the one whose surface SHRANK, and it is the live example of a host row
+being narrowed rather than removed.** Source `D:\dsh-duanju-script\lib\index.js`, reached as the
+profile row `duanju-script` with `workspace: 'D:\AIVideo'`, `gateScript: 'tools\script-gate.mjs'`,
+`scriptOnlyScript: 'tools\script-only-check.mjs'`. It now registers exactly **three** tools read off
+the source's own `TOOLS_META` (`:207`, `:216`, `:224`) and the three
+`ctx.tools.register(defineTool(...))` calls (`:312`, `:328`, `:459`):
+
+| Tool | What it does now |
+| --- | --- |
+| `duanju_gate` | runs the **正文** gate `tools\script-only-check.mjs` and returns a structured verdict. Its `range` parameter is `enum: ['script-only']` — **one value** (`:316`) |
+| `duanju_recall` | read-only dynamic projection of one series' whole state |
+| `duanju_checkpoint` | render that projection into `products\<剧名>\项目总览.md`'s MANAGED BLOCK |
+
+**Three tools were deleted from the same package**: `duanju_contract` (read the column contract as
+an array literal), `duanju_board` (per-row board judgement) and `duanju_template` (byte-level xlsx
+template read). Verified two ways — they appear nowhere in `lib/index.js` or `lib/rules.mjs`, and
+the Config key `templateDir` was removed with `duanju_template` because a `Config` carrying an
+unknown field makes **the whole row fail to load** (the profile patch says so at the row). Their
+removal is the mechanical half of this preset's narrowing: **the storyboard stage now has no
+machine check for the column contract**, and the skills say so rather than implying one.
+The source's own header gives the reason `range` narrowed to a single value: `script-only-check.mjs`
+is a **second implementation** of E9/E28/E29 that must be hand-synced with `script-gate.mjs`, so
+keeping the four-range surface would have meant maintaining two gates (`lib/index.js:10-16`).
 
 **Preset-plane rows** (in a preset composition; one instance per session): `persona`,
 `agent-instructions`, the `tool-*` model-facing tools, `plan-mode`, `compaction-basic`,
@@ -97,8 +119,10 @@ Read from `resolveChildAgentOptions` in `@deepseek-ai/dsh-subagent`, because the
 Two consequences this preset depends on. A child sharing the parent's route but inheriting its
 effort is why `agentOptions.reasoningEffort: max` is meaningful at all — a row that omits
 `agentOptions` thinks at whatever the parent's route was using, which is why the `dsh-duanju`
-team pins an effort on only the three roles whose failure is expensive to find late (编剧 /
-剧本医生 / 守门人) and leaves the other two inheriting. And a row that pins an
+team pins an effort on only the roles whose failure is expensive to find late and leaves the rest
+inheriting. **Count the pinned rows off the composition, not off this sentence**: this preset was
+rewritten on 2026-09-24 and the roster changed with it, so the roster is `dsh-duanju/agent.cordis.yml`'s
+business while the *rule* below is this file's. And a row that pins an
 effort while the lead switches models keeps its pinned effort, because naming it suppresses the
 deletion rule. `modelSelectionSettings: true` on the generic row is the separate path by which a
 child gets an independently sampled model instead.

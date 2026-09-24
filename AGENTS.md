@@ -6,17 +6,21 @@ and Cordis plugins), `dsh-forge/agent.cordis.yml` (software delivery),
 `dsh-ck3-mod/agent.cordis.yml` (a Crusader Kings III **mod-authoring** agent),
 `dsh-script/agent.cordis.yml` (**剧本 and nothing else**: 选题 → 一句话钩子 → 圣经 → 分集功能表 →
 逐集正文 → 交给用户在平台上评估 → 按读数改稿; the 28-column 分镜表 and the platform's xlsx import
-templates are deliberately **out of scope**), and `dsh-duanju/agent.cordis.yml` (the same line
-carried further — through the storyboard to 有戏AI 出片 and 投稿 — kept on disk as the **fallback**
-for the narrower `dsh-script`). `bin/presets.mjs`
+templates are deliberately **out of scope**), and `dsh-duanju/agent.cordis.yml` (**分镜与成片**, the
+stage AFTER the script: it reads the 正文 `dsh-script` delivered and produces the 28-column 分镜表,
+the platform-importable xlsx, then 生成 → 成片 → 投稿; **it does not write or edit the 正文**).
+The two are **two stages of one short-drama line, not two generations of one preset**: since
+2026-09-24 `dsh-duanju` carries no script persona, no script expert and no script skill, so that no
+role is published by both. `bin/presets.mjs`
 is the registry of which presets exist, which directory each lives in, and which shipped preset
 each one was copied from — the five scripts that install, verify, lint, drift-check and preflight a
 preset read their paths from it. The ids are mirrored in `package.json`'s `dsh.presets`, which
 `bin/check-pack.mjs` reads for the packed surface and the CI inventory step reconciles against disk,
 so **a new preset is an edit in both files** — and because the CI inventory step compares the
 on-disk directories against that list, **a directory left on disk must stay declared**: `dsh-duanju/`
-stays in both, which is why that fallback cannot be removed from `package.json` without also
-deleting its directory.
+stays in both, which is why it cannot be removed from `package.json` without also deleting its
+directory. (It is no longer a *fallback* for `dsh-script` — the two are different stages of one
+line, so neither replaces the other.)
 
 **Preset rows and shipped packages: four of the five presets resolve entirely from shipped
 packages, and one does not — but TWO presets depend on an out-of-repo plugin, on DIFFERENT planes,
